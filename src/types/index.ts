@@ -86,3 +86,14 @@ export interface ProjectsResponse {
   projects: Project[]
   activeProjectId: string | null
 }
+
+// Project with full data (changes + specs)
+export interface ProjectWithData extends Project {
+  changes: Change[]
+  specs: Spec[]
+}
+
+export interface ProjectsAllDataResponse {
+  projects: ProjectWithData[]
+  activeProjectId: string | null
+}

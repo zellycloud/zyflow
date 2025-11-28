@@ -1,4 +1,4 @@
-import type { TaskGroup, Task, TasksFile } from '../src/types/index.js'
+import type { TaskGroup, Task, TasksFile } from './types.js'
 
 /**
  * Parse tasks.md content into structured data
@@ -113,11 +113,12 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
 }
 
 /**
- * Toggle task completion status in file content
+ * Set task completion status in file content
  */
-export function toggleTaskInFile(
+export function setTaskStatus(
   content: string,
-  taskId: string
+  taskId: string,
+  completed: boolean
 ): { newContent: string; task: Task } {
   const lines = content.split('\n')
 
@@ -161,16 +162,14 @@ export function toggleTaskInFile(
     if (numberedTaskMatch) {
       taskCounter++
       if (isNumberedTask && numberedTaskMatch[4] === taskNumber) {
-        const wasCompleted = numberedTaskMatch[2].toLowerCase() === 'x'
-        const newCompleted = !wasCompleted
-        const newCheckmark = newCompleted ? 'x' : ' '
+        const newCheckmark = completed ? 'x' : ' '
 
         lines[i] = `${numberedTaskMatch[1]}${newCheckmark}${numberedTaskMatch[3]}${numberedTaskMatch[4]}${numberedTaskMatch[5]}`
 
         foundTask = {
           id: taskId,
           title: numberedTaskMatch[5].trim(),
-          completed: newCompleted,
+          completed,
           groupId: currentGroupId,
           lineNumber: i + 1,
         }
@@ -186,16 +185,14 @@ export function toggleTaskInFile(
       const generatedTaskId = `task-${currentGroupId}-${taskCounter}`
 
       if (!isNumberedTask && generatedTaskId === taskId) {
-        const wasCompleted = plainTaskMatch[2].toLowerCase() === 'x'
-        const newCompleted = !wasCompleted
-        const newCheckmark = newCompleted ? 'x' : ' '
+        const newCheckmark = completed ? 'x' : ' '
 
         lines[i] = `${plainTaskMatch[1]}${newCheckmark}${plainTaskMatch[3]}${plainTaskMatch[4]}`
 
         foundTask = {
           id: taskId,
           title: plainTaskMatch[4].trim(),
-          completed: newCompleted,
+          completed,
           groupId: currentGroupId,
           lineNumber: i + 1,
         }

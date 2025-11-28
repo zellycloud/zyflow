@@ -3,22 +3,16 @@ import {
   FolderOpen,
   Plus,
   Trash2,
-  Check,
   ChevronRight,
-  ChevronsUpDown,
   FileText,
-  Book,
-  ListTodo,
   Loader2,
   Settings,
 } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -27,26 +21,25 @@ import {
   SidebarMenuSubItem,
 } from '@/components/ui/sidebar'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
-import { useProjects, useAddProject, useActivateProject, useRemoveProject, useBrowseFolder } from '@/hooks/useProjects'
-import { useChanges } from '@/hooks/useChanges'
-import { useSpecs } from '@/hooks/useSpecs'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { useProjectsAllData, useAddProject, useActivateProject, useRemoveProject, useBrowseFolder } from '@/hooks/useProjects'
 import { toast } from 'sonner'
+import type { ProjectWithData } from '@/types'
 
 export type SelectedItem =
-  | { type: 'change'; id: string }
-  | { type: 'spec'; id: string }
+  | { type: 'change'; id: string; projectId: string }
   | null
 
 interface AppSidebarProps {
@@ -55,23 +48,19 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ selectedItem, onSelectItem }: AppSidebarProps) {
-  const [openSections, setOpenSections] = useState({
-    changes: true,
-    specs: true,
-  })
+  // 기본값을 false로 설정하여 접힌 상태로 시작
+  const [openProjects, setOpenProjects] = useState<Record<string, boolean>>({})
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
-  const { data: projectsData, isLoading: projectsLoading } = useProjects()
-  const { data: changes, isLoading: changesLoading } = useChanges()
-  const { data: specs, isLoading: specsLoading } = useSpecs()
-
+  const { data: projectsData, isLoading } = useProjectsAllData()
   const addProject = useAddProject()
   const activateProject = useActivateProject()
   const removeProject = useRemoveProject()
   const browseFolder = useBrowseFolder()
 
-  const activeProject = projectsData?.projects.find(
-    (p) => p.id === projectsData.activeProjectId
-  )
+  const toggleProject = (projectId: string) => {
+    setOpenProjects(prev => ({ ...prev, [projectId]: !prev[projectId] }))
+  }
 
   const handleBrowseAndAdd = async () => {
     try {
@@ -84,19 +73,7 @@ export function AppSidebar({ selectedItem, onSelectItem }: AppSidebarProps) {
     }
   }
 
-  const handleActivateProject = async (projectId: string) => {
-    if (projectId === projectsData?.activeProjectId) return
-    try {
-      await activateProject.mutateAsync(projectId)
-      onSelectItem(null) // Clear selection when switching projects
-      toast.success('프로젝트가 전환되었습니다')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '프로젝트 전환 실패')
-    }
-  }
-
-  const handleRemoveProject = async (projectId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleRemoveProject = async (projectId: string) => {
     try {
       await removeProject.mutateAsync(projectId)
       toast.success('프로젝트가 삭제되었습니다')
@@ -105,258 +82,185 @@ export function AppSidebar({ selectedItem, onSelectItem }: AppSidebarProps) {
     }
   }
 
+  const handleSelectChange = async (project: ProjectWithData, changeId: string) => {
+    // Activate project if not active
+    if (project.id !== projectsData?.activeProjectId) {
+      await activateProject.mutateAsync(project.id)
+    }
+    onSelectItem({ type: 'change', id: changeId, projectId: project.id })
+  }
+
   return (
     <Sidebar collapsible="none">
-      {/* Project Switcher Header */}
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                >
-                  <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
-                    <FolderOpen className="size-4" />
-                  </div>
-                  <div className="grid flex-1 text-start text-sm leading-tight">
-                    {projectsLoading ? (
-                      <span className="text-muted-foreground">로딩...</span>
-                    ) : activeProject ? (
-                      <>
-                        <span className="truncate font-semibold">
-                          {activeProject.name}
-                        </span>
-                        <span className="truncate text-xs text-muted-foreground">
-                          OpenSpec Project
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground">
-                        프로젝트 선택
-                      </span>
-                    )}
-                  </div>
-                  <ChevronsUpDown className="ms-auto" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-                align="start"
-                sideOffset={4}
-              >
-                {projectsData?.projects.map((project) => (
-                  <DropdownMenuItem
-                    key={project.id}
-                    onClick={() => handleActivateProject(project.id)}
-                    className="gap-2 p-2 group"
-                  >
-                    <div className="flex size-6 items-center justify-center rounded-sm border">
-                      {project.id === projectsData.activeProjectId ? (
-                        <Check className="size-4 text-primary" />
-                      ) : (
-                        <FolderOpen className="size-4" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="truncate">{project.name}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {project.path}
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0"
-                      onClick={(e) => handleRemoveProject(project.id, e)}
-                    >
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </DropdownMenuItem>
-                ))}
-                {projectsData?.projects.length === 0 && (
-                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                    등록된 프로젝트가 없습니다
-                  </div>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={handleBrowseAndAdd}
-                  disabled={browseFolder.isPending || addProject.isPending}
-                  className="gap-2 p-2"
-                >
-                  <div className="bg-background flex size-6 items-center justify-center rounded-md border">
-                    <Plus className="size-4" />
-                  </div>
-                  <div className="text-muted-foreground font-medium">
-                    {browseFolder.isPending || addProject.isPending
-                      ? '추가 중...'
-                      : '프로젝트 추가'}
-                  </div>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-
-      {/* Main Content - Tree Structure */}
+      {/* Projects Tree */}
       <SidebarContent>
-        {activeProject ? (
-          <SidebarGroup>
-            <SidebarGroupLabel>OpenSpec</SidebarGroupLabel>
-            <SidebarMenu>
-              {/* Changes Section */}
-              <Collapsible
-                open={openSections.changes}
-                onOpenChange={(open) =>
-                  setOpenSections((prev) => ({ ...prev, changes: open }))
-                }
-                className="group/collapsible"
+        <SidebarGroup>
+          <SidebarGroupLabel className="flex items-center justify-between">
+            <span>OpenSpec</span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5"
+                onClick={handleBrowseAndAdd}
+                disabled={browseFolder.isPending || addProject.isPending}
               >
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton>
-                      <ListTodo className="size-4" />
-                      <span>Changes</span>
-                      {changes && (
-                        <span className="ml-auto text-xs text-muted-foreground">
-                          {changes.length}
-                        </span>
-                      )}
-                      <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      {changesLoading ? (
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton>
-                            <Loader2 className="size-4 animate-spin" />
-                            <span>로딩 중...</span>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      ) : changes?.length === 0 ? (
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton className="text-muted-foreground">
-                            <FileText className="size-4" />
-                            <span>변경 제안 없음</span>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
+                {browseFolder.isPending || addProject.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Plus className="h-3 w-3" />
+                )}
+              </Button>
+              <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-5 w-5">
+                    <Settings className="h-3 w-3" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>프로젝트 관리</DialogTitle>
+                    <DialogDescription>
+                      등록된 프로젝트를 관리합니다.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-2 mt-4">
+                    {projectsData?.projects.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        등록된 프로젝트가 없습니다.
+                      </p>
+                    ) : (
+                      projectsData?.projects.map((project) => (
+                        <div
+                          key={project.id}
+                          className="flex items-center justify-between p-3 rounded-lg border"
+                        >
+                          <div className="flex items-center gap-3">
+                            <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <p className="font-medium text-sm">{project.name}</p>
+                              <p className="text-xs text-muted-foreground truncate max-w-[250px]">
+                                {project.path}
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => handleRemoveProject(project.id)}
+                            disabled={removeProject.isPending}
+                          >
+                            {removeProject.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                    <Button
+                      variant="outline"
+                      className="w-full mt-4"
+                      onClick={handleBrowseAndAdd}
+                      disabled={browseFolder.isPending || addProject.isPending}
+                    >
+                      {browseFolder.isPending || addProject.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
                       ) : (
-                        changes?.map((change) => (
-                          <SidebarMenuSubItem key={change.id}>
-                            <SidebarMenuSubButton
-                              onClick={() =>
-                                onSelectItem({ type: 'change', id: change.id })
-                              }
-                              isActive={
-                                selectedItem?.type === 'change' &&
-                                selectedItem.id === change.id
-                              }
-                            >
-                              <FileText className="size-4" />
-                              <span className="truncate">{change.title}</span>
-                              <span className="ml-auto text-xs text-muted-foreground">
-                                {change.completedTasks}/{change.totalTasks}
-                              </span>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))
+                        <Plus className="h-4 w-4 mr-2" />
                       )}
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
-
-              {/* Specs Section */}
-              <Collapsible
-                open={openSections.specs}
-                onOpenChange={(open) =>
-                  setOpenSections((prev) => ({ ...prev, specs: open }))
-                }
-                className="group/collapsible"
-              >
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton>
-                      <Book className="size-4" />
-                      <span>Specs</span>
-                      {specs && (
-                        <span className="ml-auto text-xs text-muted-foreground">
-                          {specs.length}
-                        </span>
-                      )}
-                      <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      {specsLoading ? (
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton>
-                            <Loader2 className="size-4 animate-spin" />
-                            <span>로딩 중...</span>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      ) : specs?.length === 0 ? (
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton className="text-muted-foreground">
-                            <Book className="size-4" />
-                            <span>스펙 없음</span>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      ) : (
-                        specs?.map((spec) => (
-                          <SidebarMenuSubItem key={spec.id}>
-                            <SidebarMenuSubButton
-                              onClick={() =>
-                                onSelectItem({ type: 'spec', id: spec.id })
-                              }
-                              isActive={
-                                selectedItem?.type === 'spec' &&
-                                selectedItem.id === spec.id
-                              }
-                            >
-                              <Book className="size-4" />
-                              <span className="truncate">{spec.title}</span>
-                              {spec.requirementsCount > 0 && (
-                                <span className="ml-auto text-xs text-muted-foreground">
-                                  {spec.requirementsCount} req
-                                </span>
-                              )}
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))
-                      )}
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
-            </SidebarMenu>
-          </SidebarGroup>
-        ) : (
-          <SidebarGroup>
-            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-              <FolderOpen className="h-8 w-8 mb-2" />
-              <p className="text-sm">프로젝트를 선택하세요</p>
+                      프로젝트 추가
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
-          </SidebarGroup>
-        )}
-      </SidebarContent>
+          </SidebarGroupLabel>
+          <SidebarMenu>
+            {isLoading ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton>
+                  <Loader2 className="size-4 animate-spin" />
+                  <span>로딩 중...</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : projectsData?.projects.length === 0 ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={handleBrowseAndAdd}
+                  className="text-muted-foreground"
+                >
+                  <Plus className="size-4" />
+                  <span>프로젝트 추가</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : (
+              projectsData?.projects.map((project) => {
+                // 기본값 false로 접힌 상태
+                const isOpen = openProjects[project.id] ?? false
+                const totalChangeTasks = project.changes.reduce((sum, c) => sum + c.totalTasks, 0)
+                const completedChangeTasks = project.changes.reduce((sum, c) => sum + c.completedTasks, 0)
 
-      {/* Footer */}
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="sm" className="text-muted-foreground">
-              <Settings className="size-4" />
-              <span>Settings</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
+                return (
+                  <Collapsible
+                    key={project.id}
+                    open={isOpen}
+                    onOpenChange={() => toggleProject(project.id)}
+                    className="group/project"
+                  >
+                    <SidebarMenuItem>
+                      <CollapsibleTrigger asChild>
+                        <SidebarMenuButton className="group">
+                          <FolderOpen className="size-4" />
+                          <span className="truncate font-medium">{project.name}</span>
+                          {totalChangeTasks > 0 && (
+                            <span className="ml-auto text-xs text-muted-foreground">
+                              {completedChangeTasks}/{totalChangeTasks}
+                            </span>
+                          )}
+                          <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/project:rotate-90" />
+                        </SidebarMenuButton>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <SidebarMenuSub>
+                          {project.changes.length === 0 ? (
+                            <SidebarMenuSubItem>
+                              <SidebarMenuSubButton className="text-muted-foreground">
+                                <span className="text-xs">변경 제안 없음</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ) : (
+                            project.changes.map((change) => (
+                              <SidebarMenuSubItem key={change.id}>
+                                <SidebarMenuSubButton
+                                  onClick={() => handleSelectChange(project, change.id)}
+                                  isActive={
+                                    selectedItem?.type === 'change' &&
+                                    selectedItem.id === change.id &&
+                                    selectedItem.projectId === project.id
+                                  }
+                                >
+                                  <FileText className="size-3" />
+                                  <span className="truncate text-xs">{change.id}</span>
+                                  <span className="ml-auto text-xs text-muted-foreground">
+                                    {change.completedTasks}/{change.totalTasks}
+                                  </span>
+                                </SidebarMenuSubButton>
+                              </SidebarMenuSubItem>
+                            ))
+                          )}
+                        </SidebarMenuSub>
+                      </CollapsibleContent>
+                    </SidebarMenuItem>
+                  </Collapsible>
+                )
+              })
+            )}
+          </SidebarMenu>
+        </SidebarGroup>
+      </SidebarContent>
     </Sidebar>
   )
 }

@@ -5,16 +5,18 @@ import type { Task } from '@/types'
 import { cn } from '@/lib/utils'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
-import { Copy, ChevronRight, GripVertical } from 'lucide-react'
+import { Copy, ChevronRight, GripVertical, Play } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface SortableTaskItemProps {
   task: Task
   onToggle: (taskId: string) => void
+  onExecute: (taskId: string, taskTitle: string) => void
   changeId: string
+  isExecuting?: boolean
 }
 
-export function SortableTaskItem({ task, onToggle, changeId }: SortableTaskItemProps) {
+export function SortableTaskItem({ task, onToggle, onExecute, changeId, isExecuting }: SortableTaskItemProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   const {
@@ -94,18 +96,27 @@ export function SortableTaskItem({ task, onToggle, changeId }: SortableTaskItemP
 
       {isExpanded && (
         <div className="ml-11 mt-2 rounded-md border bg-muted/30 p-3">
-          <div className="text-sm text-muted-foreground mb-2">
-            세부 계획이 없습니다
+          <div className="flex gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => onExecute(task.id, task.title)}
+              disabled={isExecuting || task.completed}
+              className="gap-2"
+            >
+              <Play className="h-3 w-3" />
+              Claude로 실행
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={copyPrompt}
+              className="gap-2"
+            >
+              <Copy className="h-3 w-3" />
+              프롬프트 복사
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={copyPrompt}
-            className="gap-2"
-          >
-            <Copy className="h-3 w-3" />
-            세부 계획 요청 프롬프트 복사
-          </Button>
         </div>
       )}
     </div>

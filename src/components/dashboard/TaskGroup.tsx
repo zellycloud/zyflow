@@ -21,10 +21,12 @@ interface TaskGroupProps {
   group: TaskGroupType
   onToggle: (taskId: string) => void
   onReorder: (groupId: string, taskIds: string[]) => void
+  onExecute: (taskId: string, taskTitle: string) => void
   changeId: string
+  isExecuting?: boolean
 }
 
-export function TaskGroup({ group, onToggle, onReorder, changeId }: TaskGroupProps) {
+export function TaskGroup({ group, onToggle, onReorder, onExecute, changeId, isExecuting }: TaskGroupProps) {
   const completedCount = group.tasks.filter((t) => t.completed).length
   const totalCount = group.tasks.length
 
@@ -76,7 +78,9 @@ export function TaskGroup({ group, onToggle, onReorder, changeId }: TaskGroupPro
                   key={task.id}
                   task={task}
                   onToggle={onToggle}
+                  onExecute={onExecute}
                   changeId={changeId}
+                  isExecuting={isExecuting}
                 />
               ))}
             </div>

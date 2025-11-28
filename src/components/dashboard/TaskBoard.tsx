@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import { useTasks, useToggleTask, useReorderTasks } from '@/hooks/useTasks'
+import { useClaude } from '@/hooks/useClaude'
 import { TaskGroup } from './TaskGroup'
+import { ExecutionModal } from './ExecutionModal'
 import { Loader2 } from 'lucide-react'
 
 interface TaskBoardProps {
@@ -7,9 +10,13 @@ interface TaskBoardProps {
 }
 
 export function TaskBoard({ changeId }: TaskBoardProps) {
-  const { data, isLoading, error } = useTasks(changeId)
+  const { data, isLoading, error, refetch } = useTasks(changeId)
   const toggleTask = useToggleTask(changeId)
   const reorderTasks = useReorderTasks(changeId)
+  const { execution, execute, stop, reset } = useClaude()
+
+  const [modalOpen, setModalOpen] = useState(false)
+  const [currentTaskTitle, setCurrentTaskTitle] = useState('')
 
   if (isLoading) {
     return (
@@ -43,17 +50,50 @@ export function TaskBoard({ changeId }: TaskBoardProps) {
     reorderTasks.mutate({ groupId, taskIds })
   }
 
+  const handleExecute = async (taskId: string, taskTitle: string) => {
+    setCurrentTaskTitle(taskTitle)
+    setModalOpen(true)
+    reset()
+
+    await execute({
+      changeId,
+      taskId,
+      taskTitle,
+    })
+
+    // Refetch tasks after execution to update checkbox if Claude marked it complete
+    refetch()
+  }
+
+  const handleModalClose = (open: boolean) => {
+    if (!open && execution.status !== 'running') {
+      setModalOpen(false)
+    }
+  }
+
   return (
-    <div className="space-y-6">
-      {data.groups.map((group) => (
-        <TaskGroup
-          key={group.id}
-          group={group}
-          onToggle={handleToggle}
-          onReorder={handleReorder}
-          changeId={changeId}
-        />
-      ))}
-    </div>
+    <>
+      <div className="space-y-6">
+        {data.groups.map((group) => (
+          <TaskGroup
+            key={group.id}
+            group={group}
+            onToggle={handleToggle}
+            onReorder={handleReorder}
+            onExecute={handleExecute}
+            changeId={changeId}
+            isExecuting={execution.status === 'running'}
+          />
+        ))}
+      </div>
+
+      <ExecutionModal
+        open={modalOpen}
+        onOpenChange={handleModalClose}
+        execution={execution}
+        taskTitle={currentTaskTitle}
+        onStop={stop}
+      />
+    </>
   )
 }

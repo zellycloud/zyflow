@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { Project, ApiResponse, ProjectsResponse } from '@/types'
+import type { Project, ApiResponse, ProjectsResponse, ProjectsAllDataResponse } from '@/types'
 
 async function fetchProjects(): Promise<ProjectsResponse> {
   const response = await fetch('/api/projects')
@@ -16,6 +16,24 @@ export function useProjects() {
   return useQuery({
     queryKey: ['projects'],
     queryFn: fetchProjects,
+  })
+}
+
+async function fetchProjectsAllData(): Promise<ProjectsAllDataResponse> {
+  const response = await fetch('/api/projects/all-data')
+  const json: ApiResponse<ProjectsAllDataResponse> = await response.json()
+
+  if (!json.success || !json.data) {
+    throw new Error(json.error || 'Failed to fetch projects data')
+  }
+
+  return json.data
+}
+
+export function useProjectsAllData() {
+  return useQuery({
+    queryKey: ['projects-all-data'],
+    queryFn: fetchProjectsAllData,
   })
 }
 
@@ -41,6 +59,7 @@ export function useAddProject() {
     mutationFn: addProject,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['projects-all-data'] })
       queryClient.invalidateQueries({ queryKey: ['changes'] })
       queryClient.invalidateQueries({ queryKey: ['specs'] })
     },
@@ -67,6 +86,7 @@ export function useActivateProject() {
     mutationFn: activateProject,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['projects-all-data'] })
       queryClient.invalidateQueries({ queryKey: ['changes'] })
       queryClient.invalidateQueries({ queryKey: ['specs'] })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
@@ -92,6 +112,7 @@ export function useRemoveProject() {
     mutationFn: removeProject,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['projects-all-data'] })
       queryClient.invalidateQueries({ queryKey: ['changes'] })
       queryClient.invalidateQueries({ queryKey: ['specs'] })
     },

@@ -5,7 +5,6 @@ import { SidebarProvider } from '@/components/ui/sidebar'
 import { ResizableSidebar } from '@/components/ui/resizable-sidebar'
 import { AppSidebar, type SelectedItem } from '@/components/layout/AppSidebar'
 import { TaskBoard } from '@/components/dashboard/TaskBoard'
-import { SpecContent } from '@/components/dashboard/SpecContent'
 import { ThemeToggle } from '@/components/dashboard/ThemeToggle'
 import { GitBranch, FolderOpen } from 'lucide-react'
 
@@ -39,14 +38,12 @@ export default function App() {
             <main className="flex-1 overflow-y-auto p-6">
               {selectedItem?.type === 'change' ? (
                 <TaskBoard changeId={selectedItem.id} />
-              ) : selectedItem?.type === 'spec' ? (
-                <SpecContent specId={selectedItem.id} />
               ) : (
                 <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
                   <FolderOpen className="h-12 w-12 mb-4 opacity-50" />
-                  <p className="text-lg">항목을 선택하세요</p>
+                  <p className="text-lg">Change를 선택하세요</p>
                   <p className="text-sm mt-1">
-                    왼쪽 사이드바에서 Change 또는 Spec을 선택하세요
+                    왼쪽 사이드바에서 프로젝트를 펼치고 Change를 선택하세요
                   </p>
                 </div>
               )}

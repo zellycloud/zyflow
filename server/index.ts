@@ -1,13 +1,21 @@
 import express from 'express'
 import cors from 'cors'
-import { readdir, readFile, writeFile, access } from 'fs/promises'
+import { readdir, readFile, writeFile, access, mkdir } from 'fs/promises'
 import { join, dirname, basename } from 'path'
 import { fileURLToPath } from 'url'
-import { exec } from 'child_process'
+import { exec, spawn } from 'child_process'
 import { promisify } from 'util'
 import { parseTasksFile, toggleTaskInFile } from './parser.js'
 
 const execAsync = promisify(exec)
+
+// Store running Claude processes
+const runningTasks = new Map<string, {
+  process: ReturnType<typeof spawn>
+  output: string[]
+  status: 'running' | 'completed' | 'error'
+  startedAt: Date
+}>()
 import {
   loadConfig,
   saveConfig,
@@ -140,6 +148,143 @@ app.put('/api/projects/:id/activate', async (req, res) => {
   } catch (error) {
     console.error('Error activating project:', error)
     res.status(500).json({ success: false, error: 'Failed to activate project' })
+  }
+})
+
+// ==================== ALL PROJECTS DATA ====================
+
+// Helper to parse affected specs from proposal content
+function parseAffectedSpecs(proposalContent: string): string[] {
+  const specs: string[] = []
+
+  // Find ### Affected Specs section
+  const affectedSpecsMatch = proposalContent.match(/###\s*Affected Specs\s*\n([\s\S]*?)(?=\n###|\n##|$)/i)
+  if (!affectedSpecsMatch) return specs
+
+  const section = affectedSpecsMatch[1]
+  // Match patterns like: - **NEW**: `spec-name` or - **MODIFIED**: `spec-name`
+  const specMatches = section.matchAll(/`([^`]+)`/g)
+  for (const match of specMatches) {
+    specs.push(match[1])
+  }
+
+  return specs
+}
+
+// Helper to get changes for a specific project path
+async function getChangesForProject(projectPath: string) {
+  const openspecDir = join(projectPath, 'openspec', 'changes')
+  const changes = []
+
+  let entries
+  try {
+    entries = await readdir(openspecDir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === 'archive') continue
+
+    const changeId = entry.name
+    const changeDir = join(openspecDir, changeId)
+
+    let title = changeId
+    let relatedSpecs: string[] = []
+    try {
+      const proposalPath = join(changeDir, 'proposal.md')
+      const proposalContent = await readFile(proposalPath, 'utf-8')
+      // Try to match "# Change: ..." or just first "# ..." heading
+      const titleMatch = proposalContent.match(/^#\s+(?:Change:\s+)?(.+)$/m)
+      if (titleMatch) {
+        title = titleMatch[1].trim()
+      }
+      // Parse affected specs
+      relatedSpecs = parseAffectedSpecs(proposalContent)
+    } catch {}
+
+    let totalTasks = 0
+    let completedTasks = 0
+    try {
+      const tasksPath = join(changeDir, 'tasks.md')
+      const tasksContent = await readFile(tasksPath, 'utf-8')
+      const parsed = parseTasksFile(changeId, tasksContent)
+      for (const group of parsed.groups) {
+        totalTasks += group.tasks.length
+        completedTasks += group.tasks.filter((t) => t.completed).length
+      }
+    } catch {}
+
+    const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+    changes.push({ id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs })
+  }
+
+  return changes
+}
+
+// Helper to get specs for a specific project path
+async function getSpecsForProject(projectPath: string) {
+  const specsDir = join(projectPath, 'openspec', 'specs')
+  const specs = []
+
+  let entries
+  try {
+    entries = await readdir(specsDir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+
+    const specId = entry.name
+    const specDir = join(specsDir, specId)
+
+    let title = specId
+    let requirementsCount = 0
+    try {
+      const specPath = join(specDir, 'spec.md')
+      const specContent = await readFile(specPath, 'utf-8')
+      const titleMatch = specContent.match(/^#\s+(.+)$/m)
+      if (titleMatch) {
+        title = titleMatch[1].trim()
+      }
+      const reqMatches = specContent.match(/^###\s+Requirement:/gm)
+      requirementsCount = reqMatches ? reqMatches.length : 0
+    } catch {}
+
+    specs.push({ id: specId, title, requirementsCount })
+  }
+
+  return specs
+}
+
+// GET /api/projects/all-data - Get all projects with their changes and specs
+app.get('/api/projects/all-data', async (req, res) => {
+  try {
+    const config = await loadConfig()
+    const projectsData = []
+
+    for (const project of config.projects) {
+      const changes = await getChangesForProject(project.path)
+      const specs = await getSpecsForProject(project.path)
+      projectsData.push({
+        ...project,
+        changes,
+        specs,
+      })
+    }
+
+    res.json({
+      success: true,
+      data: {
+        projects: projectsData,
+        activeProjectId: config.activeProjectId,
+      },
+    })
+  } catch (error) {
+    console.error('Error getting all projects data:', error)
+    res.status(500).json({ success: false, error: 'Failed to get projects data' })
   }
 })
 
@@ -447,6 +592,243 @@ app.patch('/api/tasks/reorder', async (req, res) => {
   } catch (error) {
     console.error('Error reordering tasks:', error)
     res.status(500).json({ success: false, error: 'Failed to reorder tasks' })
+  }
+})
+
+// ==================== CLAUDE CODE EXECUTION ====================
+
+// POST /api/claude/execute - Execute a task with Claude Code (SSE streaming)
+app.post('/api/claude/execute', async (req, res) => {
+  try {
+    const paths = await getProjectPaths()
+    if (!paths) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { changeId, taskId, taskTitle, context } = req.body
+    const project = await getActiveProject()
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    // Build the prompt for Claude
+    const prompt = `당신은 OpenSpec 프로젝트의 태스크를 실행하는 AI입니다.
+
+## 현재 작업
+- Change: ${changeId}
+- Task ID: ${taskId}
+- Task: ${taskTitle}
+
+## 컨텍스트
+${context || '추가 컨텍스트 없음'}
+
+## 지시사항
+1. 위 태스크를 완료하세요
+2. 필요한 파일을 읽고, 수정하거나 생성하세요
+3. 작업이 완료되면 결과를 요약해주세요
+4. 에러가 발생하면 명확하게 보고해주세요
+
+작업을 시작하세요.`
+
+    // Set up SSE
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+    res.setHeader('X-Accel-Buffering', 'no')
+
+    // Generate unique run ID
+    const runId = `${changeId}-${taskId}-${Date.now()}`
+
+    // Send initial event
+    res.write(`data: ${JSON.stringify({ type: 'start', runId, taskId, changeId })}\n\n`)
+
+    // Spawn Claude CLI process
+    const claudeProcess = spawn('claude', [
+      '--print',
+      '--output-format', 'stream-json',
+      '--dangerously-skip-permissions',
+      prompt
+    ], {
+      cwd: project.path,
+      env: { ...process.env },
+      shell: true
+    })
+
+    const taskState = {
+      process: claudeProcess,
+      output: [] as string[],
+      status: 'running' as const,
+      startedAt: new Date()
+    }
+    runningTasks.set(runId, taskState)
+
+    let buffer = ''
+
+    claudeProcess.stdout.on('data', (data: Buffer) => {
+      buffer += data.toString()
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.trim()) continue
+
+        try {
+          const parsed = JSON.parse(line)
+          taskState.output.push(line)
+
+          // Forward to client
+          res.write(`data: ${JSON.stringify({ type: 'output', data: parsed })}\n\n`)
+        } catch {
+          // Non-JSON output, send as text
+          res.write(`data: ${JSON.stringify({ type: 'text', content: line })}\n\n`)
+        }
+      }
+    })
+
+    claudeProcess.stderr.on('data', (data: Buffer) => {
+      const text = data.toString()
+      res.write(`data: ${JSON.stringify({ type: 'stderr', content: text })}\n\n`)
+    })
+
+    claudeProcess.on('close', async (code) => {
+      const status = code === 0 ? 'completed' : 'error'
+      taskState.status = status
+
+      // Save execution log
+      try {
+        const logsDir = join(project.path, '.zyflow', 'logs', changeId)
+        await mkdir(logsDir, { recursive: true })
+        const logPath = join(logsDir, `${taskId}-${Date.now()}.json`)
+        await writeFile(logPath, JSON.stringify({
+          runId,
+          changeId,
+          taskId,
+          taskTitle,
+          status,
+          startedAt: taskState.startedAt,
+          completedAt: new Date(),
+          output: taskState.output
+        }, null, 2))
+      } catch (err) {
+        console.error('Failed to save log:', err)
+      }
+
+      // Auto-complete task on successful execution
+      let taskAutoCompleted = false
+      if (code === 0) {
+        try {
+          const tasksPath = join(paths!.openspecDir, changeId, 'tasks.md')
+          const content = await readFile(tasksPath, 'utf-8')
+          const { newContent, task } = toggleTaskInFile(content, taskId)
+
+          // toggleTaskInFile returns the NEW state after toggle
+          // If task.completed is true, it means it WAS uncompleted and is now completed
+          if (task.completed) {
+            await writeFile(tasksPath, newContent, 'utf-8')
+            taskAutoCompleted = true
+          }
+          // If it was already completed (task.completed would be false after toggle),
+          // we don't save the file
+        } catch (err) {
+          console.error('Failed to auto-complete task:', err)
+        }
+      }
+
+      res.write(`data: ${JSON.stringify({
+        type: 'complete',
+        runId,
+        status,
+        exitCode: code,
+        taskAutoCompleted
+      })}\n\n`)
+      res.end()
+
+      // Cleanup after 5 minutes
+      setTimeout(() => runningTasks.delete(runId), 5 * 60 * 1000)
+    })
+
+    claudeProcess.on('error', (err) => {
+      taskState.status = 'error'
+      res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`)
+      res.end()
+    })
+
+    // Handle client disconnect
+    req.on('close', () => {
+      if (taskState.status === 'running') {
+        claudeProcess.kill('SIGTERM')
+      }
+    })
+
+  } catch (error) {
+    console.error('Error executing Claude:', error)
+    res.status(500).json({ success: false, error: 'Failed to execute Claude' })
+  }
+})
+
+// GET /api/claude/status/:runId - Get status of a running task
+app.get('/api/claude/status/:runId', (req, res) => {
+  const task = runningTasks.get(req.params.runId)
+  if (!task) {
+    return res.json({ success: true, data: { status: 'not_found' } })
+  }
+  res.json({
+    success: true,
+    data: {
+      status: task.status,
+      startedAt: task.startedAt,
+      outputLength: task.output.length
+    }
+  })
+})
+
+// POST /api/claude/stop/:runId - Stop a running task
+app.post('/api/claude/stop/:runId', (req, res) => {
+  const task = runningTasks.get(req.params.runId)
+  if (!task || task.status !== 'running') {
+    return res.json({ success: false, error: 'Task not running' })
+  }
+  task.process.kill('SIGTERM')
+  task.status = 'error'
+  res.json({ success: true })
+})
+
+// GET /api/claude/logs/:changeId - Get execution logs for a change
+app.get('/api/claude/logs/:changeId', async (req, res) => {
+  try {
+    const paths = await getProjectPaths()
+    if (!paths) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const project = await getActiveProject()
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const logsDir = join(project.path, '.zyflow', 'logs', req.params.changeId)
+    let files: string[] = []
+    try {
+      const entries = await readdir(logsDir)
+      files = entries.filter(f => f.endsWith('.json'))
+    } catch {
+      // No logs directory yet
+    }
+
+    const logs = []
+    for (const file of files.slice(-20)) { // Last 20 logs
+      try {
+        const content = await readFile(join(logsDir, file), 'utf-8')
+        logs.push(JSON.parse(content))
+      } catch {
+        // Skip invalid logs
+      }
+    }
+
+    res.json({ success: true, data: { logs } })
+  } catch (error) {
+    console.error('Error reading logs:', error)
+    res.status(500).json({ success: false, error: 'Failed to read logs' })
   }
 })
 
