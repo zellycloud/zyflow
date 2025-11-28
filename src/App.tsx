@@ -5,11 +5,12 @@ import { SidebarProvider } from '@/components/ui/sidebar'
 import { ResizableSidebar } from '@/components/ui/resizable-sidebar'
 import { AppSidebar, type SelectedItem } from '@/components/layout/AppSidebar'
 import { TaskBoard } from '@/components/dashboard/TaskBoard'
+import { TasksPage } from '@/components/dashboard/TasksPage'
 import { ThemeToggle } from '@/components/dashboard/ThemeToggle'
 import { GitBranch, FolderOpen } from 'lucide-react'
 
 export default function App() {
-  const [selectedItem, setSelectedItem] = useState<SelectedItem>(null)
+  const [selectedItem, setSelectedItem] = useState<SelectedItem>({ type: 'tasks' })
 
   return (
     <ThemeProvider defaultTheme="system">
@@ -36,7 +37,9 @@ export default function App() {
 
             {/* Content Area */}
             <main className="flex-1 overflow-y-auto p-6">
-              {selectedItem?.type === 'change' ? (
+              {selectedItem?.type === 'tasks' ? (
+                <TasksPage />
+              ) : selectedItem?.type === 'change' ? (
                 <TaskBoard changeId={selectedItem.id} />
               ) : (
                 <div className="flex h-full flex-col items-center justify-center text-muted-foreground">

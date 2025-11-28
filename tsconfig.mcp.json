@@ -13,6 +13,6 @@
     "sourceMap": true,
     "baseUrl": "."
   },
-  "include": ["mcp-server/**/*.ts"],
+  "include": ["mcp-server/**/*.ts", "server/tasks/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

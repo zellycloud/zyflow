@@ -6,13 +6,23 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
-import { readFile, writeFile, readdir, stat } from 'fs/promises'
-import { join, basename } from 'path'
+import { readFile, writeFile, readdir } from 'fs/promises'
+import { join } from 'path'
 import matter from 'gray-matter'
 
 import { parseTasksFile, setTaskStatus } from './parser.js'
-import { buildTaskContext, readProposal, readDesign } from './context.js'
+import { buildTaskContext, readDesign } from './context.js'
 import type { Change, Task, TasksFile, NextTaskResponse } from './types.js'
+import {
+  taskToolDefinitions,
+  initTaskDb,
+  handleTaskList,
+  handleTaskCreate,
+  handleTaskUpdate,
+  handleTaskSearch,
+  handleTaskDelete,
+  handleTaskView,
+} from './task-tools.js'
 
 // Get project path from environment or use current directory
 const PROJECT_PATH = process.env.ZYFLOW_PROJECT || process.cwd()
@@ -293,6 +303,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['changeId', 'taskId'],
         },
       },
+      // Task management tools (SQLite-based)
+      ...taskToolDefinitions,
     ],
   }
 })
@@ -401,6 +413,61 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               }, null, 2),
             },
           ],
+        }
+      }
+
+      // Task management tools (SQLite-based)
+      case 'task_list': {
+        initTaskDb(PROJECT_PATH)
+        const result = handleTaskList(args as Parameters<typeof handleTaskList>[0])
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'task_create': {
+        initTaskDb(PROJECT_PATH)
+        const result = handleTaskCreate(args as Parameters<typeof handleTaskCreate>[0])
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'task_update': {
+        initTaskDb(PROJECT_PATH)
+        const result = handleTaskUpdate(args as Parameters<typeof handleTaskUpdate>[0])
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'task_search': {
+        initTaskDb(PROJECT_PATH)
+        const result = handleTaskSearch(args as Parameters<typeof handleTaskSearch>[0])
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'task_delete': {
+        initTaskDb(PROJECT_PATH)
+        const result = handleTaskDelete(args as { id: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'task_view': {
+        initTaskDb(PROJECT_PATH)
+        const result = handleTaskView(args as { id: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
         }
       }
 

@@ -1,5 +1,6 @@
+/// <reference types="vitest/config" />
 import path from 'path'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -17,5 +18,24 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    // SPA 라우팅: 하드 리프레시 시에도 index.html로 폴백
+    fs: {
+      strict: false,
+    },
+  },
+  // 프리뷰 서버에도 동일 적용
+  preview: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+    },
+  },
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['**/*.test.ts'],
+    exclude: ['node_modules', 'dist', '.shadcn-admin-ref'],
   },
 })

@@ -6,7 +6,7 @@
 - [x] 1.2 TailwindCSS 4 설정
 - [x] 1.3 ShadcnUI 초기화 및 기본 컴포넌트 설치
 - [x] 1.4 절대 경로 import (`@/`) 설정
-- [ ] 1.5 ESLint + Prettier 설정
+- [x] 1.5 ESLint + Prettier 설정
 
 ## 2. 로컬 API 서버
 
@@ -49,11 +49,11 @@
 
 ## 7. 테스트
 
-- [ ] 7.1 Vitest 설정
-- [ ] 7.2 tasks.md 파싱 유틸리티 테스트
-- [ ] 7.3 API 엔드포인트 테스트
+- [x] 7.1 Vitest 설정
+- [x] 7.2 tasks.md 파싱 유틸리티 테스트
+- [x] 7.3 API 엔드포인트 테스트
 
 ## 8. 문서화
 
-- [ ] 8.1 README.md 작성
-- [ ] 8.2 CLAUDE.md에 zyflow 지침 추가
+- [x] 8.1 README.md 작성
+- [x] 8.2 CLAUDE.md에 zyflow 지침 추가

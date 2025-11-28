@@ -7,6 +7,7 @@ import {
   FileText,
   Loader2,
   Settings,
+  LayoutGrid,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -40,6 +41,7 @@ import type { ProjectWithData } from '@/types'
 
 export type SelectedItem =
   | { type: 'change'; id: string; projectId: string }
+  | { type: 'tasks' }
   | null
 
 interface AppSidebarProps {
@@ -92,8 +94,24 @@ export function AppSidebar({ selectedItem, onSelectItem }: AppSidebarProps) {
 
   return (
     <Sidebar collapsible="none">
-      {/* Projects Tree */}
+      {/* Tasks Board */}
       <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Tasks</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => onSelectItem({ type: 'tasks' })}
+                isActive={selectedItem?.type === 'tasks'}
+              >
+                <LayoutGrid className="size-4" />
+                <span>Kanban Board</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
+        {/* Projects Tree */}
         <SidebarGroup>
           <SidebarGroupLabel className="flex items-center justify-between">
             <span>OpenSpec</span>
@@ -198,8 +216,8 @@ export function AppSidebar({ selectedItem, onSelectItem }: AppSidebarProps) {
               </SidebarMenuItem>
             ) : (
               projectsData?.projects.map((project) => {
-                // 기본값 false로 접힌 상태
-                const isOpen = openProjects[project.id] ?? false
+                // 기본값 true로 펼쳐진 상태
+                const isOpen = openProjects[project.id] ?? true
                 const totalChangeTasks = project.changes.reduce((sum, c) => sum + c.totalTasks, 0)
                 const completedChangeTasks = project.changes.reduce((sum, c) => sum + c.completedTasks, 0)
 

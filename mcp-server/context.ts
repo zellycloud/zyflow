@@ -1,4 +1,4 @@
-import { readFile, readdir, stat } from 'fs/promises'
+import { readFile, readdir } from 'fs/promises'
 import { join } from 'path'
 import type { Task, TaskContext, TasksFile } from './types.js'
 
@@ -52,8 +52,8 @@ export function extractSuggestedFiles(proposal: string): string[] {
   // Match common file path patterns
   const patterns = [
     /`([^`]+\.(ts|tsx|js|jsx|md|json|sql))`/g,
-    /\b(src\/[a-zA-Z0-9_\-\/]+\.(ts|tsx|js|jsx))\b/g,
-    /\b(server\/[a-zA-Z0-9_\-\/]+\.(ts|js))\b/g,
+    /\b(src\/[a-zA-Z0-9_\-/]+\.(ts|tsx|js|jsx))\b/g,
+    /\b(server\/[a-zA-Z0-9_\-/]+\.(ts|js))\b/g,
   ]
 
   for (const pattern of patterns) {
@@ -76,7 +76,7 @@ export async function buildTaskContext(
   projectPath: string,
   changeId: string,
   tasksFile: TasksFile,
-  task: Task
+  _task: Task
 ): Promise<TaskContext> {
   const proposal = await readProposal(projectPath, changeId)
   const relatedSpec = await readRelatedSpecs(projectPath, changeId)
