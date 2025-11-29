@@ -1,20 +1,10 @@
-import { useState } from 'react'
-import { FileText, Plus, LayoutList, Kanban, Loader2, GripVertical, MoreVertical, Pencil, Trash2, Archive } from 'lucide-react'
+import { FileText, Plus, Loader2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import {
   Table,
   TableBody,
@@ -24,26 +14,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useUpdateFlowTask, useProposalContent, useDesignContent, useChangeSpec } from '@/hooks/useFlowChanges'
-import type { FlowTask, Stage, FlowTaskStatus } from '@/types'
+import type { FlowTask, Stage } from '@/types'
 import { STAGE_CONFIG } from '@/constants/stages'
 import { cn } from '@/lib/utils'
 
-// 칸반 보드에 표시할 컬럼 (archived 제외)
-const STATUS_ORDER: FlowTaskStatus[] = ['todo', 'in-progress', 'review', 'done']
-
-const STATUS_LABELS: Record<FlowTaskStatus, string> = {
-  todo: 'To Do',
-  'in-progress': 'In Progress',
-  review: 'Review',
-  done: 'Done',
-  archived: 'Archived',
-}
-
-const PRIORITY_COLORS: Record<string, string> = {
-  high: 'bg-red-500',
-  medium: 'bg-yellow-500',
-  low: 'bg-green-500',
-}
 
 interface StageContentProps {
   changeId: string
@@ -52,10 +26,7 @@ interface StageContentProps {
   specPath?: string
 }
 
-type ViewMode = 'list' | 'kanban'
-
 export function StageContent({ changeId, stage, tasks }: StageContentProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
   const updateTask = useUpdateFlowTask()
 
   // Proposal 내용 가져오기 (Changes 탭용)
@@ -157,39 +128,72 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
     )
   }
 
-  // Tasks 탭은 칸반/리스트 뷰 토글 지원
-  const showViewToggle = stage === 'task'
+  // 3단계 계층 구조로 그룹화:
+  // Major Section (## 1.) > Sub Section (### 1.1) > Tasks (- [ ] 1.1.1)
+  interface SubSection {
+    subOrder: number
+    groupTitle: string
+    tasks: FlowTask[]
+  }
+  interface MajorSection {
+    majorOrder: number
+    majorTitle: string
+    subSections: SubSection[]
+  }
 
-  // tasks.md 구조에 맞게 그룹화
-  const groupedTasks = tasks.reduce((groups, task) => {
-    const groupTitle = task.groupTitle || '기타'
-    if (!groups[groupTitle]) {
-      groups[groupTitle] = []
+  const majorSections: MajorSection[] = []
+  const majorMap = new Map<number, MajorSection>()
+
+  for (const task of tasks) {
+    const majorOrder = task.groupOrder ?? 1
+    const majorTitle = task.majorTitle ?? task.groupTitle ?? '기타'
+    const subOrder = task.subOrder ?? 1
+    const groupTitle = task.groupTitle ?? '기타'
+
+    if (!majorMap.has(majorOrder)) {
+      const section: MajorSection = {
+        majorOrder,
+        majorTitle,
+        subSections: [],
+      }
+      majorMap.set(majorOrder, section)
+      majorSections.push(section)
     }
-    groups[groupTitle].push(task)
-    return groups
-  }, {} as Record<string, FlowTask[]>)
 
-  // 그룹 정렬 (groupOrder 기준)
-  const sortedGroups = Object.entries(groupedTasks).sort(([, a], [, b]) => {
-    const orderA = a[0]?.groupOrder ?? 999
-    const orderB = b[0]?.groupOrder ?? 999
-    return orderA - orderB
-  })
+    const major = majorMap.get(majorOrder)!
+    let subSection = major.subSections.find((s) => s.subOrder === subOrder)
+    if (!subSection) {
+      subSection = { subOrder, groupTitle, tasks: [] }
+      major.subSections.push(subSection)
+    }
+    subSection.tasks.push(task)
+  }
 
-  // 칸반 뷰용 상태별 분류 (4컬럼: To Do, In Progress, Review, Done)
-  const tasksByStatus = STATUS_ORDER.reduce(
-    (acc, status) => {
-      acc[status] = tasks
-        .filter((t) => t.status === status)
-        .sort((a, b) => a.order - b.order)
-      return acc
-    },
-    {} as Record<FlowTaskStatus, FlowTask[]>
-  )
+  // 정렬
+  majorSections.sort((a, b) => a.majorOrder - b.majorOrder)
+  for (const major of majorSections) {
+    major.subSections.sort((a, b) => a.subOrder - b.subOrder)
+    for (const sub of major.subSections) {
+      sub.tasks.sort((a, b) => (a.taskOrder ?? 0) - (b.taskOrder ?? 0))
+    }
+  }
 
-  const handleArchiveTask = async (task: FlowTask) => {
-    await updateTask.mutateAsync({ id: task.id, status: 'archived' })
+  // 단일 major인지, 단일 sub인지 확인하여 넘버링 형식 결정
+  const showMajorHeaders = majorSections.length > 1
+  const showSubHeaders = majorSections.some((m) => m.subSections.length > 1)
+
+  // 넘버링 형식 결정 함수
+  const getTaskNumber = (major: MajorSection, sub: SubSection, taskIdx: number) => {
+    if (showMajorHeaders && showSubHeaders) {
+      // 3단계: 1.1.1, 1.1.2, ...
+      return `${major.majorOrder}.${sub.subOrder}.${taskIdx + 1}`
+    } else if (showMajorHeaders || showSubHeaders) {
+      // 2단계: 1.1, 1.2, ...
+      return `${major.majorOrder}.${taskIdx + 1}`
+    } else {
+      // 1단계: 1, 2, 3, ...
+      return `${taskIdx + 1}`
+    }
   }
 
   return (
@@ -203,33 +207,10 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
             {tasks.filter((t) => t.status === 'done').length}/{tasks.length}
           </Badge>
         </div>
-        <div className="flex items-center gap-2">
-          {/* View Toggle - Tasks 탭만 표시 */}
-          {showViewToggle && (
-            <div className="flex items-center border rounded-md">
-              <Button
-                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-7 px-2 rounded-r-none"
-                onClick={() => setViewMode('list')}
-              >
-                <LayoutList className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-7 px-2 rounded-l-none"
-                onClick={() => setViewMode('kanban')}
-              >
-                <Kanban className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-          <Button variant="outline" size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            추가
-          </Button>
-        </div>
+        <Button variant="outline" size="sm">
+          <Plus className="h-4 w-4 mr-2" />
+          추가
+        </Button>
       </div>
 
       {/* Task Content */}
@@ -237,98 +218,101 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
         <div className="p-4 rounded-lg border text-muted-foreground text-center text-sm">
           {stage} 단계에 태스크가 없습니다
         </div>
-      ) : showViewToggle && viewMode === 'kanban' ? (
-        /* Kanban View - 4컬럼 (To Do, In Progress, Review, Done) */
-        <div className="grid grid-cols-4 gap-4 min-h-[400px]">
-          {STATUS_ORDER.map((status) => (
-            <KanbanColumn
-              key={status}
-              status={status}
-              tasks={tasksByStatus[status]}
-              onToggle={handleToggleTask}
-              onArchive={handleArchiveTask}
-            />
-          ))}
-        </div>
       ) : (
-        /* List View (그룹화된 테이블) */
-        <div className="space-y-4">
-          {sortedGroups.map(([groupTitle, groupTasks], groupIdx) => (
-            <div key={groupTitle} className="space-y-2">
-              {/* Group Header */}
-              {sortedGroups.length > 1 && (
-                <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                    {groupIdx + 1}
+        /* 3단계 계층 구조 렌더링 */
+        <div className="space-y-6">
+          {majorSections.map((major) => (
+            <div key={major.majorOrder} className="space-y-4">
+              {/* Major Section Header (## 1. 대제목) */}
+              {showMajorHeaders && (
+                <h2 className="text-base font-semibold flex items-center gap-2 border-b pb-2">
+                  <span className="text-sm bg-primary text-primary-foreground px-2 py-0.5 rounded">
+                    {major.majorOrder}
                   </span>
-                  {groupTitle}
-                </h3>
+                  {major.majorTitle}
+                </h2>
               )}
-              {/* Tasks Table */}
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-10"></TableHead>
-                      <TableHead className="w-12">#</TableHead>
-                      <TableHead>태스크</TableHead>
-                      <TableHead className="w-20 text-center">우선순위</TableHead>
-                      <TableHead className="w-20 text-center">상태</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {groupTasks
-                      .sort((a, b) => (a.taskOrder ?? 0) - (b.taskOrder ?? 0))
-                      .map((task, taskIdx) => (
-                        <TableRow
-                          key={task.id}
-                          className={cn(task.status === 'done' && 'bg-muted/30')}
-                        >
-                          <TableCell>
-                            <Checkbox
-                              checked={task.status === 'done'}
-                              onCheckedChange={() => handleToggleTask(task)}
-                            />
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground font-mono">
-                            {groupIdx + 1}.{taskIdx + 1}
-                          </TableCell>
-                          <TableCell className="whitespace-normal">
-                            <span
-                              className={cn(
-                                task.status === 'done' &&
-                                  'line-through text-muted-foreground'
-                              )}
+
+              {/* Sub Sections */}
+              <div className="space-y-4">
+                {major.subSections.map((sub) => (
+                  <div key={`${major.majorOrder}-${sub.subOrder}`} className="space-y-2">
+                    {/* Sub Section Header (### 1.1 소제목) */}
+                    {showSubHeaders && (
+                      <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                          {major.majorOrder}.{sub.subOrder}
+                        </span>
+                        {sub.groupTitle}
+                      </h3>
+                    )}
+
+                    {/* Tasks Table */}
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead className="w-10"></TableHead>
+                            <TableHead className="w-16">#</TableHead>
+                            <TableHead>태스크</TableHead>
+                            <TableHead className="w-20 text-center">우선순위</TableHead>
+                            <TableHead className="w-20 text-center">상태</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sub.tasks.map((task, taskIdx) => (
+                            <TableRow
+                              key={task.id}
+                              className={cn(task.status === 'done' && 'bg-muted/30')}
                             >
-                              {task.title}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge
-                              variant={
-                                task.priority === 'high'
-                                  ? 'destructive'
-                                  : task.priority === 'low'
-                                    ? 'secondary'
-                                    : 'outline'
-                              }
-                              className="text-xs"
-                            >
-                              {task.priority}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge
-                              variant={task.status === 'done' ? 'default' : 'outline'}
-                              className="text-xs"
-                            >
-                              {task.status === 'done' ? '완료' : '대기'}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                  </TableBody>
-                </Table>
+                              <TableCell>
+                                <Checkbox
+                                  checked={task.status === 'done'}
+                                  onCheckedChange={() => handleToggleTask(task)}
+                                />
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground font-mono">
+                                {getTaskNumber(major, sub, taskIdx)}
+                              </TableCell>
+                              <TableCell className="whitespace-normal">
+                                <span
+                                  className={cn(
+                                    task.status === 'done' &&
+                                      'line-through text-muted-foreground'
+                                  )}
+                                >
+                                  {task.title}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge
+                                  variant={
+                                    task.priority === 'high'
+                                      ? 'destructive'
+                                      : task.priority === 'low'
+                                        ? 'secondary'
+                                        : 'outline'
+                                  }
+                                  className="text-xs"
+                                >
+                                  {task.priority}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge
+                                  variant={task.status === 'done' ? 'default' : 'outline'}
+                                  className="text-xs"
+                                >
+                                  {task.status === 'done' ? '완료' : '대기'}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ))}
@@ -336,7 +320,7 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
       )}
 
       {/* View More (if many tasks) */}
-      {tasks.length > 10 && viewMode === 'list' && (
+      {tasks.length > 10 && (
         <div className="text-center">
           <Button variant="ghost" size="sm">
             전체 보기 ({tasks.length}개)
@@ -347,140 +331,3 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
   )
 }
 
-/* Kanban Column Component */
-interface KanbanColumnProps {
-  status: FlowTaskStatus
-  tasks: FlowTask[]
-  onToggle: (task: FlowTask) => void
-  onArchive: (task: FlowTask) => void
-}
-
-function KanbanColumn({ status, tasks, onToggle, onArchive }: KanbanColumnProps) {
-  return (
-    <div className="flex flex-col h-full rounded-lg bg-muted/50">
-      {/* Column Header */}
-      <div className="flex items-center justify-between p-3 border-b">
-        <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-sm">{STATUS_LABELS[status]}</h3>
-          <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-            {tasks.length}
-          </span>
-        </div>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-          <Plus className="h-4 w-4" />
-        </Button>
-      </div>
-
-      {/* Column Content */}
-      <div className="flex-1 overflow-hidden min-h-[100px]">
-        <ScrollArea className="h-full p-2">
-          {tasks.map((task) => (
-            <KanbanCard
-              key={task.id}
-              task={task}
-              onToggle={() => onToggle(task)}
-              onArchive={() => onArchive(task)}
-            />
-          ))}
-          {tasks.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              No tasks
-            </div>
-          )}
-        </ScrollArea>
-      </div>
-    </div>
-  )
-}
-
-/* Kanban Card Component - shadcn 스타일 */
-interface KanbanCardProps {
-  task: FlowTask
-  onToggle: () => void
-  onArchive: () => void
-}
-
-function KanbanCard({ task, onToggle, onArchive }: KanbanCardProps) {
-  const tags = task.tags ? (typeof task.tags === 'string' ? JSON.parse(task.tags) : task.tags) as string[] : []
-
-  return (
-    <Card className="mb-1.5 py-0 gap-0">
-      <CardContent className="!px-2.5 !py-3.5">
-        <div className="flex items-start gap-2">
-          {/* Drag Handle */}
-          <button className="mt-1 cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing">
-            <GripVertical className="h-4 w-4" />
-          </button>
-
-          <div className="flex-1 min-w-0">
-            {/* Header: Priority & ID & Menu */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn('w-2 h-2 rounded-full', PRIORITY_COLORS[task.priority])}
-                  title={task.priority}
-                />
-                <span className="text-xs text-muted-foreground font-mono">
-                  #{task.id}
-                </span>
-              </div>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                    <MoreVertical className="h-3 w-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem>
-                    <Pencil className="mr-2 h-3 w-3" />
-                    Edit
-                  </DropdownMenuItem>
-                  {task.status === 'done' && (
-                    <DropdownMenuItem onClick={onArchive}>
-                      <Archive className="mr-2 h-3 w-3" />
-                      Archive
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-destructive">
-                    <Trash2 className="mr-2 h-3 w-3" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
-            {/* Title */}
-            <p className="text-sm font-medium mt-1 truncate">{task.title}</p>
-
-            {/* Description */}
-            {task.description && (
-              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                {task.description}
-              </p>
-            )}
-
-            {/* Tags */}
-            {tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="text-xs px-1.5 py-0">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            )}
-
-            {/* Assignee */}
-            {task.assignee && (
-              <p className="text-xs text-muted-foreground mt-2">
-                @{task.assignee}
-              </p>
-            )}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
