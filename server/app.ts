@@ -1,6 +1,6 @@
 import express from 'express'
 import cors from 'cors'
-import { readdir, readFile, writeFile, access, mkdir } from 'fs/promises'
+import { readdir, readFile, writeFile, access, mkdir, type Dirent } from 'fs/promises'
 import { join, basename } from 'path'
 import { exec, spawn } from 'child_process'
 import { promisify } from 'util'
@@ -26,6 +26,9 @@ import {
   TaskStatus,
   TaskPriority,
 } from './tasks/index.js'
+import { gitRouter, gitPull } from './git/index.js'
+import { createTasksWatcher, getGlobalWatcher, setGlobalWatcher } from './watcher.js'
+import { syncChangeTasksFromFile } from './sync.js'
 
 const execAsync = promisify(exec)
 
@@ -44,6 +47,9 @@ export const app = express()
 
 app.use(cors())
 app.use(express.json())
+
+// Git API 라우터 등록
+app.use('/api/git', gitRouter)
 
 // Helper to get paths for active project
 async function getProjectPaths() {
@@ -154,6 +160,123 @@ app.put('/api/projects/:id/activate', async (req, res) => {
   try {
     await setActiveProject(req.params.id)
     const project = await getActiveProject()
+
+    // 프로젝트 활성화 시 자동으로 Git pull 및 OpenSpec 동기화 수행
+    if (project) {
+      // Git pull 먼저 실행 (원격 저장소와 동기화)
+      try {
+        const pullResult = await gitPull(project.path)
+        if (pullResult.success) {
+          console.log(`[Git] Pulled latest changes for "${project.name}"`)
+        } else {
+          console.warn(`[Git] Pull failed for "${project.name}": ${pullResult.error || pullResult.stderr}`)
+        }
+      } catch (gitError) {
+        console.warn(`[Git] Pull error for "${project.name}":`, gitError)
+        // Git pull 실패해도 활성화는 진행
+      }
+
+      try {
+        initDb(project.path)
+        const openspecDir = join(project.path, 'openspec', 'changes')
+        let entries: Dirent[] = []
+        try {
+          entries = await readdir(openspecDir, { withFileTypes: true })
+        } catch {
+          entries = []
+        }
+
+        const sqlite = getSqlite()
+        const now = Date.now()
+        const activeChangeIds: string[] = []
+
+        for (const entry of entries) {
+          if (!entry.isDirectory() || entry.name === 'archive') continue
+
+          const changeId = entry.name
+          activeChangeIds.push(changeId)
+          const changeDir = join(openspecDir, changeId)
+
+          // Read proposal.md for title
+          let title = changeId
+          const specPath = `openspec/changes/${changeId}/proposal.md`
+          try {
+            const proposalPath = join(changeDir, 'proposal.md')
+            const proposalContent = await readFile(proposalPath, 'utf-8')
+            const titleMatch = proposalContent.match(/^#\s+(?:Change:\s+)?(.+)$/m)
+            if (titleMatch) {
+              title = titleMatch[1].trim()
+            }
+          } catch {
+            // proposal.md not found
+          }
+
+          // Check if change exists
+          const existing = sqlite.prepare('SELECT id FROM changes WHERE id = ?').get(changeId)
+
+          if (existing) {
+            sqlite.prepare(`
+              UPDATE changes SET title = ?, spec_path = ?, status = 'active', updated_at = ? WHERE id = ?
+            `).run(title, specPath, now, changeId)
+          } else {
+            sqlite.prepare(`
+              INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
+              VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
+            `).run(changeId, project.id, title, specPath, now, now)
+          }
+        }
+
+        // 파일시스템에 없는 Change는 archived로 변경
+        if (activeChangeIds.length > 0) {
+          const placeholders = activeChangeIds.map(() => '?').join(',')
+          sqlite.prepare(`
+            UPDATE changes SET status = 'archived', updated_at = ?
+            WHERE project_id = ? AND status = 'active' AND id NOT IN (${placeholders})
+          `).run(now, project.id, ...activeChangeIds)
+        } else {
+          // 모든 Change가 없으면 전부 archived
+          sqlite.prepare(`
+            UPDATE changes SET status = 'archived', updated_at = ?
+            WHERE project_id = ? AND status = 'active'
+          `).run(now, project.id)
+        }
+
+        console.log(`[Auto-sync] Project "${project.name}" synced on activation`)
+      } catch (syncError) {
+        console.error('Error auto-syncing project:', syncError)
+        // sync 실패해도 활성화는 성공으로 처리
+      }
+
+      // File Watcher 재시작 (이전 watcher 중지 후 새 프로젝트용 watcher 시작)
+      try {
+        const existingWatcher = getGlobalWatcher()
+        if (existingWatcher) {
+          await existingWatcher.stop()
+        }
+
+        const watcher = createTasksWatcher({
+          projectPath: project.path,
+          onTasksChange: async (changeId, filePath) => {
+            console.log(`[Watcher] Syncing ${changeId} due to file change: ${filePath}`)
+            try {
+              const result = await syncChangeTasksFromFile(changeId)
+              console.log(`[Watcher] Sync complete: ${result.tasksCreated} created, ${result.tasksUpdated} updated`)
+            } catch (error) {
+              console.error(`[Watcher] Sync error for ${changeId}:`, error)
+            }
+          },
+          debounceMs: 500,
+        })
+
+        watcher.start()
+        setGlobalWatcher(watcher)
+        console.log(`[Watcher] Started watching tasks.md files for "${project.name}"`)
+      } catch (watcherError) {
+        console.warn(`[Watcher] Failed to start watcher for "${project.name}":`, watcherError)
+        // watcher 실패해도 활성화는 성공으로 처리
+      }
+    }
+
     res.json({ success: true, data: { project } })
   } catch (error) {
     console.error('Error activating project:', error)
@@ -1110,7 +1233,7 @@ function getChangeStages(changeId: string, _projectPath?: string) {
   const tasks = sqlite.prepare(`
     SELECT * FROM tasks
     WHERE change_id = ? AND status != 'archived'
-    ORDER BY stage, "order"
+    ORDER BY stage, group_order, sub_order, task_order, "order"
   `).all(changeId) as Array<{
     id: number
     change_id: string
@@ -1122,6 +1245,11 @@ function getChangeStages(changeId: string, _projectPath?: string) {
     tags: string | null
     assignee: string | null
     order: number
+    group_title: string | null
+    group_order: number
+    task_order: number
+    major_title: string | null
+    sub_order: number | null
     created_at: number
     updated_at: number
     archived_at: number | null
@@ -1144,6 +1272,11 @@ function getChangeStages(changeId: string, _projectPath?: string) {
       tags: task.tags ? JSON.parse(task.tags) : [],
       assignee: task.assignee,
       order: task.order,
+      groupTitle: task.group_title,
+      groupOrder: task.group_order,
+      taskOrder: task.task_order,
+      majorTitle: task.major_title,
+      subOrder: task.sub_order,
       createdAt: new Date(task.created_at).toISOString(),
       updatedAt: new Date(task.updated_at).toISOString(),
       archivedAt: task.archived_at ? new Date(task.archived_at).toISOString() : null,
@@ -1367,28 +1500,67 @@ app.post('/api/flow/sync', async (_req, res) => {
         created++
       }
 
-      // Sync tasks from tasks.md
+      // Sync tasks from tasks.md (3단계 계층 지원)
       try {
         const tasksPath = join(changeDir, 'tasks.md')
         const tasksContent = await readFile(tasksPath, 'utf-8')
         const parsed = parseTasksFile(changeId, tasksContent)
 
-        for (const group of parsed.groups) {
-          for (const task of group.tasks) {
+        // Extended group type with 3-level hierarchy
+        interface ExtendedGroup {
+          title: string
+          tasks: Array<{ title: string; completed: boolean; lineNumber: number }>
+          majorOrder?: number
+          majorTitle?: string
+          subOrder?: number
+        }
+
+        for (const group of parsed.groups as ExtendedGroup[]) {
+          // 3단계 계층 정보 추출
+          const majorOrder = group.majorOrder ?? 1
+          const majorTitle = group.majorTitle ?? group.title
+          const subOrder = group.subOrder ?? 1
+          const groupTitle = group.title // ### 1.1 Subsection Title
+
+          for (let taskIdx = 0; taskIdx < group.tasks.length; taskIdx++) {
+            const task = group.tasks[taskIdx]
+            const taskOrder = taskIdx + 1
+
             // Check if task with same title exists for this change
             const existingTask = sqlite.prepare(`
               SELECT id FROM tasks WHERE change_id = ? AND title = ?
-            `).get(changeId, task.title)
+            `).get(changeId, task.title) as { id: number } | undefined
 
-            if (!existingTask) {
+            if (existingTask) {
+              // Update existing task with 3-level hierarchy info
               sqlite.prepare(`
-                INSERT INTO tasks (change_id, stage, title, status, priority, "order", created_at, updated_at)
-                VALUES (?, 'task', ?, ?, 'medium', ?, ?, ?)
+                UPDATE tasks
+                SET group_title = ?,
+                    group_order = ?,
+                    task_order = ?,
+                    major_title = ?,
+                    sub_order = ?,
+                    updated_at = ?
+                WHERE id = ?
+              `).run(groupTitle, majorOrder, taskOrder, majorTitle, subOrder, now, existingTask.id)
+            } else {
+              sqlite.prepare(`
+                INSERT INTO tasks (
+                  change_id, stage, title, status, priority, "order",
+                  group_title, group_order, task_order, major_title, sub_order,
+                  created_at, updated_at
+                )
+                VALUES (?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, ?)
               `).run(
                 changeId,
                 task.title,
                 task.completed ? 'done' : 'todo',
                 task.lineNumber,
+                groupTitle,
+                majorOrder,
+                taskOrder,
+                majorTitle,
+                subOrder,
                 now,
                 now
               )

@@ -42,10 +42,12 @@ export interface FlowTask {
   tags?: string[]
   assignee?: string
   order: number
-  // tasks.md 구조 유지
-  groupTitle?: string // tasks.md 섹션 제목
-  groupOrder?: number // 섹션 순서
+  // tasks.md 구조 유지 (3단계 계층: ## Major > ### Sub > - Task)
+  groupTitle?: string // tasks.md 섹션 제목 (### 1.1 Sub Section)
+  groupOrder?: number // 섹션 순서 (majorOrder, e.g., 1, 2, 3)
   taskOrder?: number // 섹션 내 작업 순서
+  majorTitle?: string // ## 1. 대제목 (Major Section)
+  subOrder?: number // ### 1.x에서 x 값 (Sub Section 순서)
   createdAt: string
   updatedAt: string
   archivedAt?: string
@@ -79,6 +81,7 @@ export interface TaskGroup {
   id: string
   title: string
   tasks: Task[]
+  majorOrder?: number // For subsections like "### 1.1", this is 1
 }
 
 // Parsed tasks.md structure

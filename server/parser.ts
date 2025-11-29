@@ -1,16 +1,30 @@
 import type { TaskGroup, Task, TasksFile } from '../src/types/index.js'
 
 /**
+ * Extended TaskGroup with hierarchy info for 3-level structure
+ * ## 1. Major Section (majorOrder=1, majorTitle="데이터베이스 및 기반")
+ * ### 1.1 Sub Section (majorOrder=1, subOrder=1, title="1.1 DB 스키마 확장")
+ * - [ ] 1.1.1 Task (taskOrder=1)
+ */
+interface ExtendedTaskGroup extends TaskGroup {
+  majorOrder?: number    // "## 1." -> 1
+  majorTitle?: string    // "## 1. 데이터베이스 및 기반" -> "데이터베이스 및 기반"
+  subOrder?: number      // "### 1.1" -> 1 (second part)
+}
+
+/**
  * Parse tasks.md content into structured data
- * Supports multiple formats:
- * - Group headers: "## 1. Section" or "## Phase 0: Section" or "## Section Name"
- * - Subsections: "### 0.1 Subsection" (creates new group)
- * - Tasks: "- [ ] 1.1 Task" or "- [ ] 1.1.1 Task" or "- [ ] Task" (no number)
+ * Supports 3-level hierarchy:
+ * - Major groups: "## 1. Section" or "## Phase 0: Section"
+ * - Sub groups: "### 1.1 Subsection"
+ * - Tasks: "- [ ] 1.1.1 Task"
  */
 export function parseTasksFile(changeId: string, content: string): TasksFile {
   const lines = content.split('\n')
-  const groups: TaskGroup[] = []
-  let currentGroup: TaskGroup | null = null
+  const groups: ExtendedTaskGroup[] = []
+  let currentGroup: ExtendedTaskGroup | null = null
+  let currentMajorOrder = 0
+  let currentMajorTitle = ''
   let groupCounter = 0
   let taskCounter = 0
 
@@ -18,52 +32,79 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
     const line = lines[i]
     const lineNumber = i + 1
 
-    // Match group headers - multiple formats:
-    // 1. "## 1. Section Name" - numbered format
-    // 2. "## Phase 0: Section Name" - phase format
-    // 3. "## Section Name" - plain format
+    // Match major group headers: "## 1. Section Name"
     const numberedGroupMatch = line.match(/^##\s+(\d+)\.\s+(.+)$/)
+    // Match phase format: "## Phase 0: Section Name"
     const phaseGroupMatch = line.match(/^##\s+Phase\s+(\d+):\s*(.+)$/i)
+    // Match plain format: "## Section Name"
     const plainGroupMatch = line.match(/^##\s+(.+)$/)
 
     if (numberedGroupMatch) {
-      const groupId = `group-${numberedGroupMatch[1]}`
-      const groupTitle = numberedGroupMatch[2].trim()
-      currentGroup = { id: groupId, title: groupTitle, tasks: [] }
-      groups.push(currentGroup)
+      currentMajorOrder = parseInt(numberedGroupMatch[1])
+      currentMajorTitle = numberedGroupMatch[2].trim()
+      // Don't create group yet, wait for ### subsection or tasks
       taskCounter = 0
       continue
     }
 
     if (phaseGroupMatch) {
+      currentMajorOrder = parseInt(phaseGroupMatch[1])
+      currentMajorTitle = `Phase ${phaseGroupMatch[1]}: ${phaseGroupMatch[2].trim()}`
       const groupId = `group-phase-${phaseGroupMatch[1]}`
-      const groupTitle = `Phase ${phaseGroupMatch[1]}: ${phaseGroupMatch[2].trim()}`
-      currentGroup = { id: groupId, title: groupTitle, tasks: [] }
+      currentGroup = {
+        id: groupId,
+        title: currentMajorTitle,
+        tasks: [],
+        majorOrder: currentMajorOrder,
+        majorTitle: currentMajorTitle
+      }
       groups.push(currentGroup)
       taskCounter = 0
       continue
     }
 
-    // Match subsection headers: "### 0.1 Subsection Name" - treat as new group
+    // Match subsection headers: "### 1.1 Subsection Name"
     const subsectionMatch = line.match(/^###\s+([\d.]+)\s+(.+)$/)
     if (subsectionMatch) {
-      const subsectionNumber = subsectionMatch[1]
+      const subsectionNumber = subsectionMatch[1] // "1.1"
+      const parts = subsectionNumber.split('.')
+      const majorNum = parseInt(parts[0]) // 1
+      const subNum = parts.length > 1 ? parseInt(parts[1]) : 1 // 1
+
+      // Use current major info if available, otherwise derive from subsection number
+      const effectiveMajorOrder = currentMajorOrder || majorNum
+      const effectiveMajorTitle = currentMajorTitle || `Section ${majorNum}`
+
       const groupId = `group-${subsectionNumber.replace(/\./g, '-')}`
       const groupTitle = `${subsectionNumber} ${subsectionMatch[2].trim()}`
-      currentGroup = { id: groupId, title: groupTitle, tasks: [] }
+
+      currentGroup = {
+        id: groupId,
+        title: groupTitle,
+        tasks: [],
+        majorOrder: effectiveMajorOrder,
+        majorTitle: effectiveMajorTitle,
+        subOrder: subNum
+      }
       groups.push(currentGroup)
       taskCounter = 0
       continue
     }
 
-    // Plain ## header (fallback, only if no group yet or explicit section)
+    // Plain ## header (fallback)
     if (plainGroupMatch && !numberedGroupMatch && !phaseGroupMatch) {
-      // Skip if it looks like a title (# Tasks: ...)
       if (line.startsWith('# ')) continue
       groupCounter++
+      currentMajorOrder = groupCounter
+      currentMajorTitle = plainGroupMatch[1].trim()
       const groupId = `group-${groupCounter}`
-      const groupTitle = plainGroupMatch[1].trim()
-      currentGroup = { id: groupId, title: groupTitle, tasks: [] }
+      currentGroup = {
+        id: groupId,
+        title: currentMajorTitle,
+        tasks: [],
+        majorOrder: currentMajorOrder,
+        majorTitle: currentMajorTitle
+      }
       groups.push(currentGroup)
       taskCounter = 0
       continue

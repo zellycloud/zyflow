@@ -117,6 +117,20 @@ export function initDb(projectRoot?: string): ReturnType<typeof drizzle<typeof s
     // Column already exists, ignore
   }
 
+  // Migration: Add major_title for 3-level hierarchy (## 1. Section -> major_title)
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN major_title TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add sub_order for 3-level hierarchy (### 1.1 -> sub_order = 1)
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN sub_order INTEGER`);
+  } catch {
+    // Column already exists, ignore
+  }
+
   // Migration: Convert TEXT id to INTEGER id
   // This handles migration from TASK-1 format to pure numeric IDs
   try {
