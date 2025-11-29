@@ -14,10 +14,12 @@ interface ExtendedTaskGroup extends TaskGroup {
 
 /**
  * Parse tasks.md content into structured data
- * Supports 3-level hierarchy:
- * - Major groups: "## 1. Section" or "## Phase 0: Section"
- * - Sub groups: "### 1.1 Subsection"
- * - Tasks: "- [ ] 1.1.1 Task"
+ * Supports multiple formats:
+ * - 3-level: "## 1. Major" > "### 1.1 Sub" > "- [ ] 1.1.1 Task"
+ * - 2-level: "## 1. Section" > "- [ ] Task"
+ * - Phase: "## Phase 0:" > "### 0.1 Sub" > "- [ ] 0.1.1 Task"
+ * - Plain: "## Section" > "- [ ] Task"
+ * - 4-level headers: "#### 1.1 Sub" treated as subsection
  */
 export function parseTasksFile(changeId: string, content: string): TasksFile {
   const lines = content.split('\n')
@@ -27,6 +29,8 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
   let currentMajorTitle = ''
   let groupCounter = 0
   let taskCounter = 0
+  // Track if we have a pending major section without subsections
+  let pendingMajorGroup: ExtendedTaskGroup | null = null
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
@@ -36,43 +40,74 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
     const numberedGroupMatch = line.match(/^##\s+(\d+)\.\s+(.+)$/)
     // Match phase format: "## Phase 0: Section Name"
     const phaseGroupMatch = line.match(/^##\s+Phase\s+(\d+):\s*(.+)$/i)
-    // Match plain format: "## Section Name"
-    const plainGroupMatch = line.match(/^##\s+(.+)$/)
+    // Match plain format: "## Section Name" (not starting with #)
+    const plainGroupMatch = line.match(/^##\s+([^#].*)$/)
+
+    // Match subsection headers: "### 1.1 Subsection" or "#### 1.1 Subsection"
+    const subsectionMatch = line.match(/^#{3,4}\s+([\d.]+)\s+(.+)$/)
+    // Match plain subsection: "### Subsection Name" (no number)
+    const plainSubsectionMatch = line.match(/^###\s+([^#\d].*)$/)
 
     if (numberedGroupMatch) {
+      // Flush pending major group if it has tasks
+      if (pendingMajorGroup && pendingMajorGroup.tasks.length > 0) {
+        groups.push(pendingMajorGroup)
+      }
+
       currentMajorOrder = parseInt(numberedGroupMatch[1])
       currentMajorTitle = numberedGroupMatch[2].trim()
-      // Don't create group yet, wait for ### subsection or tasks
+
+      // Create a pending group for tasks that come directly under ##
+      const groupId = `group-${currentMajorOrder}`
+      pendingMajorGroup = {
+        id: groupId,
+        title: currentMajorTitle,
+        tasks: [],
+        majorOrder: currentMajorOrder,
+        majorTitle: currentMajorTitle,
+        subOrder: 1
+      }
+      currentGroup = pendingMajorGroup
       taskCounter = 0
       continue
     }
 
     if (phaseGroupMatch) {
+      // Flush pending major group
+      if (pendingMajorGroup && pendingMajorGroup.tasks.length > 0) {
+        groups.push(pendingMajorGroup)
+      }
+
       currentMajorOrder = parseInt(phaseGroupMatch[1])
       currentMajorTitle = `Phase ${phaseGroupMatch[1]}: ${phaseGroupMatch[2].trim()}`
+
+      // Create pending group for Phase
       const groupId = `group-phase-${phaseGroupMatch[1]}`
-      currentGroup = {
+      pendingMajorGroup = {
         id: groupId,
         title: currentMajorTitle,
         tasks: [],
         majorOrder: currentMajorOrder,
-        majorTitle: currentMajorTitle
+        majorTitle: currentMajorTitle,
+        subOrder: 1
       }
-      groups.push(currentGroup)
+      currentGroup = pendingMajorGroup
       taskCounter = 0
       continue
     }
 
-    // Match subsection headers: "### 1.1 Subsection Name"
-    const subsectionMatch = line.match(/^###\s+([\d.]+)\s+(.+)$/)
+    // Subsection with number: "### 1.1 Name" or "#### 1.1 Name"
     if (subsectionMatch) {
-      const subsectionNumber = subsectionMatch[1] // "1.1"
+      // Don't flush pending - subsections replace it
+      pendingMajorGroup = null
+
+      const subsectionNumber = subsectionMatch[1] // "1.1" or "0.1"
       const parts = subsectionNumber.split('.')
-      const majorNum = parseInt(parts[0]) // 1
+      const majorNum = parseInt(parts[0]) // 1 or 0
       const subNum = parts.length > 1 ? parseInt(parts[1]) : 1 // 1
 
       // Use current major info if available, otherwise derive from subsection number
-      const effectiveMajorOrder = currentMajorOrder || majorNum
+      const effectiveMajorOrder = currentMajorOrder !== 0 || currentMajorTitle ? currentMajorOrder : majorNum
       const effectiveMajorTitle = currentMajorTitle || `Section ${majorNum}`
 
       const groupId = `group-${subsectionNumber.replace(/\./g, '-')}`
@@ -91,27 +126,60 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
       continue
     }
 
-    // Plain ## header (fallback)
-    if (plainGroupMatch && !numberedGroupMatch && !phaseGroupMatch) {
-      if (line.startsWith('# ')) continue
+    // Plain subsection: "### Subsection Name" (no number)
+    if (plainSubsectionMatch && !subsectionMatch) {
+      // Flush pending major group if needed
+      if (pendingMajorGroup && pendingMajorGroup.tasks.length > 0) {
+        groups.push(pendingMajorGroup)
+      }
+      pendingMajorGroup = null
+
       groupCounter++
-      currentMajorOrder = groupCounter
-      currentMajorTitle = plainGroupMatch[1].trim()
-      const groupId = `group-${groupCounter}`
+      const subTitle = plainSubsectionMatch[1].trim()
+      const groupId = `group-sub-${groupCounter}`
+
       currentGroup = {
         id: groupId,
-        title: currentMajorTitle,
+        title: subTitle,
         tasks: [],
-        majorOrder: currentMajorOrder,
-        majorTitle: currentMajorTitle
+        majorOrder: currentMajorOrder || groupCounter,
+        majorTitle: currentMajorTitle || subTitle,
+        subOrder: groupCounter
       }
       groups.push(currentGroup)
       taskCounter = 0
       continue
     }
 
+    // Plain ## header (fallback) - "## Section Name"
+    if (plainGroupMatch && !numberedGroupMatch && !phaseGroupMatch) {
+      if (line.startsWith('# ') && !line.startsWith('## ')) continue
+
+      // Flush pending major group
+      if (pendingMajorGroup && pendingMajorGroup.tasks.length > 0) {
+        groups.push(pendingMajorGroup)
+      }
+
+      groupCounter++
+      currentMajorOrder = groupCounter
+      currentMajorTitle = plainGroupMatch[1].trim()
+
+      const groupId = `group-${groupCounter}`
+      pendingMajorGroup = {
+        id: groupId,
+        title: currentMajorTitle,
+        tasks: [],
+        majorOrder: currentMajorOrder,
+        majorTitle: currentMajorTitle,
+        subOrder: 1
+      }
+      currentGroup = pendingMajorGroup
+      taskCounter = 0
+      continue
+    }
+
     // Match task items - two formats:
-    // 1. "- [ ] 1.1 Task" - numbered task
+    // 1. "- [ ] 1.1.1 Task" - numbered task
     // 2. "- [ ] Task" - unnumbered task (auto-generate ID)
     const numberedTaskMatch = line.match(/^-\s+\[([ xX])\]\s+([\d.]+)\s+(.+)$/)
     const plainTaskMatch = line.match(/^-\s+\[([ xX])\]\s+(.+)$/)
@@ -148,6 +216,11 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
 
       currentGroup.tasks.push(task)
     }
+  }
+
+  // Flush any remaining pending group
+  if (pendingMajorGroup && pendingMajorGroup.tasks.length > 0) {
+    groups.push(pendingMajorGroup)
   }
 
   return { changeId, groups }
