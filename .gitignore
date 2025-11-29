@@ -25,3 +25,10 @@ dist-ssr
 *.sln
 *.sw?
 .shadcn-admin-ref
+
+# Local data
+.zyflow/
+
+# Build artifacts
+server/server/
+server/src/
