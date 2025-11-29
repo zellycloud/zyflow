@@ -1088,3 +1088,598 @@ app.post('/api/tasks/:id/unarchive', async (req, res) => {
   }
 })
 
+// ==================== FLOW API (DB 기반 Change 관리) ====================
+
+import { getSqlite } from './tasks/db/client.js'
+import type { Stage, ChangeStatus } from './tasks/db/schema.js'
+
+const STAGES: Stage[] = ['spec', 'task', 'code', 'test', 'commit', 'docs']
+
+// Helper: Change의 stages 집계 정보 계산
+function getChangeStages(changeId: string, _projectPath?: string) {
+  const sqlite = getSqlite()
+  const stages: Record<Stage, { total: number; completed: number; tasks: unknown[] }> = {
+    spec: { total: 0, completed: 0, tasks: [] },
+    task: { total: 0, completed: 0, tasks: [] },
+    code: { total: 0, completed: 0, tasks: [] },
+    test: { total: 0, completed: 0, tasks: [] },
+    commit: { total: 0, completed: 0, tasks: [] },
+    docs: { total: 0, completed: 0, tasks: [] },
+  }
+
+  const tasks = sqlite.prepare(`
+    SELECT * FROM tasks
+    WHERE change_id = ? AND status != 'archived'
+    ORDER BY stage, "order"
+  `).all(changeId) as Array<{
+    id: number
+    change_id: string
+    stage: Stage
+    title: string
+    description: string | null
+    status: string
+    priority: string
+    tags: string | null
+    assignee: string | null
+    order: number
+    created_at: number
+    updated_at: number
+    archived_at: number | null
+  }>
+
+  for (const task of tasks) {
+    const stage = task.stage as Stage
+    stages[stage].total++
+    if (task.status === 'done') {
+      stages[stage].completed++
+    }
+    stages[stage].tasks.push({
+      id: task.id,
+      changeId: task.change_id,
+      stage: task.stage,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      tags: task.tags ? JSON.parse(task.tags) : [],
+      assignee: task.assignee,
+      order: task.order,
+      createdAt: new Date(task.created_at).toISOString(),
+      updatedAt: new Date(task.updated_at).toISOString(),
+      archivedAt: task.archived_at ? new Date(task.archived_at).toISOString() : null,
+    })
+  }
+
+  return stages
+}
+
+// Helper: Change 진행률 계산
+function calculateProgress(stages: Record<Stage, { total: number; completed: number }>): number {
+  let totalTasks = 0
+  let completedTasks = 0
+  for (const stage of STAGES) {
+    totalTasks += stages[stage].total
+    completedTasks += stages[stage].completed
+  }
+  return totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+}
+
+// Helper: 현재 stage 결정 (가장 먼저 미완료된 stage)
+function determineCurrentStage(stages: Record<Stage, { total: number; completed: number }>): Stage {
+  for (const stage of STAGES) {
+    if (stages[stage].total > stages[stage].completed) {
+      return stage
+    }
+  }
+  return 'docs' // 모든 stage 완료시
+}
+
+// GET /api/flow/changes/counts - 프로젝트별 활성 Change 수
+app.get('/api/flow/changes/counts', async (_req, res) => {
+  try {
+    await initTaskDb()
+    const config = await loadConfig()
+    const sqlite = getSqlite()
+
+    const counts: Record<string, number> = {}
+
+    for (const project of config.projects) {
+      const result = sqlite.prepare(`
+        SELECT COUNT(*) as count FROM changes
+        WHERE project_id = ? AND status = 'active'
+      `).get(project.id) as { count: number } | undefined
+
+      counts[project.id] = result?.count ?? 0
+    }
+
+    res.json({ success: true, data: { counts } })
+  } catch (error) {
+    console.error('Error getting change counts:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    })
+  }
+})
+
+// GET /api/flow/changes - Flow Changes 목록 (DB 기반)
+app.get('/api/flow/changes', async (_req, res) => {
+  try {
+    await initTaskDb()
+    const project = await getActiveProject()
+    if (!project) {
+      return res.json({ success: true, data: { changes: [] } })
+    }
+
+    const sqlite = getSqlite()
+    const dbChanges = sqlite.prepare(`
+      SELECT * FROM changes
+      WHERE project_id = ? AND status != 'archived'
+      ORDER BY updated_at DESC
+    `).all(project.id) as Array<{
+      id: string
+      project_id: string
+      title: string
+      spec_path: string | null
+      status: ChangeStatus
+      current_stage: Stage
+      progress: number
+      created_at: number
+      updated_at: number
+    }>
+
+    const changes = dbChanges.map((c) => {
+      const stages = getChangeStages(c.id, project.path)
+      const progress = calculateProgress(stages)
+      const currentStage = determineCurrentStage(stages)
+
+      return {
+        id: c.id,
+        projectId: c.project_id,
+        title: c.title,
+        specPath: c.spec_path,
+        status: c.status,
+        currentStage,
+        progress,
+        createdAt: new Date(c.created_at).toISOString(),
+        updatedAt: new Date(c.updated_at).toISOString(),
+        stages,
+      }
+    })
+
+    res.json({ success: true, data: { changes } })
+  } catch (error) {
+    console.error('Error listing flow changes:', error)
+    res.status(500).json({ success: false, error: 'Failed to list flow changes' })
+  }
+})
+
+// GET /api/flow/changes/:id - Flow Change 상세 (stages 포함)
+app.get('/api/flow/changes/:id', async (req, res) => {
+  try {
+    await initTaskDb()
+    const project = await getActiveProject()
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const sqlite = getSqlite()
+    const change = sqlite.prepare(`
+      SELECT * FROM changes WHERE id = ? AND project_id = ?
+    `).get(req.params.id, project.id) as {
+      id: string
+      project_id: string
+      title: string
+      spec_path: string | null
+      status: ChangeStatus
+      current_stage: Stage
+      progress: number
+      created_at: number
+      updated_at: number
+    } | undefined
+
+    if (!change) {
+      return res.status(404).json({ success: false, error: 'Change not found' })
+    }
+
+    const stages = getChangeStages(change.id, project.path)
+    const progress = calculateProgress(stages)
+    const currentStage = determineCurrentStage(stages)
+
+    res.json({
+      success: true,
+      data: {
+        change: {
+          id: change.id,
+          projectId: change.project_id,
+          title: change.title,
+          specPath: change.spec_path,
+          status: change.status,
+          currentStage,
+          progress,
+          createdAt: new Date(change.created_at).toISOString(),
+          updatedAt: new Date(change.updated_at).toISOString(),
+        },
+        stages,
+      },
+    })
+  } catch (error) {
+    console.error('Error getting flow change:', error)
+    res.status(500).json({ success: false, error: 'Failed to get flow change' })
+  }
+})
+
+// POST /api/flow/sync - OpenSpec에서 Changes 동기화
+app.post('/api/flow/sync', async (_req, res) => {
+  try {
+    await initTaskDb()
+    const project = await getActiveProject()
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const openspecDir = join(project.path, 'openspec', 'changes')
+    let entries
+    try {
+      entries = await readdir(openspecDir, { withFileTypes: true })
+    } catch {
+      return res.json({ success: true, data: { synced: 0, created: 0, updated: 0 } })
+    }
+
+    const sqlite = getSqlite()
+    let created = 0
+    let updated = 0
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === 'archive') continue
+
+      const changeId = entry.name
+      const changeDir = join(openspecDir, changeId)
+
+      // Read proposal.md for title
+      let title = changeId
+      const specPath = `openspec/changes/${changeId}/proposal.md`
+      try {
+        const proposalPath = join(changeDir, 'proposal.md')
+        const proposalContent = await readFile(proposalPath, 'utf-8')
+        const titleMatch = proposalContent.match(/^#\s+(?:Change:\s+)?(.+)$/m)
+        if (titleMatch) {
+          title = titleMatch[1].trim()
+        }
+      } catch {
+        // proposal.md not found
+      }
+
+      // Check if change exists
+      const existing = sqlite.prepare('SELECT id FROM changes WHERE id = ?').get(changeId)
+      const now = Date.now()
+
+      if (existing) {
+        sqlite.prepare(`
+          UPDATE changes SET title = ?, spec_path = ?, updated_at = ? WHERE id = ?
+        `).run(title, specPath, now, changeId)
+        updated++
+      } else {
+        sqlite.prepare(`
+          INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
+          VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
+        `).run(changeId, project.id, title, specPath, now, now)
+        created++
+      }
+
+      // Sync tasks from tasks.md
+      try {
+        const tasksPath = join(changeDir, 'tasks.md')
+        const tasksContent = await readFile(tasksPath, 'utf-8')
+        const parsed = parseTasksFile(changeId, tasksContent)
+
+        for (const group of parsed.groups) {
+          for (const task of group.tasks) {
+            // Check if task with same title exists for this change
+            const existingTask = sqlite.prepare(`
+              SELECT id FROM tasks WHERE change_id = ? AND title = ?
+            `).get(changeId, task.title)
+
+            if (!existingTask) {
+              sqlite.prepare(`
+                INSERT INTO tasks (change_id, stage, title, status, priority, "order", created_at, updated_at)
+                VALUES (?, 'task', ?, ?, 'medium', ?, ?, ?)
+              `).run(
+                changeId,
+                task.title,
+                task.completed ? 'done' : 'todo',
+                task.lineNumber,
+                now,
+                now
+              )
+            }
+          }
+        }
+      } catch {
+        // tasks.md not found or parse error
+      }
+    }
+
+    res.json({ success: true, data: { synced: created + updated, created, updated } })
+  } catch (error) {
+    console.error('Error syncing flow changes:', error)
+    res.status(500).json({ success: false, error: 'Failed to sync flow changes' })
+  }
+})
+
+// GET /api/flow/tasks - Flow Tasks 목록 (필터링)
+app.get('/api/flow/tasks', async (req, res) => {
+  try {
+    await initTaskDb()
+    const { changeId, stage, status, standalone } = req.query
+
+    const sqlite = getSqlite()
+    let sql = 'SELECT * FROM tasks WHERE 1=1'
+    const params: unknown[] = []
+
+    if (standalone === 'true') {
+      sql += ' AND change_id IS NULL'
+    } else if (changeId) {
+      sql += ' AND change_id = ?'
+      params.push(changeId)
+    }
+
+    if (stage) {
+      sql += ' AND stage = ?'
+      params.push(stage)
+    }
+
+    if (status) {
+      sql += ' AND status = ?'
+      params.push(status)
+    } else {
+      sql += " AND status != 'archived'"
+    }
+
+    sql += ' ORDER BY "order", created_at'
+
+    const tasks = sqlite.prepare(sql).all(...params) as Array<{
+      id: number
+      change_id: string | null
+      stage: Stage
+      title: string
+      description: string | null
+      status: string
+      priority: string
+      tags: string | null
+      assignee: string | null
+      order: number
+      created_at: number
+      updated_at: number
+      archived_at: number | null
+    }>
+
+    const formatted = tasks.map((t) => ({
+      id: t.id,
+      changeId: t.change_id,
+      stage: t.stage,
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      priority: t.priority,
+      tags: t.tags ? JSON.parse(t.tags) : [],
+      assignee: t.assignee,
+      order: t.order,
+      createdAt: new Date(t.created_at).toISOString(),
+      updatedAt: new Date(t.updated_at).toISOString(),
+      archivedAt: t.archived_at ? new Date(t.archived_at).toISOString() : null,
+    }))
+
+    res.json({ success: true, data: { tasks: formatted } })
+  } catch (error) {
+    console.error('Error listing flow tasks:', error)
+    res.status(500).json({ success: false, error: 'Failed to list flow tasks' })
+  }
+})
+
+// POST /api/flow/tasks - Flow Task 생성
+app.post('/api/flow/tasks', async (req, res) => {
+  try {
+    await initTaskDb()
+    const { changeId, stage, title, description, priority } = req.body
+
+    if (!title) {
+      return res.status(400).json({ success: false, error: 'Title is required' })
+    }
+
+    const sqlite = getSqlite()
+    const now = Date.now()
+
+    const result = sqlite.prepare(`
+      INSERT INTO tasks (change_id, stage, title, description, status, priority, "order", created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'todo', ?, 0, ?, ?)
+    `).run(
+      changeId || null,
+      stage || 'task',
+      title,
+      description || null,
+      priority || 'medium',
+      now,
+      now
+    )
+
+    const task = sqlite.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid)
+
+    res.json({ success: true, data: { task } })
+  } catch (error) {
+    console.error('Error creating flow task:', error)
+    res.status(500).json({ success: false, error: 'Failed to create flow task' })
+  }
+})
+
+// GET /api/flow/changes/:id/proposal - Change의 proposal.md 내용
+app.get('/api/flow/changes/:id/proposal', async (req, res) => {
+  try {
+    const paths = await getProjectPaths()
+    if (!paths) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const changeId = req.params.id
+    const proposalPath = join(paths.openspecDir, changeId, 'proposal.md')
+
+    try {
+      const content = await readFile(proposalPath, 'utf-8')
+      res.json({ success: true, data: { changeId, content } })
+    } catch {
+      res.json({ success: true, data: { changeId, content: null } })
+    }
+  } catch (error) {
+    console.error('Error reading proposal:', error)
+    res.status(500).json({ success: false, error: 'Failed to read proposal' })
+  }
+})
+
+// GET /api/flow/changes/:id/design - Change의 design.md 내용
+app.get('/api/flow/changes/:id/design', async (req, res) => {
+  try {
+    const paths = await getProjectPaths()
+    if (!paths) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const changeId = req.params.id
+    const designPath = join(paths.openspecDir, changeId, 'design.md')
+
+    try {
+      const content = await readFile(designPath, 'utf-8')
+      res.json({ success: true, data: { changeId, content } })
+    } catch {
+      res.json({ success: true, data: { changeId, content: null } })
+    }
+  } catch (error) {
+    console.error('Error reading design:', error)
+    res.status(500).json({ success: false, error: 'Failed to read design' })
+  }
+})
+
+// GET /api/flow/changes/:id/spec - Change의 첫 번째 spec.md 내용
+app.get('/api/flow/changes/:id/spec', async (req, res) => {
+  try {
+    const paths = await getProjectPaths()
+    if (!paths) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const changeId = req.params.id
+    const specsDir = join(paths.openspecDir, changeId, 'specs')
+
+    try {
+      // specs 디렉토리에서 첫 번째 spec 폴더 찾기
+      const specFolders = await readdir(specsDir)
+      if (specFolders.length === 0) {
+        return res.json({ success: true, data: { changeId, content: null, specId: null } })
+      }
+
+      // 첫 번째 spec 폴더의 spec.md 읽기
+      const firstSpecId = specFolders[0]
+      const specPath = join(specsDir, firstSpecId, 'spec.md')
+      const content = await readFile(specPath, 'utf-8')
+      res.json({ success: true, data: { changeId, content, specId: firstSpecId } })
+    } catch {
+      res.json({ success: true, data: { changeId, content: null, specId: null } })
+    }
+  } catch (error) {
+    console.error('Error reading spec:', error)
+    res.status(500).json({ success: false, error: 'Failed to read spec' })
+  }
+})
+
+// GET /api/flow/changes/:changeId/specs/:specId - 특정 spec.md 내용
+app.get('/api/flow/changes/:changeId/specs/:specId', async (req, res) => {
+  try {
+    const paths = await getProjectPaths()
+    if (!paths) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { changeId, specId } = req.params
+
+    // 1. Change 내 specs 디렉토리 확인
+    const changeSpecPath = join(paths.openspecDir, changeId, 'specs', specId, 'spec.md')
+    try {
+      const content = await readFile(changeSpecPath, 'utf-8')
+      return res.json({ success: true, data: { specId, content, location: 'change' } })
+    } catch {
+      // Change 내에 없으면 archived specs에서 찾기
+    }
+
+    // 2. Archived specs 디렉토리에서 확인
+    const archivedSpecPath = join(paths.specsDir, specId, 'spec.md')
+    try {
+      const content = await readFile(archivedSpecPath, 'utf-8')
+      return res.json({ success: true, data: { specId, content, location: 'archived' } })
+    } catch {
+      return res.json({ success: true, data: { specId, content: null, location: null } })
+    }
+  } catch (error) {
+    console.error('Error reading change spec:', error)
+    res.status(500).json({ success: false, error: 'Failed to read spec' })
+  }
+})
+
+// PATCH /api/flow/tasks/:id - Flow Task 수정
+app.patch('/api/flow/tasks/:id', async (req, res) => {
+  try {
+    await initTaskDb()
+    const { changeId, stage, title, description, status, priority, order } = req.body
+
+    const sqlite = getSqlite()
+    const existing = sqlite.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id)
+
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Task not found' })
+    }
+
+    const updates: string[] = []
+    const params: unknown[] = []
+
+    if (changeId !== undefined) {
+      updates.push('change_id = ?')
+      params.push(changeId)
+    }
+    if (stage !== undefined) {
+      updates.push('stage = ?')
+      params.push(stage)
+    }
+    if (title !== undefined) {
+      updates.push('title = ?')
+      params.push(title)
+    }
+    if (description !== undefined) {
+      updates.push('description = ?')
+      params.push(description)
+    }
+    if (status !== undefined) {
+      updates.push('status = ?')
+      params.push(status)
+    }
+    if (priority !== undefined) {
+      updates.push('priority = ?')
+      params.push(priority)
+    }
+    if (order !== undefined) {
+      updates.push('"order" = ?')
+      params.push(order)
+    }
+
+    updates.push('updated_at = ?')
+    params.push(Date.now())
+    params.push(req.params.id)
+
+    sqlite.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`).run(...params)
+
+    const task = sqlite.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id)
+
+    res.json({ success: true, data: { task } })
+  } catch (error) {
+    console.error('Error updating flow task:', error)
+    res.status(500).json({ success: false, error: 'Failed to update flow task' })
+  }
+})
+

@@ -41,10 +41,27 @@ export function initDb(projectRoot?: string): ReturnType<typeof drizzle<typeof s
     INSERT OR IGNORE INTO sequences (name, value) VALUES ('task', 0);
   `);
 
+  // Create changes table (Flow의 최상위 단위)
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS changes (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      spec_path TEXT,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'completed', 'archived')),
+      current_stage TEXT NOT NULL DEFAULT 'spec' CHECK(current_stage IN ('spec', 'task', 'code', 'test', 'commit', 'docs')),
+      progress INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
   // Create tasks table
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS tasks (
       id INTEGER PRIMARY KEY,
+      change_id TEXT,
+      stage TEXT NOT NULL DEFAULT 'task' CHECK(stage IN ('spec', 'task', 'code', 'test', 'commit', 'docs')),
       title TEXT NOT NULL,
       description TEXT,
       status TEXT NOT NULL DEFAULT 'todo' CHECK(status IN ('todo', 'in-progress', 'review', 'done', 'archived')),
@@ -61,6 +78,41 @@ export function initDb(projectRoot?: string): ReturnType<typeof drizzle<typeof s
   // Migration: Add archived_at column if it doesn't exist
   try {
     sqlite.exec(`ALTER TABLE tasks ADD COLUMN archived_at INTEGER`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add change_id column for Flow integration
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN change_id TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add stage column for Flow pipeline
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN stage TEXT NOT NULL DEFAULT 'task'`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add group_title for tasks.md section grouping
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN group_title TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add group_order for section ordering (1, 2, 3...)
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN group_order INTEGER NOT NULL DEFAULT 0`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add task_order for task ordering within group (1, 2, 3...)
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN task_order INTEGER NOT NULL DEFAULT 0`);
   } catch {
     // Column already exists, ignore
   }
