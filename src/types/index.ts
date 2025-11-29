@@ -1,3 +1,60 @@
+// =============================================
+// Flow 파이프라인 타입
+// =============================================
+export type Stage = 'spec' | 'changes' | 'task' | 'code' | 'test' | 'commit' | 'docs'
+export type ChangeStatus = 'active' | 'completed' | 'archived'
+export type FlowTaskStatus = 'todo' | 'in-progress' | 'review' | 'done' | 'archived'
+
+// STAGES, STAGE_CONFIG -> @/constants/stages 로 이동
+
+// Stage별 집계 정보
+export interface StageInfo {
+  stage: Stage
+  total: number
+  completed: number
+  tasks: FlowTask[]
+}
+
+// Flow Change (DB 기반)
+export interface FlowChange {
+  id: string
+  projectId: string
+  title: string
+  specPath?: string
+  status: ChangeStatus
+  currentStage: Stage
+  progress: number // 0-100
+  createdAt: string
+  updatedAt: string
+  // UI용 집계 데이터
+  stages?: Record<Stage, StageInfo>
+}
+
+// Flow Task (DB 기반)
+export interface FlowTask {
+  id: number
+  changeId?: string // null이면 독립 태스크
+  stage: Stage
+  title: string
+  description?: string
+  status: FlowTaskStatus
+  priority: 'low' | 'medium' | 'high'
+  tags?: string[]
+  assignee?: string
+  order: number
+  // tasks.md 구조 유지
+  groupTitle?: string // tasks.md 섹션 제목
+  groupOrder?: number // 섹션 순서
+  taskOrder?: number // 섹션 내 작업 순서
+  createdAt: string
+  updatedAt: string
+  archivedAt?: string
+}
+
+// =============================================
+// 기존 OpenSpec 타입 (파일 기반 - 호환성 유지)
+// =============================================
+
 // OpenSpec Change (proposal)
 export interface Change {
   id: string
@@ -96,4 +153,26 @@ export interface ProjectWithData extends Project {
 export interface ProjectsAllDataResponse {
   projects: ProjectWithData[]
   activeProjectId: string | null
+}
+
+// =============================================
+// Flow API 응답 타입
+// =============================================
+export interface FlowChangesResponse {
+  changes: FlowChange[]
+}
+
+export interface FlowChangeDetailResponse {
+  change: FlowChange
+  stages: Record<Stage, StageInfo>
+}
+
+export interface FlowTasksResponse {
+  tasks: FlowTask[]
+}
+
+export interface FlowSyncResponse {
+  synced: number
+  created: number
+  updated: number
 }

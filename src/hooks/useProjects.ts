@@ -90,6 +90,7 @@ export function useActivateProject() {
       queryClient.invalidateQueries({ queryKey: ['changes'] })
       queryClient.invalidateQueries({ queryKey: ['specs'] })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['flow'] })
     },
   })
 }
