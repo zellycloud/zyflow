@@ -127,6 +127,8 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
     }
 
     // Plain subsection: "### Subsection Name" (no number)
+    // These are often just labels/headers without tasks (e.g., "### 준비 작업 (Week 1)")
+    // Don't create a group for them - just update context for any #### subsections that follow
     if (plainSubsectionMatch && !subsectionMatch) {
       // Flush pending major group if needed
       if (pendingMajorGroup && pendingMajorGroup.tasks.length > 0) {
@@ -134,19 +136,8 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
       }
       pendingMajorGroup = null
 
-      groupCounter++
-      const subTitle = plainSubsectionMatch[1].trim()
-      const groupId = `group-sub-${groupCounter}`
-
-      currentGroup = {
-        id: groupId,
-        title: subTitle,
-        tasks: [],
-        majorOrder: currentMajorOrder || groupCounter,
-        majorTitle: currentMajorTitle || subTitle,
-        subOrder: groupCounter
-      }
-      groups.push(currentGroup)
+      // Don't create a group - just skip this header
+      // Tasks that follow will be captured by #### subsections or numbered tasks
       taskCounter = 0
       continue
     }
