@@ -1,14 +1,17 @@
-import { FolderOpen } from 'lucide-react'
+import { FolderOpen, Loader2 } from 'lucide-react'
 import type { SelectedItem } from '@/App'
 import { ProjectDashboard } from './ProjectDashboard'
 import { ChangeDetail } from './ChangeDetail'
 import { StandaloneTasks } from './StandaloneTasks'
+import { useProjectsAllData } from '@/hooks/useProjects'
 
 interface FlowContentProps {
   selectedItem: SelectedItem
 }
 
 export function FlowContent({ selectedItem }: FlowContentProps) {
+  const { data: projectsData, isLoading } = useProjectsAllData()
+
   if (!selectedItem) {
     return (
       <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
@@ -17,6 +20,27 @@ export function FlowContent({ selectedItem }: FlowContentProps) {
         <p className="text-sm mt-1">
           왼쪽 사이드바에서 프로젝트 또는 Change를 선택하세요
         </p>
+      </div>
+    )
+  }
+
+  // 프로젝트 데이터 로딩 중이면 로딩 표시
+  if (isLoading) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+        <Loader2 className="h-8 w-8 mb-4 animate-spin opacity-50" />
+        <p>로딩 중...</p>
+      </div>
+    )
+  }
+
+  // 선택된 프로젝트가 활성 프로젝트와 다르면 렌더링하지 않음 (404 방지)
+  // 프로젝트 전환 중일 때 이전 프로젝트의 Change를 요청하지 않도록 함
+  if (selectedItem.projectId !== projectsData?.activeProjectId) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+        <Loader2 className="h-8 w-8 mb-4 animate-spin opacity-50" />
+        <p>프로젝트 전환 중...</p>
       </div>
     )
   }

@@ -80,37 +80,39 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
     }
   }
 
-  const handleSelectProject = async (projectId: string) => {
-    // 프로젝트 활성화
-    if (projectId !== projectsData?.activeProjectId) {
-      await activateProject.mutateAsync(projectId)
-    }
-    // 프로젝트 대시보드 선택
+  const handleSelectProject = (projectId: string) => {
+    // 먼저 UI 업데이트 (즉시 반응)
     onSelect({ type: 'project', projectId })
-    // 프로젝트 펼침
     setExpandedProjects((prev) => {
       const next = new Set(prev)
       next.add(projectId)
       return next
     })
+
+    // 프로젝트 활성화는 비동기로 (UI 블로킹 없이)
+    if (projectId !== projectsData?.activeProjectId) {
+      activateProject.mutate(projectId)
+    }
   }
 
-  const handleSelectChange = async (projectId: string, changeId: string) => {
-    // 프로젝트 활성화
-    if (projectId !== projectsData?.activeProjectId) {
-      await activateProject.mutateAsync(projectId)
-    }
-    // Change 선택
+  const handleSelectChange = (projectId: string, changeId: string) => {
+    // 먼저 UI 업데이트 (즉시 반응)
     onSelect({ type: 'change', projectId, changeId })
+
+    // 프로젝트 활성화는 비동기로
+    if (projectId !== projectsData?.activeProjectId) {
+      activateProject.mutate(projectId)
+    }
   }
 
-  const handleSelectStandaloneTasks = async (projectId: string) => {
-    // 프로젝트 활성화
-    if (projectId !== projectsData?.activeProjectId) {
-      await activateProject.mutateAsync(projectId)
-    }
-    // 기타 작업 선택
+  const handleSelectStandaloneTasks = (projectId: string) => {
+    // 먼저 UI 업데이트 (즉시 반응)
     onSelect({ type: 'standalone-tasks', projectId })
+
+    // 프로젝트 활성화는 비동기로
+    if (projectId !== projectsData?.activeProjectId) {
+      activateProject.mutate(projectId)
+    }
   }
 
   const toggleProject = (projectId: string) => {
@@ -246,24 +248,31 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                     onOpenChange={() => toggleProject(project.id)}
                   >
                     <SidebarMenuItem>
-                      <CollapsibleTrigger asChild>
-                        <SidebarMenuButton
-                          onClick={() => handleSelectProject(project.id)}
-                          isActive={isProjectSelected}
-                          className={cn(isProjectSelected && 'bg-primary/10')}
-                        >
-                          {isExpanded ? (
-                            <ChevronDown className="size-4" />
-                          ) : (
-                            <ChevronRight className="size-4" />
-                          )}
-                          <FolderOpen className="size-4" />
-                          <span className="truncate font-medium">{project.name}</span>
-                          {projectChangeCount > 0 && (
-                            <SidebarMenuBadge>{projectChangeCount}</SidebarMenuBadge>
-                          )}
-                        </SidebarMenuButton>
-                      </CollapsibleTrigger>
+                      <SidebarMenuButton
+                        onClick={() => handleSelectProject(project.id)}
+                        isActive={isProjectSelected}
+                        className={cn(isProjectSelected && 'bg-primary/10')}
+                      >
+                        <CollapsibleTrigger asChild>
+                          <span
+                            className="flex items-center justify-center size-4 hover:bg-accent rounded"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                            }}
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="size-4" />
+                            ) : (
+                              <ChevronRight className="size-4" />
+                            )}
+                          </span>
+                        </CollapsibleTrigger>
+                        <FolderOpen className="size-4" />
+                        <span className="truncate font-medium">{project.name}</span>
+                        {projectChangeCount > 0 && (
+                          <SidebarMenuBadge>{projectChangeCount}</SidebarMenuBadge>
+                        )}
+                      </SidebarMenuButton>
                       <CollapsibleContent>
                         <SidebarMenuSub>
                           {/* Changes */}

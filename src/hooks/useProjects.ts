@@ -85,12 +85,13 @@ export function useActivateProject() {
   return useMutation({
     mutationFn: activateProject,
     onSuccess: () => {
+      // 이전 프로젝트의 flow 관련 캐시 완전 삭제 (404 요청 방지)
+      queryClient.removeQueries({ queryKey: ['flow'] })
       queryClient.invalidateQueries({ queryKey: ['projects'] })
       queryClient.invalidateQueries({ queryKey: ['projects-all-data'] })
       queryClient.invalidateQueries({ queryKey: ['changes'] })
       queryClient.invalidateQueries({ queryKey: ['specs'] })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      queryClient.invalidateQueries({ queryKey: ['flow'] })
     },
   })
 }
