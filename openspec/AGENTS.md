@@ -454,3 +454,128 @@ openspec archive <change-id> [--yes|-y]  # Mark complete (add --yes for automati
 ```
 
 Remember: Specs are truth. Changes are proposals. Keep them in sync.
+
+## Backlog Task Creation Guide (OpenSpec 연동)
+
+OpenSpec tasks.md의 미완료 항목을 외부 백로그 시스템(Backlog.md, Kanban 등)으로 등록할 때 반드시 아래 구조를 따릅니다.
+
+### 필수 포함 요소
+
+1. **OpenSpec 참조 (🔗 OpenSpec 참조)**
+   ```markdown
+   - Change ID: `change-id-here`
+   - 파일 경로: `openspec/changes/change-id/tasks.md`
+   - 섹션: X.X (라인번호)
+   ```
+
+2. **상세 구현 내역 (📋 상세 작업 내역)**
+   - 각 하위 태스크별 상세 설명
+   - 입력/출력 예시
+   - 구현 위치 (파일 경로)
+
+3. **참고 파일 (📁 수정 대상 파일/참고 파일)**
+   - 수정할 파일 목록
+   - 관련 기존 코드 위치
+   - 참고 라이브러리/패턴
+
+4. **구체적 Acceptance Criteria**
+   - 테스트 가능한 검증 조건
+   - 구체적인 입출력 예시 포함
+   - 성공/실패 기준 명시
+
+### 태스크 템플릿
+
+```markdown
+## Description
+
+OpenSpec "Change Title"의 **섹션 X.X 기능명** 미완성 작업입니다.
+
+**🔗 OpenSpec 참조:**
+- Change ID: `change-id`
+- 파일 경로: `openspec/changes/change-id/tasks.md`
+- 섹션: X.X (YYY~ZZZ라인)
+
+**📋 현재 구현 상태:**
+- ✅ 완료된 항목
+- ❌ **미구현 항목** ← 이 태스크의 목표
+
+**📋 상세 구현 내역:**
+
+### X.X.1 첫 번째 하위 태스크
+- 입력: "예시 입력"
+- 출력: { expected: "output" }
+- 구현 위치: `src/path/to/file.ts` (신규/수정)
+
+### X.X.2 두 번째 하위 태스크
+```typescript
+// 구현 예시 코드 스니펫
+interface ExpectedInterface {
+  field: string
+}
+```
+
+**📁 수정 대상 파일:**
+- `src/path/file1.ts` - 설명
+- `src/path/file2.ts` - 설명
+
+**🔧 참고:**
+- 기존 코드: `src/existing/code.ts` → `functionName()`
+- 라이브러리: `package-name`
+- 패턴: 기존 XYZ 패턴 참고
+
+## Acceptance Criteria
+
+- [ ] #1 구체적인 검증 조건 (입력 → 출력 예시 포함)
+- [ ] #2 엣지 케이스 처리
+- [ ] #3 테스트 작성
+```
+
+### Labels 규칙
+
+OpenSpec 연동 태스크는 반드시 `openspec-{change-id}` 라벨을 포함합니다.
+예: `openspec-2`, `openspec-add-2fa-notify`
+
+### 예시: 좋은 태스크 vs 나쁜 태스크
+
+**❌ 나쁜 예 (부실한 내용):**
+```markdown
+## Description
+자연어 명령 시스템 도메인별 파라미터 파서 구현
+
+## Acceptance Criteria
+- [ ] 파서 구현
+- [ ] 테스트
+```
+
+**✅ 좋은 예 (구현 가이드 포함):**
+```markdown
+## Description
+
+OpenSpec 2 "자연어 명령 실행 시스템"의 **섹션 4.2 도메인별 파라미터 파서** 미완성 작업입니다.
+
+**🔗 OpenSpec 참조:**
+- Change ID: `2-add-natural-language-commands`
+- 파일 경로: `openspec/changes/2-add-natural-language-commands/tasks.md`
+- 섹션: 4.2 (118~122라인)
+
+**📋 상세 구현 내역:**
+
+### 4.2.1 예산 파라미터 파서
+- 입력: "식비 예산 20만원", "이번 달 외식비 50만원으로"
+- 추출 대상: 카테고리명, 금액(KRW), 기간(month/year)
+- 구현 위치: `src/services/ai/parsers/BudgetParser.ts` (신규)
+
+**📁 수정 대상 파일:**
+- `src/services/ai/parsers/BudgetParser.ts` (신규)
+- `src/services/ai/ActionExecutor.ts` - 파서 연동
+
+**🔧 참고:**
+- 기존 금액 파싱: `src/schemas/financial-actions.ts` → `parseKoreanAmount()`
+- ActionExecutor: `src/services/ai/ActionExecutor.ts`
+
+## Acceptance Criteria
+
+- [ ] #1 예산 파서: "식비 30만원" → { category: "식비", amount: 300000 } 정확 추출
+- [ ] #2 기존 AI 파싱 대비 정확도 테스트: 최소 90% 이상
+- [ ] #3 단위 테스트: 최소 10개 케이스
+```

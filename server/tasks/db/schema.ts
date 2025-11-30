@@ -6,6 +6,12 @@ import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 export type Stage = 'spec' | 'task' | 'code' | 'test' | 'commit' | 'docs';
 export type ChangeStatus = 'active' | 'completed' | 'archived';
 
+// Task Origin 타입: 태스크 출처 구분
+// - openspec: tasks.md에서 동기화된 태스크
+// - inbox: 수동으로 생성된 독립 태스크
+// - imported: 외부 시스템에서 가져온 태스크
+export type TaskOrigin = 'openspec' | 'inbox' | 'imported';
+
 // 순차 번호 관리 테이블
 export const sequences = sqliteTable('sequences', {
   name: text('name').primaryKey(),
@@ -46,6 +52,10 @@ export const tasks = sqliteTable('tasks', {
   stage: text('stage', {
     enum: ['spec', 'task', 'code', 'test', 'commit', 'docs']
   }).notNull().default('task'), // 기본값 'task' (기존 칸반 호환)
+  // 태스크 출처 구분
+  origin: text('origin', {
+    enum: ['openspec', 'inbox', 'imported']
+  }).notNull().default('inbox'),
   // 기존 필드
   title: text('title').notNull(),
   description: text('description'),

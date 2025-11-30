@@ -1,6 +1,6 @@
 import { eq, desc, asc, and, inArray, ne, lt } from 'drizzle-orm';
 import { getDb, getSqlite } from '../db/client.js';
-import { tasks, Task, NewTask, TaskStatus, TaskPriority } from '../db/schema.js';
+import { tasks, Task, NewTask, TaskStatus, TaskPriority, TaskOrigin } from '../db/schema.js';
 
 export interface CreateTaskInput {
   projectId: string;
@@ -10,6 +10,7 @@ export interface CreateTaskInput {
   priority?: TaskPriority;
   tags?: string[];
   assignee?: string;
+  origin?: TaskOrigin; // 태스크 출처 (기본값: 'inbox')
 }
 
 export interface UpdateTaskInput {
@@ -28,6 +29,7 @@ export interface ListTasksOptions {
   priority?: TaskPriority;
   tags?: string[];
   assignee?: string;
+  origin?: TaskOrigin; // 태스크 출처로 필터링
   limit?: number;
   orderBy?: 'createdAt' | 'updatedAt' | 'priority' | 'order';
   orderDir?: 'asc' | 'desc';
@@ -60,6 +62,7 @@ export function createTask(input: CreateTaskInput): Task {
     priority: input.priority || 'medium',
     tags: input.tags ? JSON.stringify(input.tags) : null,
     assignee: input.assignee,
+    origin: input.origin || 'inbox', // 기본값: inbox (수동 생성)
     order: 0,
     createdAt: now,
     updatedAt: now,
@@ -104,6 +107,10 @@ export function listTasks(options: ListTasksOptions = {}): Task[] {
 
   if (options.assignee) {
     conditions.push(eq(tasks.assignee, options.assignee));
+  }
+
+  if (options.origin) {
+    conditions.push(eq(tasks.origin, options.origin));
   }
 
   let query = db.select().from(tasks);

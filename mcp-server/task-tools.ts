@@ -21,8 +21,12 @@ export interface TaskToolResult {
 }
 
 // Initialize DB with project path
+let currentProjectId: string = '';
+
 export function initTaskDb(projectPath: string): void {
   initDb(projectPath);
+  // Extract project ID from path (config.ts의 addProject와 동일한 로직 사용)
+  currentProjectId = projectPath.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
 }
 
 // Tool handlers
@@ -36,7 +40,7 @@ export function handleTaskList(args: {
 }): TaskToolResult {
   try {
     if (args.kanban) {
-      const tasksByStatus = getTasksByStatus(args.includeArchived);
+      const tasksByStatus = getTasksByStatus(currentProjectId || undefined, args.includeArchived);
       const data: Record<string, Task[]> = {
         todo: tasksByStatus['todo'],
         'in-progress': tasksByStatus['in-progress'],
@@ -81,6 +85,7 @@ export function handleTaskCreate(args: {
 }): TaskToolResult {
   try {
     const task = createTask({
+      projectId: currentProjectId || 'default',
       title: args.title,
       description: args.description,
       priority: args.priority as TaskPriority | undefined,

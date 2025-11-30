@@ -1,7 +1,7 @@
 // Database
 export { initDb, getDb, closeDb, getDbPath } from './db/client.js';
 export { tasks } from './db/schema.js';
-export type { Task, NewTask, TaskStatus, TaskPriority } from './db/schema.js';
+export type { Task, NewTask, TaskStatus, TaskPriority, TaskOrigin } from './db/schema.js';
 
 // Core operations
 export {

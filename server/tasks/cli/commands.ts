@@ -145,7 +145,9 @@ export function handleListCommand(options: CommandOptions): string {
 export function handleAddCommand(title: string, options: CommandOptions): string {
   initDb();
 
+  // CLI에서 생성하는 태스크는 현재 프로젝트의 default projectId 사용
   const task = createTask({
+    projectId: process.cwd().toLowerCase().replace(/\//g, '-').replace(/^-/, '') || 'default',
     title,
     description: options.description,
     priority: options.priority as TaskPriority | undefined,

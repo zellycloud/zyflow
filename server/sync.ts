@@ -100,14 +100,14 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
           )
           tasksUpdated++
         } else {
-          // 새 태스크 생성 (3단계 계층 정보 포함)
+          // 새 태스크 생성 (3단계 계층 정보 포함, origin='openspec')
           sqlite.prepare(`
             INSERT INTO tasks (
               change_id, stage, title, status, priority, "order",
               group_title, group_order, task_order, major_title, sub_order,
-              created_at, updated_at
+              origin, created_at, updated_at
             )
-            VALUES (?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
           `).run(
             changeId,
             task.title,
@@ -196,14 +196,14 @@ export async function syncChangeTasksForProject(
           )
           tasksUpdated++
         } else {
-          // 새 태스크 생성 (3단계 계층 정보 포함)
+          // 새 태스크 생성 (3단계 계층 정보 포함, origin='openspec')
           sqlite.prepare(`
             INSERT INTO tasks (
               change_id, stage, title, status, priority, "order",
               group_title, group_order, task_order, major_title, sub_order,
-              created_at, updated_at
+              origin, created_at, updated_at
             )
-            VALUES (?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
           `).run(
             changeId,
             task.title,

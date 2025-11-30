@@ -138,7 +138,24 @@ export function initDb(projectRoot?: string): ReturnType<typeof drizzle<typeof s
     // Column already exists, ignore
   }
 
-  
+  // Migration: Add origin column for task source tracking (openspec/inbox/imported)
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN origin TEXT NOT NULL DEFAULT 'inbox'`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Set origin based on existing data (change_id 유무로 판단)
+  try {
+    sqlite.exec(`
+      UPDATE tasks
+      SET origin = 'openspec'
+      WHERE origin = 'inbox' AND change_id IS NOT NULL AND change_id != ''
+    `);
+  } catch (e) {
+    console.error('Migration warning (origin update):', e);
+  }
+
   // Migration: Add project_id column for project-based task isolation
   try {
     sqlite.exec(`ALTER TABLE tasks ADD COLUMN project_id TEXT`);
