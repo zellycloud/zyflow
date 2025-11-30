@@ -32,3 +32,4 @@ dist-ssr
 # Build artifacts
 server/server/
 server/src/
+tmp/
