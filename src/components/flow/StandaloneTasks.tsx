@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react'
-import { Loader2, ListTodo, Plus, GripVertical, MoreVertical, Pencil, Trash2, Archive, ArrowRight, RotateCcw, Search, X, Calendar, User } from 'lucide-react'
+import { Loader2, ListTodo, Plus, GripVertical, MoreVertical, Pencil, Trash2, Archive, ArrowRight, RotateCcw, Search, X, Calendar, User, RefreshCw, CheckCircle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { toast } from 'sonner'
 import {
   Dialog,
   DialogContent,
@@ -80,7 +81,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 }
 
 export function StandaloneTasks({ projectId: _projectId }: StandaloneTasksProps) {
-  const { data: tasks, isLoading } = useFlowTasks({ standalone: true, includeArchived: true })
+  const { data: tasks, isLoading, refetch } = useFlowTasks({ standalone: true, includeArchived: true })
   const updateTask = useUpdateFlowTask()
   const createTask = useCreateFlowTask()
 
@@ -89,6 +90,10 @@ export function StandaloneTasks({ projectId: _projectId }: StandaloneTasksProps)
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
+
+  // Refresh state
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [showRefreshSuccess, setShowRefreshSuccess] = useState(false)
 
   // Drag state
   const [activeTask, setActiveTask] = useState<FlowTask | null>(null)
@@ -182,6 +187,29 @@ export function StandaloneTasks({ projectId: _projectId }: StandaloneTasksProps)
     setCreateDefaultStatus(status)
     setSelectedTask(null)
     setCreateDialogOpen(true)
+  }
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    setShowRefreshSuccess(false)
+    
+    try {
+      await refetch()
+      
+      // 성공 아이콘 표시
+      setShowRefreshSuccess(true)
+      toast.success('작업 목록이 새로고침되었습니다.')
+      
+      // 1.5초 후 성공 아이콘 숨기기
+      setTimeout(() => {
+        setShowRefreshSuccess(false)
+      }, 1500)
+    } catch (error) {
+      console.error('Failed to refresh tasks:', error)
+      toast.error('작업 목록을 새로고침하는데 실패했습니다.')
+    } finally {
+      setIsRefreshing(false)
+    }
   }
 
   // DnD handlers
@@ -326,6 +354,23 @@ export function StandaloneTasks({ projectId: _projectId }: StandaloneTasksProps)
               </button>
             )}
           </div>
+          
+          {/* 새로고침 버튼 */}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleRefresh}
+            disabled={isRefreshing || isLoading}
+            title="새로고침"
+            className="relative"
+          >
+            {showRefreshSuccess ? (
+              <CheckCircle className="h-4 w-4 text-green-500" />
+            ) : (
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            )}
+          </Button>
+          
           {activeTab === 'active' && (
             <Button onClick={() => handleAddTask('todo')}>
               <Plus className="h-4 w-4 mr-2" />
