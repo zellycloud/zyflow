@@ -1,7 +1,11 @@
 import { app } from './app.js'
-import { createTasksWatcher, setGlobalWatcher } from './watcher.js'
-import { syncChangeTasksFromFile } from './sync.js'
-import { getActiveProject } from './config.js'
+import {
+  createMultiWatcherManager,
+  setGlobalMultiWatcher,
+  getGlobalMultiWatcher,
+} from './watcher.js'
+import { syncChangeTasksForProject } from './sync.js'
+import { loadConfig } from './config.js'
 
 const PORT = 3001
 
@@ -9,41 +13,57 @@ const PORT = 3001
 const server = app.listen(PORT, async () => {
   console.log(`ZyFlow API server running on http://localhost:${PORT}`)
 
-  // 활성 프로젝트가 있으면 watcher 시작
-  const project = await getActiveProject()
-  if (project) {
-    startWatcher(project.path)
-  }
+  // Multi-Project Watcher 초기화 - 모든 등록된 프로젝트 감시
+  await initMultiWatcher()
 })
 
-// Watcher 시작 함수
-function startWatcher(projectPath: string) {
-  const watcher = createTasksWatcher({
-    projectPath,
-    onTasksChange: async (changeId, filePath) => {
-      console.log(`[Watcher] Syncing ${changeId} due to file change: ${filePath}`)
-      try {
-        const result = await syncChangeTasksFromFile(changeId)
-        console.log(`[Watcher] Sync complete: ${result.tasksCreated} created, ${result.tasksUpdated} updated`)
-      } catch (error) {
-        console.error(`[Watcher] Sync error for ${changeId}:`, error)
-      }
-    },
-    debounceMs: 500,
-  })
+/**
+ * Multi-Project Watcher 초기화
+ * 모든 등록된 프로젝트를 동시에 감시
+ */
+async function initMultiWatcher() {
+  try {
+    const config = await loadConfig()
 
-  watcher.start()
-  setGlobalWatcher(watcher)
-  console.log(`[Watcher] Started watching tasks.md files in ${projectPath}`)
+    if (config.projects.length === 0) {
+      console.log('[MultiWatcher] No projects registered yet')
+      return
+    }
+
+    // Multi-Watcher Manager 생성
+    const multiWatcher = createMultiWatcherManager(
+      async (changeId, filePath, projectPath) => {
+        console.log(`[Watcher] Syncing ${changeId} due to file change: ${filePath}`)
+        try {
+          const result = await syncChangeTasksForProject(changeId, projectPath)
+          console.log(
+            `[Watcher] Sync complete for ${changeId}: ${result.tasksCreated} created, ${result.tasksUpdated} updated`
+          )
+        } catch (error) {
+          console.error(`[Watcher] Sync error for ${changeId}:`, error)
+        }
+      },
+      500 // debounceMs
+    )
+
+    // 모든 프로젝트에 대해 watcher 추가
+    for (const project of config.projects) {
+      multiWatcher.addProject(project.id, project.path)
+    }
+
+    setGlobalMultiWatcher(multiWatcher)
+    console.log(`[MultiWatcher] Initialized for ${config.projects.length} project(s)`)
+  } catch (error) {
+    console.error('[MultiWatcher] Failed to initialize:', error)
+  }
 }
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\nShutting down...')
-  const { getGlobalWatcher } = await import('./watcher.js')
-  const watcher = getGlobalWatcher()
-  if (watcher) {
-    await watcher.stop()
+  const multiWatcher = getGlobalMultiWatcher()
+  if (multiWatcher) {
+    await multiWatcher.stopAll()
   }
   server.close(() => {
     console.log('Server closed')
@@ -51,5 +71,18 @@ process.on('SIGINT', async () => {
   })
 })
 
-// 프로젝트 변경 시 watcher 재시작을 위한 함수 export
-export { startWatcher }
+// 프로젝트 추가 시 watcher 추가를 위한 함수 export
+export function addProjectToWatcher(projectId: string, projectPath: string) {
+  const multiWatcher = getGlobalMultiWatcher()
+  if (multiWatcher) {
+    multiWatcher.addProject(projectId, projectPath)
+  }
+}
+
+// 프로젝트 삭제 시 watcher 제거를 위한 함수 export
+export async function removeProjectFromWatcher(projectId: string) {
+  const multiWatcher = getGlobalMultiWatcher()
+  if (multiWatcher) {
+    await multiWatcher.removeProject(projectId)
+  }
+}

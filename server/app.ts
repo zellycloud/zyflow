@@ -27,8 +27,7 @@ import {
   TaskPriority,
 } from './tasks/index.js'
 import { gitRouter, gitPull } from './git/index.js'
-import { createTasksWatcher, getGlobalWatcher, setGlobalWatcher } from './watcher.js'
-import { syncChangeTasksFromFile } from './sync.js'
+import { getGlobalMultiWatcher } from './watcher.js'
 
 const execAsync = promisify(exec)
 
@@ -149,6 +148,12 @@ app.post('/api/projects', async (req, res) => {
     const name = basename(projectPath)
     const project = await addProject(name, projectPath)
 
+    // Multi-Watcher에 새 프로젝트 추가
+    const multiWatcher = getGlobalMultiWatcher()
+    if (multiWatcher) {
+      multiWatcher.addProject(project.id, project.path)
+    }
+
     res.json({ success: true, data: { project } })
   } catch (error) {
     console.error('Error adding project:', error)
@@ -159,7 +164,15 @@ app.post('/api/projects', async (req, res) => {
 // DELETE /api/projects/:id - Remove a project
 app.delete('/api/projects/:id', async (req, res) => {
   try {
-    await removeProject(req.params.id)
+    const projectId = req.params.id
+
+    // Multi-Watcher에서 프로젝트 제거
+    const multiWatcher = getGlobalMultiWatcher()
+    if (multiWatcher) {
+      await multiWatcher.removeProject(projectId)
+    }
+
+    await removeProject(projectId)
     res.json({ success: true })
   } catch (error) {
     console.error('Error removing project:', error)
@@ -259,32 +272,14 @@ app.put('/api/projects/:id/activate', async (req, res) => {
         // sync 실패해도 활성화는 성공으로 처리
       }
 
-      // File Watcher 재시작 (이전 watcher 중지 후 새 프로젝트용 watcher 시작)
+      // Multi-Watcher에 프로젝트 추가 (이미 감시 중이면 스킵)
       try {
-        const existingWatcher = getGlobalWatcher()
-        if (existingWatcher) {
-          await existingWatcher.stop()
+        const multiWatcher = getGlobalMultiWatcher()
+        if (multiWatcher && !multiWatcher.isWatching(project.id)) {
+          multiWatcher.addProject(project.id, project.path)
         }
-
-        const watcher = createTasksWatcher({
-          projectPath: project.path,
-          onTasksChange: async (changeId, filePath) => {
-            console.log(`[Watcher] Syncing ${changeId} due to file change: ${filePath}`)
-            try {
-              const result = await syncChangeTasksFromFile(changeId)
-              console.log(`[Watcher] Sync complete: ${result.tasksCreated} created, ${result.tasksUpdated} updated`)
-            } catch (error) {
-              console.error(`[Watcher] Sync error for ${changeId}:`, error)
-            }
-          },
-          debounceMs: 500,
-        })
-
-        watcher.start()
-        setGlobalWatcher(watcher)
-        console.log(`[Watcher] Started watching tasks.md files for "${project.name}"`)
       } catch (watcherError) {
-        console.warn(`[Watcher] Failed to start watcher for "${project.name}":`, watcherError)
+        console.warn(`[Watcher] Failed to add watcher for "${project.name}":`, watcherError)
         // watcher 실패해도 활성화는 성공으로 처리
       }
     }
