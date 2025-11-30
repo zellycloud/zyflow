@@ -18,12 +18,12 @@
 
 ## 2. Phase 2: Change 연계 Git 워크플로우
 
-- [ ] 2.1 Change별 브랜치 자동 생성 기능
-- [ ] 2.2 Change 시작 시 feature 브랜치 생성 (change/{change-id})
-- [ ] 2.3 브랜치 전환 시 uncommitted changes 경고
-- [ ] 2.4 자동 커밋 옵션 구현
-- [ ] 2.5 커밋 메시지 템플릿 적용 ([{change-id}] {stage}: {description})
-- [ ] 2.6 푸시 타이밍 설정 UI 추가
+- [x] 2.1 Change별 브랜치 자동 생성 기능
+- [x] 2.2 Change 시작 시 feature 브랜치 생성 (change/{change-id})
+- [x] 2.3 브랜치 전환 시 uncommitted changes 경고
+- [x] 2.4 자동 커밋 옵션 구현
+- [x] 2.5 커밋 메시지 템플릿 적용 ([{change-id}] {stage}: {description})
+- [x] 2.6 푸시 타이밍 설정 UI 추가
 
 ## 3. Phase 3: 협업 및 충돌 관리
 
