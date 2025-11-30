@@ -8,6 +8,7 @@
 
 export * from './commands.js'
 export * from './status.js'
+export * from './change-workflow.js'
 
 import { Router } from 'express'
 import {
@@ -25,6 +26,17 @@ import {
   gitDiff,
 } from './commands.js'
 import { getGitStatus, checkRemoteUpdates, detectPotentialConflicts } from './status.js'
+import {
+  startChangeBranch,
+  commitForChange,
+  pushChangeBranch,
+  getCurrentChangeBranch,
+  listChangeBranches,
+  checkUncommittedChanges,
+  hasChangeBranch,
+  getChangeBranchName,
+  type CommitMessageStage,
+} from './change-workflow.js'
 import { getActiveProject } from '../config.js'
 
 export const gitRouter = Router()
@@ -465,5 +477,235 @@ gitRouter.get('/diff', async (req, res) => {
   } catch (error) {
     console.error('Error getting diff:', error)
     res.status(500).json({ success: false, error: 'Failed to get diff' })
+  }
+})
+
+// ==================== Change-Git Workflow API ====================
+
+// POST /api/git/change/start - Change 브랜치 생성 및 전환
+gitRouter.post('/change/start', async (req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { changeId, baseBranch, stashChanges, force } = req.body
+
+    if (!changeId) {
+      return res.status(400).json({ success: false, error: 'changeId is required' })
+    }
+
+    const result = await startChangeBranch(projectPath, changeId, {
+      baseBranch,
+      stashChanges,
+      force,
+    })
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+        hasUncommittedChanges: result.error?.includes('uncommitted changes'),
+      })
+    }
+
+    res.json({
+      success: true,
+      data: {
+        branch: result.branch,
+        created: result.created,
+        stashed: result.stashed,
+        message: result.created
+          ? `Created and switched to branch '${result.branch}'`
+          : `Switched to branch '${result.branch}'`,
+      },
+    })
+  } catch (error) {
+    console.error('Error starting change branch:', error)
+    res.status(500).json({ success: false, error: 'Failed to start change branch' })
+  }
+})
+
+// GET /api/git/change/current - 현재 Change 브랜치 정보
+gitRouter.get('/change/current', async (_req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const result = await getCurrentChangeBranch(projectPath)
+
+    res.json({
+      success: true,
+      data: {
+        isChangeBranch: result.isChangeBranch,
+        changeId: result.changeId,
+        branch: result.branch,
+      },
+    })
+  } catch (error) {
+    console.error('Error getting current change branch:', error)
+    res.status(500).json({ success: false, error: 'Failed to get current change branch' })
+  }
+})
+
+// GET /api/git/change/branches - Change 브랜치 목록
+gitRouter.get('/change/branches', async (_req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const result = await listChangeBranches(projectPath)
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+      })
+    }
+
+    res.json({
+      success: true,
+      data: { branches: result.branches },
+    })
+  } catch (error) {
+    console.error('Error listing change branches:', error)
+    res.status(500).json({ success: false, error: 'Failed to list change branches' })
+  }
+})
+
+// GET /api/git/change/:changeId/exists - Change 브랜치 존재 여부 확인
+gitRouter.get('/change/:changeId/exists', async (req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { changeId } = req.params
+    const exists = await hasChangeBranch(projectPath, changeId)
+    const branchName = getChangeBranchName(changeId)
+
+    res.json({
+      success: true,
+      data: {
+        exists,
+        branchName,
+        changeId,
+      },
+    })
+  } catch (error) {
+    console.error('Error checking change branch:', error)
+    res.status(500).json({ success: false, error: 'Failed to check change branch' })
+  }
+})
+
+// POST /api/git/change/commit - Change 작업 커밋 (템플릿 적용)
+gitRouter.post('/change/commit', async (req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { changeId, stage, description, files, all, template } = req.body
+
+    if (!changeId) {
+      return res.status(400).json({ success: false, error: 'changeId is required' })
+    }
+    if (!stage) {
+      return res.status(400).json({ success: false, error: 'stage is required' })
+    }
+    if (!description) {
+      return res.status(400).json({ success: false, error: 'description is required' })
+    }
+
+    const result = await commitForChange(projectPath, changeId, {
+      stage: stage as CommitMessageStage,
+      description,
+      files,
+      all,
+      template,
+    })
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || result.stderr,
+        stderr: result.stderr,
+      })
+    }
+
+    res.json({
+      success: true,
+      data: {
+        message: result.stdout,
+        formattedMessage: result.formattedMessage,
+      },
+    })
+  } catch (error) {
+    console.error('Error committing for change:', error)
+    res.status(500).json({ success: false, error: 'Failed to commit for change' })
+  }
+})
+
+// POST /api/git/change/push - Change 브랜치 푸시
+gitRouter.post('/change/push', async (req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { changeId, setUpstream, force } = req.body
+
+    if (!changeId) {
+      return res.status(400).json({ success: false, error: 'changeId is required' })
+    }
+
+    const result = await pushChangeBranch(projectPath, changeId, {
+      setUpstream,
+      force,
+    })
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || result.stderr,
+        stderr: result.stderr,
+      })
+    }
+
+    res.json({
+      success: true,
+      data: { message: result.stdout || 'Push successful' },
+    })
+  } catch (error) {
+    console.error('Error pushing change branch:', error)
+    res.status(500).json({ success: false, error: 'Failed to push change branch' })
+  }
+})
+
+// GET /api/git/uncommitted - 커밋되지 않은 변경사항 확인
+gitRouter.get('/uncommitted', async (_req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const result = await checkUncommittedChanges(projectPath)
+
+    res.json({
+      success: true,
+      data: result,
+    })
+  } catch (error) {
+    console.error('Error checking uncommitted changes:', error)
+    res.status(500).json({ success: false, error: 'Failed to check uncommitted changes' })
   }
 })
