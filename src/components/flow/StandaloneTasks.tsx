@@ -1,11 +1,18 @@
 import { useState, useMemo } from 'react'
-import { Loader2, ListTodo, Plus, GripVertical, MoreVertical, Pencil, Trash2, Archive, ArrowRight, RotateCcw, Search, X } from 'lucide-react'
+import { Loader2, ListTodo, Plus, GripVertical, MoreVertical, Pencil, Trash2, Archive, ArrowRight, RotateCcw, Search, X, Calendar, User } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -93,6 +100,8 @@ export function StandaloneTasks({ projectId: _projectId }: StandaloneTasksProps)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [taskToDelete, setTaskToDelete] = useState<FlowTask | null>(null)
   const [createDefaultStatus, setCreateDefaultStatus] = useState<FlowTaskStatus>('todo')
+  const [viewDialogOpen, setViewDialogOpen] = useState(false)
+  const [viewTask, setViewTask] = useState<FlowTask | null>(null)
 
   // projectId는 향후 확장용으로 유지
   void _projectId
@@ -124,6 +133,11 @@ export function StandaloneTasks({ projectId: _projectId }: StandaloneTasksProps)
   const handleEditTask = (task: FlowTask) => {
     setSelectedTask(task)
     setEditDialogOpen(true)
+  }
+
+  const handleViewTask = (task: FlowTask) => {
+    setViewTask(task)
+    setViewDialogOpen(true)
   }
 
   const handleDeleteTask = (task: FlowTask) => {
@@ -358,6 +372,7 @@ export function StandaloneTasks({ projectId: _projectId }: StandaloneTasksProps)
                   onArchive={handleArchiveTask}
                   onEdit={handleEditTask}
                   onDelete={handleDeleteTask}
+                  onView={handleViewTask}
                   onAddTask={() => handleAddTask(status)}
                 />
               ))}
@@ -436,6 +451,70 @@ export function StandaloneTasks({ projectId: _projectId }: StandaloneTasksProps)
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* View Task Detail Dialog */}
+      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+        <DialogContent className="max-w-lg [&>button]:h-8 [&>button]:w-8 [&>button]:right-3 [&>button>svg]:h-5 [&>button>svg]:w-5">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span
+                className={cn('w-2.5 h-2.5 rounded-full', PRIORITY_COLORS[viewTask?.priority ?? 'medium'])}
+              />
+              <span className="text-muted-foreground font-mono text-sm">#{viewTask?.id}</span>
+              <Badge variant="outline">
+                {STATUS_LABELS[viewTask?.status as FlowTaskStatus] ?? viewTask?.status}
+              </Badge>
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              작업 상세 정보
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <h3 className="font-semibold text-lg">{viewTask?.title}</h3>
+            </div>
+            {viewTask?.description && (
+              <div className="bg-muted/50 rounded-lg p-4">
+                <p className="text-sm whitespace-pre-wrap">{viewTask.description}</p>
+              </div>
+            )}
+            {viewTask?.tags && (
+              <div className="flex flex-wrap gap-1">
+                {(typeof viewTask.tags === 'string' ? JSON.parse(viewTask.tags) : viewTask.tags).map((tag: string) => (
+                  <Badge key={tag} variant="secondary" className="text-xs">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t">
+              <div className="flex items-center gap-4">
+                {viewTask?.assignee && (
+                  <span className="flex items-center gap-1">
+                    <User className="h-3 w-3" />
+                    {viewTask.assignee}
+                  </span>
+                )}
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  {viewTask?.createdAt ? new Date(viewTask.createdAt).toLocaleDateString('ko-KR') : '-'}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setViewDialogOpen(false)
+                  if (viewTask) handleEditTask(viewTask)
+                }}
+              >
+                <Pencil className="h-3 w-3 mr-1" />
+                편집
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -503,10 +582,11 @@ interface KanbanColumnProps {
   onArchive: (task: FlowTask) => void
   onEdit: (task: FlowTask) => void
   onDelete: (task: FlowTask) => void
+  onView: (task: FlowTask) => void
   onAddTask: () => void
 }
 
-function KanbanColumn({ status, tasks, onMove, onArchive, onEdit, onDelete, onAddTask }: KanbanColumnProps) {
+function KanbanColumn({ status, tasks, onMove, onArchive, onEdit, onDelete, onView, onAddTask }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: status,
     data: { type: 'column', status },
@@ -549,6 +629,7 @@ function KanbanColumn({ status, tasks, onMove, onArchive, onEdit, onDelete, onAd
                 onArchive={() => onArchive(task)}
                 onEdit={() => onEdit(task)}
                 onDelete={() => onDelete(task)}
+                onView={() => onView(task)}
               />
             ))}
           </SortableContext>
@@ -571,9 +652,10 @@ interface SortableKanbanCardProps {
   onArchive: () => void
   onEdit: () => void
   onDelete: () => void
+  onView: () => void
 }
 
-function SortableKanbanCard({ task, currentStatus, onMove, onArchive, onEdit, onDelete }: SortableKanbanCardProps) {
+function SortableKanbanCard({ task, currentStatus, onMove, onArchive, onEdit, onDelete, onView }: SortableKanbanCardProps) {
   const {
     attributes,
     listeners,
@@ -601,6 +683,7 @@ function SortableKanbanCard({ task, currentStatus, onMove, onArchive, onEdit, on
         onArchive={onArchive}
         onEdit={onEdit}
         onDelete={onDelete}
+        onView={onView}
         dragHandleProps={{ ...attributes, ...listeners }}
       />
     </div>
@@ -615,10 +698,11 @@ interface KanbanCardContentProps {
   onArchive?: () => void
   onEdit?: () => void
   onDelete?: () => void
+  onView?: () => void
   dragHandleProps?: Record<string, unknown>
 }
 
-function KanbanCardContent({ task, currentStatus, onMove, onArchive, onEdit, onDelete, dragHandleProps }: KanbanCardContentProps) {
+function KanbanCardContent({ task, currentStatus, onMove, onArchive, onEdit, onDelete, onView, dragHandleProps }: KanbanCardContentProps) {
   const tags = task.tags ? (typeof task.tags === 'string' ? JSON.parse(task.tags) : task.tags) as string[] : []
   const moveOptions = STATUS_ORDER.filter(s => s !== currentStatus)
 
@@ -695,12 +779,20 @@ function KanbanCardContent({ task, currentStatus, onMove, onArchive, onEdit, onD
               )}
             </div>
 
-            {/* Title */}
-            <p className="text-sm font-medium mt-1 break-words">{task.title}</p>
+            {/* Title - clickable */}
+            <button
+              className="text-sm font-medium mt-1 break-words text-left hover:text-primary transition-colors w-full"
+              onClick={onView}
+            >
+              {task.title}
+            </button>
 
             {/* Description */}
             {task.description && (
-              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+              <p
+                className="text-xs text-muted-foreground mt-1 line-clamp-2 cursor-pointer hover:text-foreground transition-colors"
+                onClick={onView}
+              >
                 {task.description}
               </p>
             )}
