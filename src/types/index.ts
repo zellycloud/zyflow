@@ -9,7 +9,7 @@ export type FlowTaskStatus = 'todo' | 'in-progress' | 'review' | 'done' | 'archi
 
 // Stage별 집계 정보
 export interface StageInfo {
-  stage: Stage
+  stage?: Stage // API 응답에서는 생략될 수 있음
   total: number
   completed: number
   tasks: FlowTask[]

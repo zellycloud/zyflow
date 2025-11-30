@@ -50,7 +50,7 @@ export function TasksPage() {
   };
 
   const handleUpdateTask = async (
-    id: string,
+    id: number,
     data: {
       title?: string;
       description?: string;

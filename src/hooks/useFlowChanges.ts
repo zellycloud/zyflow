@@ -94,6 +94,7 @@ interface FlowTaskFilters {
   stage?: Stage
   status?: string
   standalone?: boolean
+  includeArchived?: boolean
 }
 
 export function useFlowTasks(filters: FlowTaskFilters = {}) {
@@ -102,6 +103,7 @@ export function useFlowTasks(filters: FlowTaskFilters = {}) {
   if (filters.stage) params.set('stage', filters.stage)
   if (filters.status) params.set('status', filters.status)
   if (filters.standalone) params.set('standalone', 'true')
+  if (filters.includeArchived) params.set('includeArchived', 'true')
 
   return useQuery({
     queryKey: ['flow', 'tasks', filters],

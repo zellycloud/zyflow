@@ -10,18 +10,30 @@ import {
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
-import { Task, TaskStatus, TaskPriority, STATUS_LABELS } from './types';
+import { TaskStatus, TaskPriority, STATUS_LABELS } from './types';
+import type { FlowTask, FlowTaskStatus } from '@/types';
+
+// Task can be either local Task type or FlowTask
+type TaskLike = {
+  id: number;
+  title: string;
+  description?: string | null;
+  status: TaskStatus | FlowTaskStatus;
+  priority: TaskPriority | 'low' | 'medium' | 'high';
+  tags?: string | string[] | null;
+  assignee?: string | null;
+} | FlowTask;
 
 interface TaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  task?: Task | null;
-  defaultStatus?: TaskStatus;
+  task?: TaskLike | null;
+  defaultStatus?: TaskStatus | FlowTaskStatus;
   onSave: (data: {
     id?: number;
     title: string;
     description?: string;
-    status: TaskStatus;
+    status: TaskStatus | FlowTaskStatus;
     priority: TaskPriority;
     tags?: string[];
     assignee?: string;
@@ -48,7 +60,17 @@ export function TaskDialog({
       setDescription(task.description || '');
       setStatus(task.status);
       setPriority(task.priority);
-      setTags(task.tags ? JSON.parse(task.tags).join(', ') : '');
+      // Handle tags - can be string (JSON), string[], or null
+      const tagsValue = task.tags;
+      if (tagsValue) {
+        if (Array.isArray(tagsValue)) {
+          setTags(tagsValue.join(', '));
+        } else {
+          setTags(JSON.parse(tagsValue).join(', '));
+        }
+      } else {
+        setTags('');
+      }
       setAssignee(task.assignee || '');
     } else {
       setTitle('');

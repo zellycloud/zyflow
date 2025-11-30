@@ -295,7 +295,7 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                               </SidebarMenuSubItem>
                             )
                           })}
-                          {/* 기타 작업 */}
+                          {/* Inbox */}
                           <SidebarMenuSubItem>
                             <SidebarMenuSubButton
                               onClick={() =>
@@ -307,7 +307,7 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                               }
                             >
                               <ListTodo className="size-3" />
-                              <span>기타 작업</span>
+                              <span>Inbox</span>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>
                         </SidebarMenuSub>
