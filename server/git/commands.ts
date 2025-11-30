@@ -241,3 +241,58 @@ export async function gitConfig(
     : `git config ${scope} ${key}`
   return runGitCommand(command, cwd)
 }
+
+/**
+ * Git merge 실행
+ */
+export async function gitMerge(
+  cwd: string,
+  branch: string,
+  options: { noCommit?: boolean; noFf?: boolean } = {}
+): Promise<GitCommandResult> {
+  const { noCommit = false, noFf = false } = options
+  let command = `git merge ${branch}`
+  if (noCommit) command += ' --no-commit'
+  if (noFf) command += ' --no-ff'
+  return runGitCommand(command, cwd)
+}
+
+/**
+ * Git merge --abort 실행
+ */
+export async function gitMergeAbort(cwd: string): Promise<GitCommandResult> {
+  return runGitCommand('git merge --abort', cwd)
+}
+
+/**
+ * Git checkout 특정 버전으로 파일 복원
+ * strategy: 'ours' = 현재 브랜치 버전, 'theirs' = 병합 대상 브랜치 버전
+ */
+export async function gitCheckoutConflict(
+  cwd: string,
+  file: string,
+  strategy: 'ours' | 'theirs'
+): Promise<GitCommandResult> {
+  return runGitCommand(`git checkout --${strategy} "${file}"`, cwd)
+}
+
+/**
+ * 충돌 파일 목록 조회
+ */
+export async function gitConflictFiles(cwd: string): Promise<GitCommandResult> {
+  return runGitCommand('git diff --name-only --diff-filter=U', cwd)
+}
+
+/**
+ * 충돌 파일 내용 조회 (충돌 마커 포함)
+ */
+export async function gitShowConflict(cwd: string, file: string): Promise<GitCommandResult> {
+  return runGitCommand(`cat "${file}"`, cwd)
+}
+
+/**
+ * Git merge --continue 실행 (충돌 해결 후)
+ */
+export async function gitMergeContinue(cwd: string): Promise<GitCommandResult> {
+  return runGitCommand('git -c core.editor=true merge --continue', cwd)
+}

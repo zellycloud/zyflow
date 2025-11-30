@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Loader2, FileText, Copy, Check } from 'lucide-react'
+import { Loader2, FileText, Copy, Check, GitBranch, GitCommit, Upload, Settings, GitPullRequest } from 'lucide-react'
 import { useFlowChangeDetail } from '@/hooks/useFlowChanges'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,22 @@ import { toast } from 'sonner'
 import { PipelineBar } from './PipelineBar'
 import { StageContent } from './StageContent'
 import { Progress } from '@/components/ui/progress'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
+  ChangeWorkflowDialog,
+  ChangeCommitDialog,
+  PushSettingsDialog,
+  CreatePRDialog,
+  type PushTiming,
+} from '@/components/git/ChangeWorkflowDialog'
+import { useCurrentChangeBranch, useChangePush, useConflicts } from '@/hooks/useChangeGit'
+import { RemoteStatusBanner } from '@/components/git/RemoteStatusBanner'
+import { ConflictResolutionDialog, ConflictBanner } from '@/components/git/ConflictResolutionDialog'
 import type { Stage } from '@/types'
 
 interface ChangeDetailProps {
@@ -19,6 +35,36 @@ export function ChangeDetail({ projectId, changeId }: ChangeDetailProps) {
   const [copied, setCopied] = useState(false)
   const { data, isLoading, error } = useFlowChangeDetail(changeId)
   const { data: projectsData } = useProjectsAllData()
+
+  // Git 워크플로우 상태
+  const [showStartDialog, setShowStartDialog] = useState(false)
+  const [showCommitDialog, setShowCommitDialog] = useState(false)
+  const [showPushSettings, setShowPushSettings] = useState(false)
+  const [showCreatePR, setShowCreatePR] = useState(false)
+  const [showConflictDialog, setShowConflictDialog] = useState(false)
+  const [pushTiming, setPushTiming] = useState<PushTiming>('manual')
+
+  // Git 상태 조회
+  const { data: currentBranch } = useCurrentChangeBranch()
+  const changePush = useChangePush()
+
+  // 현재 Change 브랜치에 있는지 확인
+  const isOnChangeBranch = currentBranch?.isChangeBranch && currentBranch?.changeId === changeId
+  const branchName = `change/${changeId}`
+
+  // 충돌 상태 조회 (Change 브랜치에 있을 때만)
+  const { data: conflictsData } = useConflicts({ enabled: !!isOnChangeBranch })
+
+  // 푸시 핸들러
+  const handlePush = async () => {
+    try {
+      await changePush.mutateAsync({ changeId })
+      toast.success('푸시 완료')
+    } catch (error) {
+      toast.error('푸시 실패')
+      console.error('Push failed:', error)
+    }
+  }
 
   // 현재 프로젝트의 tasks.md 경로
   const currentProject = projectsData?.projects.find(
@@ -62,9 +108,109 @@ export function ChangeDetail({ projectId, changeId }: ChangeDetailProps) {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {/* 충돌 알림 배너 */}
+      {isOnChangeBranch && conflictsData?.hasConflicts && (
+        <ConflictBanner onOpenDialog={() => setShowConflictDialog(true)} />
+      )}
+
+      {/* 원격 상태 알림 배너 */}
+      {isOnChangeBranch && <RemoteStatusBanner autoCheck={true} checkInterval={60000} />}
+
       {/* Header */}
       <div className="space-y-2">
-        <h1 className="text-2xl font-bold">{change.title}</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">{change.title}</h1>
+
+          {/* Git Workflow Buttons */}
+          <TooltipProvider>
+            <div className="flex items-center gap-1">
+              {/* 브랜치 시작/전환 버튼 */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={isOnChangeBranch ? 'secondary' : 'outline'}
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => setShowStartDialog(true)}
+                  >
+                    <GitBranch className={`h-4 w-4 ${isOnChangeBranch ? 'text-green-600' : ''}`} />
+                    {isOnChangeBranch ? branchName : '브랜치 시작'}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isOnChangeBranch ? `현재 브랜치: ${branchName}` : '이 Change 작업을 위한 브랜치 생성/전환'}
+                </TooltipContent>
+              </Tooltip>
+
+              {/* 커밋 버튼 (브랜치에 있을 때만) */}
+              {isOnChangeBranch && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setShowCommitDialog(true)}
+                    >
+                      <GitCommit className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>커밋</TooltipContent>
+                </Tooltip>
+              )}
+
+              {/* 푸시 버튼 (브랜치에 있을 때만) */}
+              {isOnChangeBranch && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handlePush}
+                      disabled={changePush.isPending}
+                    >
+                      <Upload className={`h-4 w-4 ${changePush.isPending ? 'animate-pulse' : ''}`} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>푸시</TooltipContent>
+                </Tooltip>
+              )}
+
+              {/* 푸시 설정 버튼 */}
+              {isOnChangeBranch && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowPushSettings(true)}
+                    >
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>푸시 설정</TooltipContent>
+                </Tooltip>
+              )}
+
+              {/* PR 생성 버튼 (브랜치에 있을 때만) */}
+              {isOnChangeBranch && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 ml-2"
+                      onClick={() => setShowCreatePR(true)}
+                    >
+                      <GitPullRequest className="h-4 w-4" />
+                      PR 생성
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>GitHub Pull Request 생성</TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+          </TooltipProvider>
+        </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">진행률</span>
@@ -113,6 +259,47 @@ export function ChangeDetail({ projectId, changeId }: ChangeDetailProps) {
           specPath={change.specPath}
         />
       </div>
+
+      {/* Git Workflow Dialogs */}
+      <ChangeWorkflowDialog
+        changeId={changeId}
+        changeTitle={change.title}
+        open={showStartDialog}
+        onOpenChange={setShowStartDialog}
+      />
+      <ChangeCommitDialog
+        changeId={changeId}
+        changeTitle={change.title}
+        open={showCommitDialog}
+        onOpenChange={setShowCommitDialog}
+      />
+      <PushSettingsDialog
+        open={showPushSettings}
+        onOpenChange={setShowPushSettings}
+        currentTiming={pushTiming}
+        onTimingChange={setPushTiming}
+      />
+      <CreatePRDialog
+        changeId={changeId}
+        changeTitle={change.title}
+        open={showCreatePR}
+        onOpenChange={setShowCreatePR}
+        onSuccess={(url) => {
+          toast.success('PR이 생성되었습니다', {
+            action: {
+              label: '열기',
+              onClick: () => window.open(url, '_blank'),
+            },
+          })
+        }}
+      />
+      <ConflictResolutionDialog
+        open={showConflictDialog}
+        onOpenChange={setShowConflictDialog}
+        onResolved={() => {
+          toast.success('모든 충돌이 해결되었습니다')
+        }}
+      />
     </div>
   )
 }

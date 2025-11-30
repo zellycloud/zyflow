@@ -9,6 +9,7 @@
 export * from './commands.js'
 export * from './status.js'
 export * from './change-workflow.js'
+export * from './github.js'
 
 import { Router } from 'express'
 import {
@@ -24,6 +25,12 @@ import {
   gitStash,
   gitLog,
   gitDiff,
+  gitMerge,
+  gitMergeAbort,
+  gitCheckoutConflict,
+  gitConflictFiles,
+  gitShowConflict,
+  gitMergeContinue,
 } from './commands.js'
 import { getGitStatus, checkRemoteUpdates, detectPotentialConflicts } from './status.js'
 import {
@@ -37,6 +44,13 @@ import {
   getChangeBranchName,
   type CommitMessageStage,
 } from './change-workflow.js'
+import {
+  checkGhCliAuth,
+  getRepoInfo,
+  createPRForChange,
+  getCurrentPR,
+  listPullRequests,
+} from './github.js'
 import { getActiveProject } from '../config.js'
 
 export const gitRouter = Router()
@@ -707,5 +721,383 @@ gitRouter.get('/uncommitted', async (_req, res) => {
   } catch (error) {
     console.error('Error checking uncommitted changes:', error)
     res.status(500).json({ success: false, error: 'Failed to check uncommitted changes' })
+  }
+})
+
+// ==================== GitHub PR API ====================
+
+// GET /api/git/github/auth - gh CLI 인증 상태 확인
+gitRouter.get('/github/auth', async (_req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const authStatus = await checkGhCliAuth(projectPath)
+    const repoInfo = authStatus.authenticated ? await getRepoInfo(projectPath) : null
+
+    res.json({
+      success: true,
+      data: {
+        authenticated: authStatus.authenticated,
+        user: authStatus.user,
+        repo: repoInfo,
+        error: authStatus.error,
+      },
+    })
+  } catch (error) {
+    console.error('Error checking GitHub auth:', error)
+    res.status(500).json({ success: false, error: 'Failed to check GitHub auth' })
+  }
+})
+
+// GET /api/git/github/pr/current - 현재 브랜치의 PR 정보
+gitRouter.get('/github/pr/current', async (_req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const pr = await getCurrentPR(projectPath)
+
+    res.json({
+      success: true,
+      data: { pr },
+    })
+  } catch (error) {
+    console.error('Error getting current PR:', error)
+    res.status(500).json({ success: false, error: 'Failed to get current PR' })
+  }
+})
+
+// GET /api/git/github/pr/list - PR 목록 조회
+gitRouter.get('/github/pr/list', async (req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { state, limit } = req.query
+    const result = await listPullRequests(projectPath, {
+      state: state as 'open' | 'closed' | 'all',
+      limit: limit ? parseInt(limit as string, 10) : 10,
+    })
+
+    if (!result.success) {
+      return res.status(400).json({ success: false, error: result.error })
+    }
+
+    res.json({
+      success: true,
+      data: { prs: result.prs },
+    })
+  } catch (error) {
+    console.error('Error listing PRs:', error)
+    res.status(500).json({ success: false, error: 'Failed to list PRs' })
+  }
+})
+
+// POST /api/git/github/pr/create - Change에서 PR 생성
+gitRouter.post('/github/pr/create', async (req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { changeId, changeTitle, baseBranch, draft, description } = req.body
+
+    if (!changeId || !changeTitle) {
+      return res.status(400).json({
+        success: false,
+        error: 'changeId and changeTitle are required',
+      })
+    }
+
+    const result = await createPRForChange(projectPath, changeId, changeTitle, {
+      baseBranch,
+      draft,
+      description,
+    })
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+      })
+    }
+
+    res.json({
+      success: true,
+      data: {
+        pr: result.pr,
+        url: result.url,
+      },
+    })
+  } catch (error) {
+    console.error('Error creating PR:', error)
+    res.status(500).json({ success: false, error: 'Failed to create PR' })
+  }
+})
+
+// ==================== Conflict Resolution API ====================
+
+// GET /api/git/conflicts - 현재 충돌 파일 목록 조회
+gitRouter.get('/conflicts', async (_req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const result = await gitConflictFiles(projectPath)
+    const files = result.stdout.split('\n').filter(Boolean)
+    const status = await getGitStatus(projectPath)
+
+    res.json({
+      success: true,
+      data: {
+        hasConflicts: files.length > 0 || status.hasConflicts,
+        files: files.length > 0 ? files : status.conflictFiles,
+      },
+    })
+  } catch (error) {
+    console.error('Error getting conflict files:', error)
+    res.status(500).json({ success: false, error: 'Failed to get conflict files' })
+  }
+})
+
+// GET /api/git/conflicts/:file - 특정 충돌 파일 내용 조회
+gitRouter.get('/conflicts/:file(*)', async (req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { file } = req.params
+    const result = await gitShowConflict(projectPath, file)
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || result.stderr,
+      })
+    }
+
+    res.json({
+      success: true,
+      data: {
+        file,
+        content: result.stdout,
+      },
+    })
+  } catch (error) {
+    console.error('Error getting conflict content:', error)
+    res.status(500).json({ success: false, error: 'Failed to get conflict content' })
+  }
+})
+
+// POST /api/git/conflicts/resolve - 충돌 파일 해결 (ours/theirs 선택)
+gitRouter.post('/conflicts/resolve', async (req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { file, strategy } = req.body
+
+    if (!file) {
+      return res.status(400).json({ success: false, error: 'file is required' })
+    }
+    if (!strategy || !['ours', 'theirs'].includes(strategy)) {
+      return res.status(400).json({
+        success: false,
+        error: 'strategy must be "ours" or "theirs"',
+      })
+    }
+
+    const result = await gitCheckoutConflict(projectPath, file, strategy)
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || result.stderr,
+      })
+    }
+
+    // 해결된 파일을 staging
+    const addResult = await gitAdd(projectPath, [file])
+    if (!addResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: addResult.error || addResult.stderr,
+      })
+    }
+
+    res.json({
+      success: true,
+      data: {
+        file,
+        strategy,
+        message: `Conflict resolved using ${strategy} version`,
+      },
+    })
+  } catch (error) {
+    console.error('Error resolving conflict:', error)
+    res.status(500).json({ success: false, error: 'Failed to resolve conflict' })
+  }
+})
+
+// POST /api/git/conflicts/mark-resolved - 수동 편집 후 충돌 해결 마킹
+gitRouter.post('/conflicts/mark-resolved', async (req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { file } = req.body
+
+    if (!file) {
+      return res.status(400).json({ success: false, error: 'file is required' })
+    }
+
+    // 파일을 staging 영역에 추가
+    const addResult = await gitAdd(projectPath, [file])
+
+    if (!addResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: addResult.error || addResult.stderr,
+      })
+    }
+
+    res.json({
+      success: true,
+      data: {
+        file,
+        message: 'Conflict marked as resolved',
+      },
+    })
+  } catch (error) {
+    console.error('Error marking conflict resolved:', error)
+    res.status(500).json({ success: false, error: 'Failed to mark conflict resolved' })
+  }
+})
+
+// POST /api/git/merge/abort - Merge 중단
+gitRouter.post('/merge/abort', async (_req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const result = await gitMergeAbort(projectPath)
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || result.stderr,
+      })
+    }
+
+    res.json({
+      success: true,
+      data: { message: 'Merge aborted successfully' },
+    })
+  } catch (error) {
+    console.error('Error aborting merge:', error)
+    res.status(500).json({ success: false, error: 'Failed to abort merge' })
+  }
+})
+
+// POST /api/git/merge/continue - 충돌 해결 후 Merge 계속
+gitRouter.post('/merge/continue', async (_req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    // 남은 충돌이 있는지 확인
+    const conflictResult = await gitConflictFiles(projectPath)
+    const remainingConflicts = conflictResult.stdout.split('\n').filter(Boolean)
+
+    if (remainingConflicts.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'There are still unresolved conflicts',
+        remainingConflicts,
+      })
+    }
+
+    const result = await gitMergeContinue(projectPath)
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || result.stderr,
+      })
+    }
+
+    res.json({
+      success: true,
+      data: { message: 'Merge completed successfully' },
+    })
+  } catch (error) {
+    console.error('Error continuing merge:', error)
+    res.status(500).json({ success: false, error: 'Failed to continue merge' })
+  }
+})
+
+// POST /api/git/merge - Merge 실행
+gitRouter.post('/merge', async (req, res) => {
+  try {
+    const projectPath = await getProjectPath()
+    if (!projectPath) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { branch, noCommit, noFf } = req.body
+
+    if (!branch) {
+      return res.status(400).json({ success: false, error: 'branch is required' })
+    }
+
+    const result = await gitMerge(projectPath, branch, { noCommit, noFf })
+
+    if (!result.success) {
+      // 충돌 발생 시
+      if (result.stderr?.includes('CONFLICT') || result.stdout?.includes('CONFLICT')) {
+        const conflictResult = await gitConflictFiles(projectPath)
+        const conflictFiles = conflictResult.stdout.split('\n').filter(Boolean)
+
+        return res.status(409).json({
+          success: false,
+          error: 'Merge conflicts detected',
+          hasConflicts: true,
+          conflictFiles,
+        })
+      }
+
+      return res.status(400).json({
+        success: false,
+        error: result.error || result.stderr,
+      })
+    }
+
+    res.json({
+      success: true,
+      data: { message: result.stdout || 'Merge successful' },
+    })
+  } catch (error) {
+    console.error('Error merging:', error)
+    res.status(500).json({ success: false, error: 'Failed to merge' })
   }
 })

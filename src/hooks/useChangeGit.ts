@@ -315,3 +315,413 @@ export function useChangeGitWorkflow(changeId: string | null) {
     },
   }
 }
+
+// ==================== GitHub PR 관련 훅 ====================
+
+export interface GitHubAuthStatus {
+  authenticated: boolean
+  user?: string
+  repo?: { owner: string; repo: string } | null
+  error?: string
+}
+
+export interface PullRequestInfo {
+  number: number
+  url: string
+  title: string
+  state: string
+  headBranch: string
+  baseBranch: string
+}
+
+// GitHub 인증 상태 확인
+async function fetchGitHubAuth(): Promise<GitHubAuthStatus> {
+  const response = await fetch('/api/git/github/auth')
+  const json: ApiResponse<GitHubAuthStatus> = await response.json()
+
+  if (!json.success || !json.data) {
+    throw new Error(json.error || 'Failed to check GitHub auth')
+  }
+
+  return json.data
+}
+
+export function useGitHubAuth() {
+  return useQuery({
+    queryKey: ['github', 'auth'],
+    queryFn: fetchGitHubAuth,
+    staleTime: 60000, // 1분간 캐시
+  })
+}
+
+// 현재 브랜치의 PR 정보
+async function fetchCurrentPR(): Promise<{ pr: PullRequestInfo | null }> {
+  const response = await fetch('/api/git/github/pr/current')
+  const json: ApiResponse<{ pr: PullRequestInfo | null }> = await response.json()
+
+  if (!json.success) {
+    throw new Error(json.error || 'Failed to get current PR')
+  }
+
+  return json.data!
+}
+
+export function useCurrentPR() {
+  return useQuery({
+    queryKey: ['github', 'pr', 'current'],
+    queryFn: fetchCurrentPR,
+  })
+}
+
+// PR 생성
+interface CreatePROptions {
+  changeId: string
+  changeTitle: string
+  baseBranch?: string
+  draft?: boolean
+  description?: string
+}
+
+async function createPR(options: CreatePROptions): Promise<{ pr: PullRequestInfo; url: string }> {
+  const response = await fetch('/api/git/github/pr/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(options),
+  })
+  const json: ApiResponse<{ pr: PullRequestInfo; url: string }> = await response.json()
+
+  if (!json.success) {
+    throw new Error(json.error || 'Failed to create PR')
+  }
+
+  return json.data!
+}
+
+export function useCreatePR() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: createPR,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['github', 'pr'] })
+    },
+  })
+}
+
+// ==================== 원격 상태 모니터링 훅 ====================
+
+export interface RemoteUpdate {
+  hasUpdates: boolean
+  behind: number
+  remoteCommits: { hash: string; message: string }[]
+}
+
+export interface PotentialConflict {
+  hasPotentialConflicts: boolean
+  files: string[]
+}
+
+// 원격 업데이트 확인
+async function fetchRemoteUpdates(): Promise<RemoteUpdate> {
+  const response = await fetch('/api/git/remote-updates')
+  const json: ApiResponse<RemoteUpdate> = await response.json()
+
+  if (!json.success || !json.data) {
+    throw new Error(json.error || 'Failed to check remote updates')
+  }
+
+  return json.data
+}
+
+export function useRemoteUpdates(options?: { enabled?: boolean; refetchInterval?: number }) {
+  return useQuery({
+    queryKey: ['git', 'remote-updates'],
+    queryFn: fetchRemoteUpdates,
+    enabled: options?.enabled ?? true,
+    refetchInterval: options?.refetchInterval ?? 60000, // 기본 1분마다 체크
+    staleTime: 30000, // 30초간 캐시
+  })
+}
+
+// 충돌 가능성 감지
+async function fetchPotentialConflicts(): Promise<PotentialConflict> {
+  const response = await fetch('/api/git/potential-conflicts')
+  const json: ApiResponse<PotentialConflict> = await response.json()
+
+  if (!json.success || !json.data) {
+    throw new Error(json.error || 'Failed to detect conflicts')
+  }
+
+  return json.data
+}
+
+export function usePotentialConflicts(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['git', 'potential-conflicts'],
+    queryFn: fetchPotentialConflicts,
+    enabled: options?.enabled ?? false, // 기본 비활성화 (수동으로 트리거)
+    staleTime: 60000,
+  })
+}
+
+// Git fetch 실행
+async function gitFetch(): Promise<{ message: string }> {
+  const response = await fetch('/api/git/fetch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  })
+  const json: ApiResponse<{ message: string }> = await response.json()
+
+  if (!json.success) {
+    throw new Error(json.error || 'Failed to fetch')
+  }
+
+  return json.data!
+}
+
+export function useGitFetch() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: gitFetch,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['git', 'status'] })
+      queryClient.invalidateQueries({ queryKey: ['git', 'remote-updates'] })
+    },
+  })
+}
+
+// Git pull 실행
+async function gitPull(): Promise<{ message: string }> {
+  const response = await fetch('/api/git/pull', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  })
+  const json: ApiResponse<{ message: string }> = await response.json()
+
+  if (!json.success) {
+    throw new Error(json.error || 'Failed to pull')
+  }
+
+  return json.data!
+}
+
+export function useGitPull() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: gitPull,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['git'] })
+    },
+  })
+}
+
+// ==================== 충돌 해결 훅 ====================
+
+export interface ConflictFile {
+  file: string
+  content?: string
+}
+
+export interface ConflictInfo {
+  hasConflicts: boolean
+  files: string[]
+}
+
+// 현재 충돌 파일 목록 조회
+async function fetchConflicts(): Promise<ConflictInfo> {
+  const response = await fetch('/api/git/conflicts')
+  const json: ApiResponse<ConflictInfo> = await response.json()
+
+  if (!json.success || !json.data) {
+    throw new Error(json.error || 'Failed to get conflicts')
+  }
+
+  return json.data
+}
+
+export function useConflicts(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['git', 'conflicts'],
+    queryFn: fetchConflicts,
+    enabled: options?.enabled ?? true,
+    refetchInterval: 5000, // 5초마다 확인
+  })
+}
+
+// 특정 충돌 파일 내용 조회
+async function fetchConflictFile(file: string): Promise<ConflictFile> {
+  const response = await fetch(`/api/git/conflicts/${encodeURIComponent(file)}`)
+  const json: ApiResponse<ConflictFile> = await response.json()
+
+  if (!json.success || !json.data) {
+    throw new Error(json.error || 'Failed to get conflict file')
+  }
+
+  return json.data
+}
+
+export function useConflictFile(file: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['git', 'conflicts', file],
+    queryFn: () => fetchConflictFile(file),
+    enabled: (options?.enabled ?? true) && !!file,
+  })
+}
+
+// 충돌 해결 (ours/theirs)
+interface ResolveConflictOptions {
+  file: string
+  strategy: 'ours' | 'theirs'
+}
+
+async function resolveConflict(options: ResolveConflictOptions): Promise<{ file: string; strategy: string; message: string }> {
+  const response = await fetch('/api/git/conflicts/resolve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(options),
+  })
+  const json: ApiResponse<{ file: string; strategy: string; message: string }> = await response.json()
+
+  if (!json.success) {
+    throw new Error(json.error || 'Failed to resolve conflict')
+  }
+
+  return json.data!
+}
+
+export function useResolveConflict() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: resolveConflict,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['git', 'conflicts'] })
+      queryClient.invalidateQueries({ queryKey: ['git', 'status'] })
+    },
+  })
+}
+
+// 수동 편집 후 충돌 해결 마킹
+async function markConflictResolved(file: string): Promise<{ file: string; message: string }> {
+  const response = await fetch('/api/git/conflicts/mark-resolved', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file }),
+  })
+  const json: ApiResponse<{ file: string; message: string }> = await response.json()
+
+  if (!json.success) {
+    throw new Error(json.error || 'Failed to mark conflict resolved')
+  }
+
+  return json.data!
+}
+
+export function useMarkConflictResolved() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: markConflictResolved,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['git', 'conflicts'] })
+      queryClient.invalidateQueries({ queryKey: ['git', 'status'] })
+    },
+  })
+}
+
+// Merge 중단
+async function abortMerge(): Promise<{ message: string }> {
+  const response = await fetch('/api/git/merge/abort', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  })
+  const json: ApiResponse<{ message: string }> = await response.json()
+
+  if (!json.success) {
+    throw new Error(json.error || 'Failed to abort merge')
+  }
+
+  return json.data!
+}
+
+export function useAbortMerge() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: abortMerge,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['git'] })
+    },
+  })
+}
+
+// Merge 계속 (충돌 해결 후)
+async function continueMerge(): Promise<{ message: string }> {
+  const response = await fetch('/api/git/merge/continue', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  })
+  const json: ApiResponse<{ message: string }> & { remainingConflicts?: string[] } = await response.json()
+
+  if (!json.success) {
+    const error = new Error(json.error || 'Failed to continue merge') as Error & {
+      remainingConflicts?: string[]
+    }
+    error.remainingConflicts = json.remainingConflicts
+    throw error
+  }
+
+  return json.data!
+}
+
+export function useContinueMerge() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: continueMerge,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['git'] })
+    },
+  })
+}
+
+// 통합 충돌 해결 훅
+export function useConflictResolution() {
+  const conflicts = useConflicts()
+  const resolveConflict = useResolveConflict()
+  const markResolved = useMarkConflictResolved()
+  const abortMerge = useAbortMerge()
+  const continueMerge = useContinueMerge()
+
+  return {
+    // 상태
+    hasConflicts: conflicts.data?.hasConflicts ?? false,
+    conflictFiles: conflicts.data?.files ?? [],
+    isLoading: conflicts.isLoading,
+
+    // 액션
+    resolveWithOurs: (file: string) => resolveConflict.mutateAsync({ file, strategy: 'ours' }),
+    resolveWithTheirs: (file: string) => resolveConflict.mutateAsync({ file, strategy: 'theirs' }),
+    markAsResolved: (file: string) => markResolved.mutateAsync(file),
+    abortMerge: () => abortMerge.mutateAsync(),
+    continueMerge: () => continueMerge.mutateAsync(),
+
+    // 액션 상태
+    isResolving: resolveConflict.isPending,
+    isMarking: markResolved.isPending,
+    isAborting: abortMerge.isPending,
+    isContinuing: continueMerge.isPending,
+
+    // 에러
+    error: conflicts.error || resolveConflict.error || markResolved.error || abortMerge.error || continueMerge.error,
+
+    // 새로고침
+    refetch: conflicts.refetch,
+  }
+}

@@ -379,3 +379,204 @@ export function PushSettingsDialog({
     </Dialog>
   )
 }
+
+// ==================== PR 생성 다이얼로그 ====================
+
+import { useGitHubAuth, useCurrentPR, useCreatePR } from '@/hooks/useChangeGit'
+import { ExternalLink, Github, AlertCircle } from 'lucide-react'
+
+interface CreatePRDialogProps {
+  changeId: string
+  changeTitle: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSuccess?: (url: string) => void
+}
+
+export function CreatePRDialog({
+  changeId,
+  changeTitle,
+  open,
+  onOpenChange,
+  onSuccess,
+}: CreatePRDialogProps) {
+  const [baseBranch, setBaseBranch] = useState('main')
+  const [isDraft, setIsDraft] = useState(false)
+  const [description, setDescription] = useState('')
+
+  const { data: authStatus, isLoading: authLoading } = useGitHubAuth()
+  const { data: currentPR } = useCurrentPR()
+  const createPR = useCreatePR()
+
+  const handleCreatePR = async () => {
+    try {
+      const result = await createPR.mutateAsync({
+        changeId,
+        changeTitle,
+        baseBranch,
+        draft: isDraft,
+        description: description.trim() || undefined,
+      })
+      onSuccess?.(result.url)
+      onOpenChange(false)
+    } catch (error) {
+      console.error('Failed to create PR:', error)
+    }
+  }
+
+  // 이미 PR이 있는 경우
+  const existingPR = currentPR?.pr
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Github className="h-5 w-5" />
+            Pull Request 생성
+          </DialogTitle>
+          <DialogDescription>
+            {changeTitle}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {/* GitHub 인증 상태 */}
+          {authLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              GitHub 인증 확인 중...
+            </div>
+          ) : !authStatus?.authenticated ? (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                GitHub CLI가 인증되지 않았습니다.
+                <br />
+                터미널에서 <code className="bg-muted px-1 rounded">gh auth login</code>을 실행하세요.
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              ✓ {authStatus.user}로 로그인됨
+              {authStatus.repo && (
+                <span className="ml-2">
+                  ({authStatus.repo.owner}/{authStatus.repo.repo})
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* 이미 PR이 있는 경우 */}
+          {existingPR && (
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="space-y-2">
+                <p>이 브랜치에 이미 PR이 있습니다:</p>
+                <a
+                  href={existingPR.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-blue-600 hover:underline"
+                >
+                  #{existingPR.number} {existingPR.title}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* PR 정보 입력 */}
+          {authStatus?.authenticated && !existingPR && (
+            <>
+              {/* Base Branch */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Base Branch</label>
+                <input
+                  type="text"
+                  value={baseBranch}
+                  onChange={(e) => setBaseBranch(e.target.value)}
+                  placeholder="main"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  PR을 병합할 대상 브랜치
+                </p>
+              </div>
+
+              {/* Description */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">설명 (선택)</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="PR에 대한 추가 설명..."
+                  className="w-full rounded-md border px-3 py-2 text-sm min-h-[80px]"
+                />
+              </div>
+
+              {/* Draft 옵션 */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="draft-option"
+                  checked={isDraft}
+                  onChange={(e) => setIsDraft(e.target.checked)}
+                  className="rounded"
+                />
+                <label htmlFor="draft-option" className="text-sm cursor-pointer">
+                  Draft PR로 생성
+                </label>
+              </div>
+
+              {/* PR 제목 미리보기 */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">PR 제목</label>
+                <code className="block bg-muted p-3 rounded-md text-sm">
+                  [{changeId}] {changeTitle}
+                </code>
+              </div>
+            </>
+          )}
+
+          {/* 에러 표시 */}
+          {createPR.error && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                {(createPR.error as Error).message}
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            취소
+          </Button>
+          {existingPR ? (
+            <Button asChild>
+              <a href={existingPR.url} target="_blank" rel="noopener noreferrer">
+                PR 열기 <ExternalLink className="ml-2 h-4 w-4" />
+              </a>
+            </Button>
+          ) : (
+            <Button
+              onClick={handleCreatePR}
+              disabled={!authStatus?.authenticated || createPR.isPending}
+            >
+              {createPR.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  생성 중...
+                </>
+              ) : (
+                'PR 생성'
+              )}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
