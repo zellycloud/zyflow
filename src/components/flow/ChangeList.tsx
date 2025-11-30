@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Loader2, FolderOpen } from 'lucide-react'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { ChangeItem } from './ChangeItem'
 import { useFlowChanges, useSyncFlowChanges } from '@/hooks/useFlowChanges'
 
@@ -61,16 +62,18 @@ export function ChangeList() {
           <p className="text-sm mt-1">openspec/changes 디렉토리에 proposal을 추가하세요</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {changes.map((change) => (
-            <ChangeItem
-              key={change.id}
-              change={change}
-              isExpanded={expandedIds.has(change.id)}
-              onToggle={() => handleToggle(change.id)}
-            />
-          ))}
-        </div>
+        <TooltipProvider>
+          <div className="space-y-2">
+            {changes.map((change) => (
+              <ChangeItem
+                key={change.id}
+                change={change}
+                isExpanded={expandedIds.has(change.id)}
+                onToggle={() => handleToggle(change.id)}
+              />
+            ))}
+          </div>
+        </TooltipProvider>
       )}
     </div>
   )
