@@ -51,6 +51,18 @@ app.use(express.json())
 // Git API 라우터 등록
 app.use('/api/git', gitRouter)
 
+// Health check endpoint
+app.get('/api/health', (_req, res) => {
+  res.json({
+    success: true,
+    data: {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    },
+  })
+})
+
 // Helper to get paths for active project
 async function getProjectPaths() {
   const project = await getActiveProject()
@@ -1532,17 +1544,19 @@ app.post('/api/flow/sync', async (_req, res) => {
             `).get(changeId, task.title) as { id: number } | undefined
 
             if (existingTask) {
-              // Update existing task with 3-level hierarchy info
+              // Update existing task with status and 3-level hierarchy info
+              const newStatus = task.completed ? 'done' : 'todo'
               sqlite.prepare(`
                 UPDATE tasks
-                SET group_title = ?,
+                SET status = ?,
+                    group_title = ?,
                     group_order = ?,
                     task_order = ?,
                     major_title = ?,
                     sub_order = ?,
                     updated_at = ?
                 WHERE id = ?
-              `).run(groupTitle, majorOrder, taskOrder, majorTitle, subOrder, now, existingTask.id)
+              `).run(newStatus, groupTitle, majorOrder, taskOrder, majorTitle, subOrder, now, existingTask.id)
             } else {
               sqlite.prepare(`
                 INSERT INTO tasks (
@@ -1583,11 +1597,16 @@ app.post('/api/flow/sync', async (_req, res) => {
 app.get('/api/flow/tasks', async (req, res) => {
   try {
     await initTaskDb()
-    const { changeId, stage, status, standalone } = req.query
+    const { changeId, stage, status, standalone, includeArchived } = req.query
+
+    const project = await getActiveProject()
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
 
     const sqlite = getSqlite()
-    let sql = 'SELECT * FROM tasks WHERE 1=1'
-    const params: unknown[] = []
+    let sql = 'SELECT * FROM tasks WHERE project_id = ?'
+    const params: unknown[] = [project.id]
 
     if (standalone === 'true') {
       sql += ' AND change_id IS NULL'
@@ -1604,7 +1623,7 @@ app.get('/api/flow/tasks', async (req, res) => {
     if (status) {
       sql += ' AND status = ?'
       params.push(status)
-    } else {
+    } else if (includeArchived !== 'true') {
       sql += " AND status != 'archived'"
     }
 
@@ -1653,6 +1672,10 @@ app.get('/api/flow/tasks', async (req, res) => {
 app.post('/api/flow/tasks', async (req, res) => {
   try {
     await initTaskDb()
+    const project = await getActiveProject()
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
     const { changeId, stage, title, description, priority } = req.body
 
     if (!title) {
@@ -1663,9 +1686,10 @@ app.post('/api/flow/tasks', async (req, res) => {
     const now = Date.now()
 
     const result = sqlite.prepare(`
-      INSERT INTO tasks (change_id, stage, title, description, status, priority, "order", created_at, updated_at)
-      VALUES (?, ?, ?, ?, 'todo', ?, 0, ?, ?)
+      INSERT INTO tasks (project_id, change_id, stage, title, description, status, priority, "order", created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'todo', ?, 0, ?, ?)
     `).run(
+      project.id,
       changeId || null,
       stage || 'task',
       title,

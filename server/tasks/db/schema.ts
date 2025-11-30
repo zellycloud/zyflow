@@ -39,6 +39,8 @@ export type NewChange = typeof changes.$inferInsert;
 // =============================================
 export const tasks = sqliteTable('tasks', {
   id: integer('id').primaryKey(),
+  // 프로젝트 식별자 (필수 - 프로젝트별 칸반 분리)
+  projectId: text('project_id').notNull(),
   // Flow 연결 필드 (nullable - 독립 태스크 지원)
   changeId: text('change_id'), // changes.id 참조, null이면 독립 태스크
   stage: text('stage', {

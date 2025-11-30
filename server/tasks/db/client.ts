@@ -6,6 +6,7 @@ import { dirname, join } from 'path';
 
 let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 let sqlite: Database.Database | null = null;
+let currentDbPath: string | null = null;
 
 export function getDbPath(projectRoot?: string): string {
   const root = projectRoot || process.cwd();
@@ -13,9 +14,15 @@ export function getDbPath(projectRoot?: string): string {
 }
 
 export function initDb(projectRoot?: string): ReturnType<typeof drizzle<typeof schema>> {
+  const dbPath = getDbPath(projectRoot);
+
+  // 다른 프로젝트의 DB로 전환해야 하는 경우 기존 연결 닫기
+  if (db && currentDbPath && currentDbPath !== dbPath) {
+    closeDb();
+  }
+
   if (db) return db;
 
-  const dbPath = getDbPath(projectRoot);
   const dbDir = dirname(dbPath);
 
   // Ensure .zyflow directory exists
@@ -131,6 +138,26 @@ export function initDb(projectRoot?: string): ReturnType<typeof drizzle<typeof s
     // Column already exists, ignore
   }
 
+  
+  // Migration: Add project_id column for project-based task isolation
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN project_id TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Set default project_id for existing tasks
+  try {
+    sqlite.exec(`
+      UPDATE tasks
+      SET project_id = (SELECT project_id FROM changes WHERE changes.id = tasks.change_id)
+      WHERE project_id IS NULL AND change_id IS NOT NULL
+    `);
+    sqlite.exec(`UPDATE tasks SET project_id = 'default' WHERE project_id IS NULL`);
+  } catch (e) {
+    console.error('Migration warning (project_id update):', e);
+  }
+
   // Migration: Convert TEXT id to INTEGER id
   // This handles migration from TASK-1 format to pure numeric IDs
   try {
@@ -224,6 +251,7 @@ export function initDb(projectRoot?: string): ReturnType<typeof drizzle<typeof s
   `);
 
   db = drizzle(sqlite, { schema });
+  currentDbPath = dbPath;
   return db;
 }
 
@@ -246,5 +274,6 @@ export function closeDb(): void {
     sqlite.close();
     sqlite = null;
     db = null;
+    currentDbPath = null;
   }
 }

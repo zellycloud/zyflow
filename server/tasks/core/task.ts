@@ -3,6 +3,7 @@ import { getDb, getSqlite } from '../db/client.js';
 import { tasks, Task, NewTask, TaskStatus, TaskPriority } from '../db/schema.js';
 
 export interface CreateTaskInput {
+  projectId: string;
   title: string;
   description?: string;
   status?: TaskStatus;
@@ -22,6 +23,7 @@ export interface UpdateTaskInput {
 }
 
 export interface ListTasksOptions {
+  projectId?: string;
   status?: TaskStatus | TaskStatus[];
   priority?: TaskPriority;
   tags?: string[];
@@ -51,6 +53,7 @@ export function createTask(input: CreateTaskInput): Task {
 
   const newTask: NewTask = {
     id: taskId,
+    projectId: input.projectId,
     title: input.title,
     description: input.description,
     status: input.status || 'todo',
@@ -81,6 +84,10 @@ export function listTasks(options: ListTasksOptions = {}): Task[] {
   // 기본적으로 archived 제외 (includeArchived가 true가 아닌 경우)
   if (!options.includeArchived) {
     conditions.push(ne(tasks.status, 'archived'));
+  }
+
+  if (options.projectId) {
+    conditions.push(eq(tasks.projectId, options.projectId));
   }
 
   if (options.status) {
@@ -180,8 +187,8 @@ export function moveTask(id: number | string, status: TaskStatus, order?: number
   return updateTask(id, { status, order });
 }
 
-export function getTasksByStatus(includeArchived = false): Record<TaskStatus, Task[]> {
-  const allTasks = listTasks({ orderBy: 'order', orderDir: 'asc', includeArchived });
+export function getTasksByStatus(projectId?: string, includeArchived = false): Record<TaskStatus, Task[]> {
+  const allTasks = listTasks({ projectId, orderBy: 'order', orderDir: 'asc', includeArchived });
 
   const result: Record<TaskStatus, Task[]> = {
     'todo': [],
