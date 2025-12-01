@@ -25,6 +25,9 @@ interface CreateTaskInput {
   priority?: TaskPriority;
   tags?: string[];
   assignee?: string;
+  groupTitle?: string;
+  groupOrder?: number;
+  taskOrder?: number;
 }
 
 interface UpdateTaskInput {
@@ -35,6 +38,9 @@ interface UpdateTaskInput {
   tags?: string[];
   assignee?: string;
   order?: number;
+  groupTitle?: string;
+  groupOrder?: number;
+  taskOrder?: number;
 }
 
 async function fetchKanbanTasks(): Promise<Task[]> {
@@ -106,12 +112,16 @@ async function archiveTaskApi(id: number): Promise<Task> {
   return data.data.task;
 }
 
-export function useKanbanTasks() {
+export function useKanbanTasks(options?: { enabled?: boolean }) {
+  const { enabled = true } = options || {}
   const queryClient = useQueryClient();
 
   const { data: tasks = [], isLoading, refetch } = useQuery({
     queryKey: ['kanban-tasks'],
     queryFn: fetchKanbanTasks,
+    enabled,
+    staleTime: 30000, // 30초간 데이터 신선하게 유지
+    gcTime: 300000, // 5분 후 메모리에서 정리
   });
 
   const createMutation = useMutation({
@@ -143,6 +153,16 @@ export function useKanbanTasks() {
     },
   });
 
+  // 선택된 태스크 상태 관리
+  const selectTask = (taskId: number) => {
+    // 태스크 선택 시 관련 데이터 미리 가져오기
+    queryClient.prefetchQuery({
+      queryKey: ['kanban-tasks', taskId],
+      queryFn: () => fetchKanbanTasks().then(tasks => tasks.find(t => t.id === taskId)),
+      staleTime: 30000
+    })
+  }
+
   return {
     tasks,
     isLoading,
@@ -152,6 +172,7 @@ export function useKanbanTasks() {
       updateMutation.mutateAsync({ id, ...data }),
     deleteTask: deleteMutation.mutateAsync,
     archiveTask: archiveMutation.mutateAsync,
+    selectTask,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
     isDeleting: deleteMutation.isPending,

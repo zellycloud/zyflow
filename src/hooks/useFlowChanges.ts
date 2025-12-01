@@ -1,5 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { FlowChange, FlowTask, Stage, ApiResponse, FlowSyncResponse } from '@/types'
+import type {
+  FlowChange,
+  FlowTask,
+  Stage,
+  ApiResponse,
+  FlowSyncResponse,
+  FlowChangeCountsResponse,
+  ProjectChangeCounts
+} from '@/types'
 
 const API_BASE = 'http://localhost:3001/api'
 
@@ -16,7 +24,9 @@ interface FlowChangeDetailData {
   stages: Record<Stage, { total: number; completed: number; tasks: FlowTask[] }>
 }
 
-export function useFlowChanges() {
+export function useFlowChanges(options?: { enabled?: boolean }) {
+  const { enabled = true } = options || {}
+  
   return useQuery({
     queryKey: ['flow', 'changes'],
     queryFn: async (): Promise<FlowChange[]> => {
@@ -25,6 +35,9 @@ export function useFlowChanges() {
       if (!json.success) throw new Error(json.error)
       return json.data?.changes ?? []
     },
+    enabled,
+    staleTime: 30000, // 30초간 데이터 신선하게 유지
+    gcTime: 300000, // 5분 후 메모리에서 정리
   })
 }
 
@@ -69,15 +82,46 @@ interface FlowChangeCounts {
   counts: Record<string, number>
 }
 
-export function useFlowChangeCounts() {
+export function useFlowChangeCounts(options?: {
+  status?: 'active' | 'completed' | 'all'
+  enabled?: boolean
+}) {
+  const { status = 'active', enabled = true } = options || {}
+  
   return useQuery({
-    queryKey: ['flow', 'changes', 'counts'],
+    queryKey: ['flow', 'changes', 'counts', status],
     queryFn: async (): Promise<Record<string, number>> => {
-      const res = await fetch(`${API_BASE}/flow/changes/counts`)
-      const json: ApiResponse<FlowChangeCounts> = await res.json()
+      const params = new URLSearchParams()
+      if (status !== 'active') params.set('status', status)
+      
+      const res = await fetch(`${API_BASE}/flow/changes/counts?${params}`)
+      const json: ApiResponse<FlowChangeCountsResponse> = await res.json()
       if (!json.success) throw new Error(json.error)
       return json.data?.counts ?? {}
     },
+    enabled,
+    staleTime: 30000, // 30초간 데이터 신선하게 유지
+    gcTime: 300000, // 5분 후 메모리에서 정리
+  })
+}
+
+// 프로젝트별 상세 Change 집계 (active/completed/total)
+export function useFlowChangeCountsDetailed(options?: {
+  enabled?: boolean
+}) {
+  const { enabled = true } = options || {}
+  
+  return useQuery({
+    queryKey: ['flow', 'changes', 'counts', 'detailed'],
+    queryFn: async (): Promise<Record<string, ProjectChangeCounts>> => {
+      const res = await fetch(`${API_BASE}/flow/changes/counts`)
+      const json: ApiResponse<FlowChangeCountsResponse> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data?.detailed ?? {}
+    },
+    enabled,
+    staleTime: 30000, // 30초간 데이터 신선하게 유지
+    gcTime: 300000, // 5분 후 메모리에서 정리
   })
 }
 
@@ -97,7 +141,8 @@ interface FlowTaskFilters {
   includeArchived?: boolean
 }
 
-export function useFlowTasks(filters: FlowTaskFilters = {}) {
+export function useFlowTasks(filters: FlowTaskFilters = {}, options?: { enabled?: boolean }) {
+  const { enabled = true } = options || {}
   const params = new URLSearchParams()
   if (filters.changeId) params.set('changeId', filters.changeId)
   if (filters.stage) params.set('stage', filters.stage)
@@ -113,6 +158,9 @@ export function useFlowTasks(filters: FlowTaskFilters = {}) {
       if (!json.success) throw new Error(json.error)
       return json.data?.tasks ?? []
     },
+    enabled,
+    staleTime: 30000, // 30초간 데이터 신선하게 유지
+    gcTime: 300000, // 5분 후 메모리에서 정리
   })
 }
 
@@ -122,6 +170,9 @@ interface CreateFlowTaskInput {
   title: string
   description?: string
   priority?: 'low' | 'medium' | 'high'
+  groupTitle?: string
+  groupOrder?: number
+  taskOrder?: number
 }
 
 export function useCreateFlowTask() {
@@ -249,6 +300,85 @@ export function useChangeSpecContent(changeId: string | null, specId: string | n
 }
 
 // =============================================
+// 선택 상태 관리 훅
+// =============================================
+
+export interface SelectedItem {
+  type: 'project' | 'change' | 'standalone-tasks'
+  projectId: string
+  changeId?: string
+}
+
+export function useSelectedItem() {
+  const queryClient = useQueryClient()
+  
+  // 선택 상태 변경 시 관련 쿼리들 미리 가져오기
+  const selectItem = (item: SelectedItem | null) => {
+    if (!item) return
+    
+    // 프로젝트 활성화
+    queryClient.invalidateQueries({
+      queryKey: ['projects'],
+      refetchType: 'active'
+    })
+    
+    // 관련 데이터 미리 가져오기
+    switch (item.type) {
+      case 'project':
+        queryClient.prefetchQuery({
+          queryKey: ['flow', 'changes'],
+          staleTime: 30000
+        })
+        queryClient.prefetchQuery({
+          queryKey: ['flow', 'tasks', { standalone: true }],
+          staleTime: 30000
+        })
+        break
+        
+      case 'change':
+        queryClient.prefetchQuery({
+          queryKey: ['flow', 'changes', item.changeId],
+          staleTime: 30000
+        })
+        queryClient.prefetchQuery({
+          queryKey: ['flow', 'tasks', { changeId: item.changeId }],
+          staleTime: 30000
+        })
+        break
+        
+      case 'standalone-tasks':
+        queryClient.prefetchQuery({
+          queryKey: ['flow', 'tasks', { standalone: true }],
+          staleTime: 30000
+        })
+        break
+    }
+  }
+  
+  return {
+    selectItem
+  }
+}
+
+// 선택된 항목에 따른 관련 데이터 훅
+export function useSelectedData(selectedItem: SelectedItem | null) {
+  const { data: changes } = useFlowChanges()
+  const { data: tasks } = useFlowTasks({
+    changeId: selectedItem?.type === 'change' ? selectedItem.changeId : undefined,
+    standalone: selectedItem?.type === 'standalone-tasks' ? true : undefined
+  })
+  const { data: changeDetail } = useFlowChangeDetail(
+    selectedItem?.type === 'change' ? (selectedItem.changeId ?? null) : null
+  )
+  
+  return {
+    changes,
+    tasks,
+    changeDetail
+  }
+}
+
+// =============================================
 // Flow Tasks Update API
 // =============================================
 
@@ -261,6 +391,9 @@ interface UpdateFlowTaskInput {
   status?: string
   priority?: 'low' | 'medium' | 'high'
   order?: number
+  groupTitle?: string
+  groupOrder?: number
+  taskOrder?: number
 }
 
 export function useUpdateFlowTask() {

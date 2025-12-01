@@ -1,4 +1,5 @@
 import type { TaskGroup, Task, TasksFile } from '../src/types/index.js'
+import { parseTasksFileFlexible } from './parser-utils.js'
 
 /**
  * Extended TaskGroup with hierarchy info for 3-level structure
@@ -10,6 +11,8 @@ interface ExtendedTaskGroup extends TaskGroup {
   majorOrder?: number    // "## 1." -> 1
   majorTitle?: string    // "## 1. 데이터베이스 및 기반" -> "데이터베이스 및 기반"
   subOrder?: number      // "### 1.1" -> 1 (second part)
+  groupTitle?: string    // 그룹 제목 (title과 동일하지만 명시적)
+  groupOrder?: number    // 그룹 순서 (majorOrder와 동일하지만 명시적)
 }
 
 /**
@@ -22,6 +25,20 @@ interface ExtendedTaskGroup extends TaskGroup {
  * - 4-level headers: "#### 1.1 Sub" treated as subsection
  */
 export function parseTasksFile(changeId: string, content: string): TasksFile {
+  try {
+    // 먼저 유연한 파서로 시도
+    return parseTasksFileFlexible(changeId, content)
+  } catch (error) {
+    console.warn('유연한 파서 실패, 기존 파서로 시도:', error)
+    // 기존 파서로 fallback
+    return parseTasksFileOriginal(changeId, content)
+  }
+}
+
+/**
+ * 기존 파서 로직 (fallback용)
+ */
+function parseTasksFileOriginal(changeId: string, content: string): TasksFile {
   const lines = content.split('\n')
   const groups: ExtendedTaskGroup[] = []
   let currentGroup: ExtendedTaskGroup | null = null
@@ -65,7 +82,9 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
         tasks: [],
         majorOrder: currentMajorOrder,
         majorTitle: currentMajorTitle,
-        subOrder: 1
+        subOrder: 1,
+        groupTitle: currentMajorTitle,
+        groupOrder: currentMajorOrder
       }
       currentGroup = pendingMajorGroup
       taskCounter = 0
@@ -89,7 +108,9 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
         tasks: [],
         majorOrder: currentMajorOrder,
         majorTitle: currentMajorTitle,
-        subOrder: 1
+        subOrder: 1,
+        groupTitle: currentMajorTitle,
+        groupOrder: currentMajorOrder
       }
       currentGroup = pendingMajorGroup
       taskCounter = 0
@@ -98,8 +119,11 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
 
     // Subsection with number: "### 1.1 Name" or "#### 1.1 Name"
     if (subsectionMatch) {
-      // Don't flush pending - subsections replace it
-      pendingMajorGroup = null
+      // If we have a pending major group, add it before processing subsections
+      if (pendingMajorGroup) {
+        groups.push(pendingMajorGroup)
+        pendingMajorGroup = null
+      }
 
       const subsectionNumber = subsectionMatch[1] // "1.1" or "0.1"
       const parts = subsectionNumber.split('.')
@@ -119,7 +143,9 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
         tasks: [],
         majorOrder: effectiveMajorOrder,
         majorTitle: effectiveMajorTitle,
-        subOrder: subNum
+        subOrder: subNum,
+        groupTitle: groupTitle,
+        groupOrder: effectiveMajorOrder
       }
       groups.push(currentGroup)
       taskCounter = 0
@@ -162,7 +188,9 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
         tasks: [],
         majorOrder: currentMajorOrder,
         majorTitle: currentMajorTitle,
-        subOrder: 1
+        subOrder: 1,
+        groupTitle: currentMajorTitle,
+        groupOrder: currentMajorOrder
       }
       currentGroup = pendingMajorGroup
       taskCounter = 0
@@ -210,7 +238,7 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
   }
 
   // Flush any remaining pending group
-  if (pendingMajorGroup && pendingMajorGroup.tasks.length > 0) {
+  if (pendingMajorGroup) {
     groups.push(pendingMajorGroup)
   }
 

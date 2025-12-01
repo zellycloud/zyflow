@@ -22,6 +22,9 @@ type TaskLike = {
   priority: TaskPriority | 'low' | 'medium' | 'high';
   tags?: string | string[] | null;
   assignee?: string | null;
+  groupTitle?: string | null;
+  groupOrder?: number | null;
+  taskOrder?: number | null;
 } | FlowTask;
 
 interface TaskDialogProps {
@@ -37,6 +40,9 @@ interface TaskDialogProps {
     priority: TaskPriority;
     tags?: string[];
     assignee?: string;
+    groupTitle?: string;
+    groupOrder?: number;
+    taskOrder?: number;
   }) => void;
 }
 
@@ -53,6 +59,9 @@ export function TaskDialog({
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [tags, setTags] = useState('');
   const [assignee, setAssignee] = useState('');
+  const [groupTitle, setGroupTitle] = useState('');
+  const [groupOrder, setGroupOrder] = useState('');
+  const [taskOrder, setTaskOrder] = useState('');
 
   useEffect(() => {
     if (task) {
@@ -72,6 +81,9 @@ export function TaskDialog({
         setTags('');
       }
       setAssignee(task.assignee || '');
+      setGroupTitle(task.groupTitle || '');
+      setGroupOrder(task.groupOrder?.toString() || '');
+      setTaskOrder(task.taskOrder?.toString() || '');
     } else {
       setTitle('');
       setDescription('');
@@ -79,6 +91,9 @@ export function TaskDialog({
       setPriority('medium');
       setTags('');
       setAssignee('');
+      setGroupTitle('');
+      setGroupOrder('');
+      setTaskOrder('');
     }
   }, [task, defaultStatus, open]);
 
@@ -97,6 +112,9 @@ export function TaskDialog({
         .map((t) => t.trim())
         .filter(Boolean),
       assignee: assignee.trim() || undefined,
+      groupTitle: groupTitle.trim() || undefined,
+      groupOrder: groupOrder.trim() ? parseInt(groupOrder.trim(), 10) : undefined,
+      taskOrder: taskOrder.trim() ? parseInt(taskOrder.trim(), 10) : undefined,
     });
 
     onOpenChange(false);
@@ -198,6 +216,46 @@ export function TaskDialog({
                 onChange={(e) => setAssignee(e.target.value)}
                 placeholder="Username"
               />
+            </div>
+
+            <div className="grid gap-2">
+              <label htmlFor="groupTitle" className="text-sm font-medium">
+                Group Title
+              </label>
+              <Input
+                id="groupTitle"
+                value={groupTitle}
+                onChange={(e) => setGroupTitle(e.target.value)}
+                placeholder="Group title"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <label htmlFor="groupOrder" className="text-sm font-medium">
+                  Group Order
+                </label>
+                <Input
+                  id="groupOrder"
+                  type="number"
+                  value={groupOrder}
+                  onChange={(e) => setGroupOrder(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <label htmlFor="taskOrder" className="text-sm font-medium">
+                  Task Order
+                </label>
+                <Input
+                  id="taskOrder"
+                  type="number"
+                  value={taskOrder}
+                  onChange={(e) => setTaskOrder(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
             </div>
           </div>
 

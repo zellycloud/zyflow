@@ -11,6 +11,9 @@ export interface CreateTaskInput {
   tags?: string[];
   assignee?: string;
   origin?: TaskOrigin; // 태스크 출처 (기본값: 'inbox')
+  groupTitle?: string;
+  groupOrder?: number;
+  taskOrder?: number;
 }
 
 export interface UpdateTaskInput {
@@ -21,6 +24,9 @@ export interface UpdateTaskInput {
   tags?: string[];
   assignee?: string;
   order?: number;
+  groupTitle?: string;
+  groupOrder?: number;
+  taskOrder?: number;
 }
 
 export interface ListTasksOptions {
@@ -64,6 +70,9 @@ export function createTask(input: CreateTaskInput): Task {
     assignee: input.assignee,
     origin: input.origin || 'inbox', // 기본값: inbox (수동 생성)
     order: 0,
+    groupTitle: input.groupTitle,
+    groupOrder: input.groupOrder || 0,
+    taskOrder: input.taskOrder || 0,
     createdAt: now,
     updatedAt: now,
   };
@@ -171,6 +180,9 @@ export function updateTask(id: number | string, input: UpdateTaskInput): Task | 
   if (input.tags !== undefined) updates.tags = JSON.stringify(input.tags);
   if (input.assignee !== undefined) updates.assignee = input.assignee;
   if (input.order !== undefined) updates.order = input.order;
+  if (input.groupTitle !== undefined) updates.groupTitle = input.groupTitle;
+  if (input.groupOrder !== undefined) updates.groupOrder = input.groupOrder;
+  if (input.taskOrder !== undefined) updates.taskOrder = input.taskOrder;
 
   db.update(tasks).set(updates).where(eq(tasks.id, numId)).run();
 

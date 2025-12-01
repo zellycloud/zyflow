@@ -10,6 +10,10 @@ export interface Task {
   tags: string | null; // JSON array string
   assignee: string | null;
   order: number;
+  // 그룹화 관련 필드
+  groupTitle?: string | null; // 작업 그룹의 제목
+  groupOrder?: number | null; // 그룹 내 순서
+  taskOrder?: number | null; // 그룹 내 작업 순서
   createdAt: number; // timestamp
   updatedAt: number; // timestamp
   archivedAt?: number | null; // timestamp when archived

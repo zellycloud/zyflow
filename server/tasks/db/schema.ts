@@ -1,9 +1,9 @@
-import { sqliteTable, text, integer, real, blob } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, blob, index } from 'drizzle-orm/sqlite-core';
 
 // =============================================
 // Flow 파이프라인 타입 정의
 // =============================================
-export type Stage = 'spec' | 'task' | 'code' | 'test' | 'commit' | 'docs';
+export type Stage = 'spec' | 'changes' | 'task' | 'code' | 'test' | 'commit' | 'docs';
 export type ChangeStatus = 'active' | 'completed' | 'archived';
 
 // Task Origin 타입: 태스크 출처 구분
@@ -72,7 +72,7 @@ export const changes = sqliteTable('changes', {
     enum: ['active', 'completed', 'archived']
   }).notNull().default('active'),
   currentStage: text('current_stage', {
-    enum: ['spec', 'task', 'code', 'test', 'commit', 'docs']
+    enum: ['spec', 'changes', 'task', 'code', 'test', 'commit', 'docs']
   }).notNull().default('spec'),
   progress: integer('progress').notNull().default(0), // 0-100
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
@@ -92,7 +92,7 @@ export const tasks = sqliteTable('tasks', {
   // Flow 연결 필드 (nullable - 독립 태스크 지원)
   changeId: text('change_id'), // changes.id 참조, null이면 독립 태스크
   stage: text('stage', {
-    enum: ['spec', 'task', 'code', 'test', 'commit', 'docs']
+    enum: ['spec', 'changes', 'task', 'code', 'test', 'commit', 'docs']
   }).notNull().default('task'), // 기본값 'task' (기존 칸반 호환)
   // 태스크 출처 구분
   origin: text('origin', {
@@ -110,10 +110,18 @@ export const tasks = sqliteTable('tasks', {
   tags: text('tags'), // JSON array: ["bug", "refactor"]
   assignee: text('assignee'),
   order: integer('order').notNull().default(0),
+  // 그룹화 관련 필드
+  groupTitle: text('group_title'), // 작업 그룹의 제목
+  groupOrder: integer('group_order').notNull().default(0), // 그룹 내 순서
+  taskOrder: integer('task_order').notNull().default(0), // 그룹 내 작업 순서
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
   archivedAt: integer('archived_at', { mode: 'timestamp' }), // null if not archived
-});
+}, (table) => ({
+  // 인덱스 정의
+  groupTitleIdx: index('idx_tasks_group_title').on(table.groupTitle),
+  groupTaskOrderIdx: index('idx_tasks_group_task_order').on(table.groupOrder, table.taskOrder),
+}));
 
 export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;

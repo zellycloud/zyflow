@@ -14,6 +14,7 @@ import { parseTasksFile } from './parser.js'
 import { getSqlite } from './tasks/db/client.js'
 import { getActiveProject } from './config.js'
 import { getChangeLogManager } from './change-log.js'
+import { validateGroupStructure, reorderGroups, resolveDuplicateGroupTitles } from './parser-utils.js'
 
 export interface SyncResult {
   changeId: string
@@ -68,7 +69,20 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
     const tasksContent = await readFile(tasksPath, 'utf-8')
     const parsed = parseTasksFile(changeId, tasksContent)
 
-    for (const group of parsed.groups as ExtendedTaskGroup[]) {
+    // 그룹 구조 유효성 검사 및 후처리
+    const validation = validateGroupStructure(parsed.groups as any[])
+    if (!validation.isValid) {
+      console.warn(`[Sync] ${changeId}: 그룹 구조 유효성 검사 실패:`, validation.errors)
+    }
+    if (validation.warnings.length > 0) {
+      console.warn(`[Sync] ${changeId}: 그룹 구조 경고:`, validation.warnings)
+    }
+
+    // 중복 제목 처리 및 재정렬
+    let processedGroups = resolveDuplicateGroupTitles(parsed.groups as any[])
+    processedGroups = reorderGroups(processedGroups)
+
+    for (const group of processedGroups as ExtendedTaskGroup[]) {
       // 3단계 계층 정보 추출
       const majorOrder = group.majorOrder ?? 1
       const majorTitle = group.majorTitle ?? group.title

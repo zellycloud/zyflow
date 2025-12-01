@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
-import { readdir, readFile, writeFile, access, mkdir, type Dirent } from 'fs/promises'
+import { readdir, readFile, writeFile, access, mkdir } from 'fs/promises'
+import type { Dirent } from 'fs'
 import { join, basename } from 'path'
 import { exec, spawn } from 'child_process'
 import { promisify } from 'util'
@@ -804,7 +805,7 @@ ${context || '추가 컨텍스트 없음'}
     const taskState = {
       process: claudeProcess,
       output: [] as string[],
-      status: 'running' as const,
+      status: 'running' as 'running' | 'completed' | 'error',
       startedAt: new Date(),
     }
     runningTasks.set(runId, taskState)
@@ -1032,6 +1033,7 @@ app.post('/api/tasks', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Title is required' })
     }
 
+    const project = await getActiveProject()
     const task = createTask({
       title,
       description,
@@ -1039,6 +1041,7 @@ app.post('/api/tasks', async (req, res) => {
       priority: priority as TaskPriority,
       tags,
       assignee,
+      projectId: project?.id || 'default',
     })
 
     res.json({ success: true, data: { task } })
@@ -1072,7 +1075,7 @@ app.get('/api/tasks/archived', async (req, res) => {
         (task) =>
           task.title.toLowerCase().includes(query) ||
           task.description?.toLowerCase().includes(query) ||
-          task.id.toLowerCase().includes(query)
+          task.id.toString().includes(query)
       )
     }
 
@@ -1223,13 +1226,14 @@ app.post('/api/tasks/:id/unarchive', async (req, res) => {
 import { getSqlite } from './tasks/db/client.js'
 import type { Stage, ChangeStatus } from './tasks/db/schema.js'
 
-const STAGES: Stage[] = ['spec', 'task', 'code', 'test', 'commit', 'docs']
+const STAGES: Stage[] = ['spec', 'changes', 'task', 'code', 'test', 'commit', 'docs']
 
 // Helper: Change의 stages 집계 정보 계산
 function getChangeStages(changeId: string, _projectPath?: string) {
   const sqlite = getSqlite()
   const stages: Record<Stage, { total: number; completed: number; tasks: unknown[] }> = {
     spec: { total: 0, completed: 0, tasks: [] },
+    changes: { total: 0, completed: 0, tasks: [] },
     task: { total: 0, completed: 0, tasks: [] },
     code: { total: 0, completed: 0, tasks: [] },
     test: { total: 0, completed: 0, tasks: [] },
@@ -1314,25 +1318,74 @@ function determineCurrentStage(stages: Record<Stage, { total: number; completed:
   return 'docs' // 모든 stage 완료시
 }
 
-// GET /api/flow/changes/counts - 프로젝트별 활성 Change 수
-app.get('/api/flow/changes/counts', async (_req, res) => {
+// GET /api/flow/changes/counts - 프로젝트별 Change 수 (상태별 집계)
+app.get('/api/flow/changes/counts', async (req, res) => {
   try {
     await initTaskDb()
     const config = await loadConfig()
     const sqlite = getSqlite()
-
-    const counts: Record<string, number> = {}
-
-    for (const project of config.projects) {
-      const result = sqlite.prepare(`
-        SELECT COUNT(*) as count FROM changes
-        WHERE project_id = ? AND status = 'active'
-      `).get(project.id) as { count: number } | undefined
-
-      counts[project.id] = result?.count ?? 0
+    
+    // 쿼리 파라미터에서 상태 필터링 옵션 가져오기
+    const { status } = req.query // 'active', 'completed', 'all' (기본값: 'active')
+    
+    let statusFilter = "status = 'active'"
+    if (status === 'completed') {
+      statusFilter = "status = 'completed'"
+    } else if (status === 'all') {
+      statusFilter = "status IN ('active', 'completed')"
     }
 
-    res.json({ success: true, data: { counts } })
+    const counts: Record<string, number> = {}
+    const detailedCounts: Record<string, { active: number; completed: number; total: number }> = {}
+
+    // 단일 쿼리로 모든 프로젝트의 집계 데이터 가져오기 (성능 최적화)
+    const projectIds = config.projects.map(p => p.id)
+    const placeholders = projectIds.map(() => '?').join(',')
+    
+    // 상세 집계 쿼리 (인덱스 활용)
+    const detailedResults = sqlite.prepare(`
+      SELECT
+        project_id,
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+        COUNT(*) as total
+      FROM changes
+      WHERE project_id IN (${placeholders})
+      GROUP BY project_id
+    `).all(...projectIds) as Array<{
+      project_id: string
+      active: number
+      completed: number
+      total: number
+    }>
+
+    // 결과 매핑
+    for (const project of config.projects) {
+      const projectResult = detailedResults.find(r => r.project_id === project.id)
+      
+      // 기존 단일 집계 (하위 호환성)
+      let count = 0
+      if (status === 'active') {
+        count = projectResult?.active ?? 0
+      } else if (status === 'completed') {
+        count = projectResult?.completed ?? 0
+      } else {
+        count = projectResult?.total ?? 0
+      }
+      counts[project.id] = count
+
+      // 상세 집계
+      detailedCounts[project.id] = {
+        active: projectResult?.active ?? 0,
+        completed: projectResult?.completed ?? 0,
+        total: projectResult?.total ?? 0
+      }
+    }
+
+    // 항상 상세 정보를 포함하여 반환 (하위 호환성 유지)
+    const responseData = { counts, detailed: detailedCounts }
+    
+    res.json({ success: true, data: responseData })
   } catch (error) {
     console.error('Error getting change counts:', error)
     res.status(500).json({

@@ -241,6 +241,7 @@ export function initDb(projectRoot?: string): ReturnType<typeof drizzle<typeof s
       id,
       title,
       description,
+      group_title,
       content='tasks',
       content_rowid='rowid',
       tokenize='unicode61'
@@ -250,21 +251,97 @@ export function initDb(projectRoot?: string): ReturnType<typeof drizzle<typeof s
   // Create triggers to keep FTS index in sync
   sqlite.exec(`
     CREATE TRIGGER IF NOT EXISTS tasks_ai AFTER INSERT ON tasks BEGIN
-      INSERT INTO tasks_fts(id, title, description) VALUES (new.id, new.title, new.description);
+      INSERT INTO tasks_fts(id, title, description, group_title) VALUES (new.id, new.title, new.description, new.group_title);
     END;
   `);
 
   sqlite.exec(`
     CREATE TRIGGER IF NOT EXISTS tasks_ad AFTER DELETE ON tasks BEGIN
-      INSERT INTO tasks_fts(tasks_fts, id, title, description) VALUES('delete', old.id, old.title, old.description);
+      INSERT INTO tasks_fts(tasks_fts, id, title, description, group_title) VALUES('delete', old.id, old.title, old.description, old.group_title);
     END;
   `);
 
   sqlite.exec(`
     CREATE TRIGGER IF NOT EXISTS tasks_au AFTER UPDATE ON tasks BEGIN
-      INSERT INTO tasks_fts(tasks_fts, id, title, description) VALUES('delete', old.id, old.title, old.description);
-      INSERT INTO tasks_fts(id, title, description) VALUES (new.id, new.title, new.description);
+      INSERT INTO tasks_fts(tasks_fts, id, title, description, group_title) VALUES('delete', old.id, old.title, old.description, old.group_title);
+      INSERT INTO tasks_fts(id, title, description, group_title) VALUES (new.id, new.title, new.description, new.group_title);
     END;
+  `);
+
+  // Migration: Rebuild FTS table to include group_title
+  try {
+    // Check if group_title column exists in tasks_fts
+    const ftsInfo = sqlite.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='tasks_fts'").get() as { sql: string } | undefined;
+    if (ftsInfo?.sql && !ftsInfo.sql.includes('group_title')) {
+      console.log('Rebuilding FTS table to include group_title...');
+      
+      sqlite.exec(`
+        BEGIN TRANSACTION;
+        
+        -- Drop existing FTS table
+        DROP TABLE IF EXISTS tasks_fts;
+        
+        -- Drop existing triggers
+        DROP TRIGGER IF EXISTS tasks_ai;
+        DROP TRIGGER IF EXISTS tasks_ad;
+        DROP TRIGGER IF EXISTS tasks_au;
+        
+        COMMIT;
+      `);
+    }
+  } catch (e) {
+    console.error('Migration warning (FTS rebuild):', e);
+  }
+
+  // Create indexes for better performance
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tasks_group_title ON tasks(group_title);
+  `);
+
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tasks_group_task_order ON tasks(group_order, task_order);
+  `);
+
+  // Additional indexes for performance optimization
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id);
+  `);
+
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tasks_change_id ON tasks(change_id);
+  `);
+
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+  `);
+
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tasks_stage ON tasks(stage);
+  `);
+
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tasks_project_status ON tasks(project_id, status);
+  `);
+
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tasks_project_stage ON tasks(project_id, stage);
+  `);
+
+  // Changes table indexes
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_changes_project_id ON changes(project_id);
+  `);
+
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_changes_status ON changes(status);
+  `);
+
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_changes_project_status ON changes(project_id, status);
+  `);
+
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_changes_updated_at ON changes(updated_at);
   `);
 
   db = drizzle(sqlite, { schema });
