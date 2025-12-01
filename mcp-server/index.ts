@@ -5,6 +5,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ErrorCode,
+  McpError,
 } from '@modelcontextprotocol/sdk/types.js'
 import { readFile, writeFile, readdir } from 'fs/promises'
 import { join } from 'path'
@@ -23,6 +25,11 @@ import {
   handleTaskDelete,
   handleTaskView,
 } from './task-tools.js'
+
+// Change Log & Replay imports
+import { getChangeLogManager } from '../server/change-log.js'
+import { getReplayEngine } from '../server/replay-engine.js'
+import type { EventFilter, ReplayOptions } from '../server/types/change-log.js'
 
 // Get project path from environment or use current directory
 const PROJECT_PATH = process.env.ZYFLOW_PROJECT || process.cwd()
@@ -305,6 +312,227 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       // Task management tools (SQLite-based)
       ...taskToolDefinitions,
+      
+      // Change Log Tools
+      {
+        name: 'get_events',
+        description: 'Get change events with optional filtering',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            event_types: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Filter by event types (optional)',
+            },
+            severities: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Filter by severity levels (optional)',
+            },
+            sources: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Filter by event sources (optional)',
+            },
+            project_ids: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Filter by project IDs (optional)',
+            },
+            change_ids: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Filter by change IDs (optional)',
+            },
+            time_range: {
+              type: 'object',
+              properties: {
+                start: { type: 'string', description: 'Start date (ISO format)' },
+                end: { type: 'string', description: 'End date (ISO format)' },
+              },
+              description: 'Filter by time range (optional)',
+            },
+            limit: {
+              type: 'number',
+              description: 'Maximum number of events to return (optional)',
+            },
+            offset: {
+              type: 'number',
+              description: 'Number of events to skip (optional)',
+            },
+            sort_by: {
+              type: 'object',
+              properties: {
+                field: { type: 'string', description: 'Field to sort by' },
+                direction: { type: 'string', enum: ['ASC', 'DESC'], description: 'Sort direction' },
+              },
+              description: 'Sort options (optional)',
+            },
+          },
+        },
+      },
+      {
+        name: 'get_event_statistics',
+        description: 'Get event statistics',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            event_types: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Filter by event types (optional)',
+            },
+            time_range: {
+              type: 'object',
+              properties: {
+                start: { type: 'string', description: 'Start date (ISO format)' },
+                end: { type: 'string', description: 'End date (ISO format)' },
+              },
+              description: 'Filter by time range (optional)',
+            },
+          },
+        },
+      },
+      {
+        name: 'search_events',
+        description: 'Search events by text query',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: 'Search query',
+            },
+            event_types: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Filter by event types (optional)',
+            },
+            time_range: {
+              type: 'object',
+              properties: {
+                start: { type: 'string', description: 'Start date (ISO format)' },
+                end: { type: 'string', description: 'End date (ISO format)' },
+              },
+              description: 'Filter by time range (optional)',
+            },
+          },
+          required: ['query'],
+        },
+      },
+      {
+        name: 'export_events',
+        description: 'Export events in various formats',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            filter: {
+              type: 'object',
+              description: 'Event filter (same as get_events)',
+            },
+            format: {
+              type: 'string',
+              enum: ['JSON', 'CSV', 'SQL'],
+              description: 'Export format',
+              default: 'JSON',
+            },
+          },
+        },
+      },
+      
+      // Replay Tools
+      {
+        name: 'create_replay_session',
+        description: 'Create a replay session',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: {
+              type: 'string',
+              description: 'Session name',
+            },
+            description: {
+              type: 'string',
+              description: 'Session description (optional)',
+            },
+            filter: {
+              type: 'object',
+              description: 'Event filter for replay',
+            },
+            mode: {
+              type: 'string',
+              enum: ['SAFE', 'FAST', 'VERBOSE', 'DRY_RUN'],
+              description: 'Replay mode',
+              default: 'SAFE',
+            },
+            strategy: {
+              type: 'string',
+              enum: ['SEQUENTIAL', 'PARALLEL', 'DEPENDENCY_AWARE', 'SELECTIVE'],
+              description: 'Replay strategy',
+              default: 'SEQUENTIAL',
+            },
+            stop_on_error: {
+              type: 'boolean',
+              description: 'Stop on error',
+              default: true,
+            },
+            enable_validation: {
+              type: 'boolean',
+              description: 'Enable validation',
+              default: true,
+            },
+            enable_rollback: {
+              type: 'boolean',
+              description: 'Enable rollback',
+              default: false,
+            },
+            max_concurrency: {
+              type: 'number',
+              description: 'Maximum concurrency for parallel replay',
+            },
+            skip_events: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Event IDs to skip',
+            },
+            include_events: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Event IDs to include',
+            },
+          },
+          required: ['name'],
+        },
+      },
+      {
+        name: 'start_replay',
+        description: 'Start a replay session',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            session_id: {
+              type: 'string',
+              description: 'Replay session ID',
+            },
+          },
+          required: ['session_id'],
+        },
+      },
+      {
+        name: 'get_replay_progress',
+        description: 'Get replay session progress',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            session_id: {
+              type: 'string',
+              description: 'Replay session ID',
+            },
+          },
+          required: ['session_id'],
+        },
+      },
     ],
   }
 })
@@ -471,6 +699,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
 
+      // Change Log Tools
+      case 'get_events':
+        return await handleGetEvents(args);
+      case 'get_event_statistics':
+        return await handleGetEventStatistics(args);
+      case 'search_events':
+        return await handleSearchEvents(args);
+      case 'export_events':
+        return await handleExportEvents(args);
+      
+      // Replay Tools
+      case 'create_replay_session':
+        return await handleCreateReplaySession(args);
+      case 'start_replay':
+        return await handleStartReplay(args);
+      case 'get_replay_progress':
+        return await handleGetReplayProgress(args);
+      
       default:
         throw new Error(`Unknown tool: ${name}`)
     }
@@ -487,6 +733,286 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
   }
 })
+
+// =============================================
+// Change Log & Replay Tool Handlers
+// =============================================
+
+async function handleGetEvents(args: any) {
+  const changeLogManager = getChangeLogManager();
+  
+  try {
+    const filter: EventFilter = {};
+    
+    if (args.event_types) {
+      filter.eventTypes = args.event_types;
+    }
+    
+    if (args.severities) {
+      filter.severities = args.severities;
+    }
+    
+    if (args.sources) {
+      filter.sources = args.sources;
+    }
+    
+    if (args.project_ids) {
+      filter.projectIds = args.project_ids;
+    }
+    
+    if (args.change_ids) {
+      filter.changeIds = args.change_ids;
+    }
+    
+    if (args.time_range) {
+      filter.timeRange = {
+        start: new Date(args.time_range.start).getTime(),
+        end: new Date(args.time_range.end).getTime()
+      };
+    }
+    
+    if (args.limit) {
+      filter.pagination = {
+        offset: args.offset || 0,
+        limit: args.limit
+      };
+    }
+    
+    if (args.sort_by) {
+      filter.sortBy = {
+        field: args.sort_by.field || 'timestamp',
+        direction: args.sort_by.direction || 'DESC'
+      };
+    }
+    
+    const events = await changeLogManager.getEvents(filter);
+    
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Found ${events.length} events matching the filter criteria.`,
+        },
+        {
+          type: 'text' as const,
+          text: JSON.stringify(events, null, 2),
+        },
+      ],
+    };
+  } catch (error) {
+    throw new McpError(
+      ErrorCode.InternalError,
+      `Failed to get events: ${(error as Error).message}`
+    );
+  }
+}
+
+async function handleGetEventStatistics(args: any) {
+  const changeLogManager = getChangeLogManager();
+  
+  try {
+    const filter: EventFilter = {};
+    
+    if (args.event_types) {
+      filter.eventTypes = args.event_types;
+    }
+    
+    if (args.time_range) {
+      filter.timeRange = {
+        start: new Date(args.time_range.start).getTime(),
+        end: new Date(args.time_range.end).getTime()
+      };
+    }
+    
+    const statistics = await changeLogManager.getStatistics(filter);
+    
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: 'Event Statistics:',
+        },
+        {
+          type: 'text' as const,
+          text: JSON.stringify(statistics, null, 2),
+        },
+      ],
+    };
+  } catch (error) {
+    throw new McpError(
+      ErrorCode.InternalError,
+      `Failed to get event statistics: ${(error as Error).message}`
+    );
+  }
+}
+
+async function handleSearchEvents(args: any) {
+  const changeLogManager = getChangeLogManager();
+  
+  try {
+    const { query, ...filterArgs } = args;
+    
+    const filter: EventFilter = {};
+    
+    if (filterArgs.event_types) {
+      filter.eventTypes = filterArgs.event_types;
+    }
+    
+    if (filterArgs.time_range) {
+      filter.timeRange = {
+        start: new Date(filterArgs.time_range.start).getTime(),
+        end: new Date(filterArgs.time_range.end).getTime()
+      };
+    }
+    
+    const events = await changeLogManager.searchEvents(query, filter);
+    
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Found ${events.length} events matching query: "${query}"`,
+        },
+        {
+          type: 'text' as const,
+          text: JSON.stringify(events, null, 2),
+        },
+      ],
+    };
+  } catch (error) {
+    throw new McpError(
+      ErrorCode.InternalError,
+      `Failed to search events: ${(error as Error).message}`
+    );
+  }
+}
+
+async function handleExportEvents(args: any) {
+  const changeLogManager = getChangeLogManager();
+  
+  try {
+    const filter: EventFilter = args.filter || {};
+    const format = args.format || 'JSON';
+    
+    const exportedData = await changeLogManager.exportData(filter, format);
+    
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Exported events in ${format} format:`,
+        },
+        {
+          type: 'text' as const,
+          text: exportedData,
+        },
+      ],
+    };
+  } catch (error) {
+    throw new McpError(
+      ErrorCode.InternalError,
+      `Failed to export events: ${(error as Error).message}`
+    );
+  }
+}
+
+async function handleCreateReplaySession(args: any) {
+  try {
+    const replayEngine = getReplayEngine();
+    
+    const filter: EventFilter = args.filter || {};
+    const options: ReplayOptions = {
+      mode: args.mode || 'SAFE',
+      strategy: args.strategy || 'SEQUENTIAL',
+      stopOnError: args.stop_on_error !== undefined ? args.stop_on_error : true,
+      enableValidation: args.enable_validation !== undefined ? args.enable_validation : true,
+      enableRollback: args.enable_rollback !== undefined ? args.enable_rollback : false
+    };
+    
+    if (args.max_concurrency) {
+      options.maxConcurrency = args.max_concurrency;
+    }
+    
+    if (args.skip_events) {
+      options.skipEvents = args.skip_events;
+    }
+    
+    if (args.include_events) {
+      options.includeEvents = args.include_events;
+    }
+    
+    const sessionId = await replayEngine.createSession(
+      args.name,
+      filter,
+      options,
+      args.description
+    );
+    
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Created replay session: ${sessionId}`,
+        },
+        {
+          type: 'text' as const,
+          text: JSON.stringify({ sessionId }, null, 2),
+        },
+      ],
+    };
+  } catch (error) {
+    throw new McpError(
+      ErrorCode.InternalError,
+      `Failed to create replay session: ${(error as Error).message}`
+    );
+  }
+}
+
+async function handleStartReplay(args: any) {
+  try {
+    const replayEngine = getReplayEngine();
+    await replayEngine.startReplay(args.session_id);
+    
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Started replay session: ${args.session_id}`,
+        },
+      ],
+    };
+  } catch (error) {
+    throw new McpError(
+      ErrorCode.InternalError,
+      `Failed to start replay: ${(error as Error).message}`
+    );
+  }
+}
+
+async function handleGetReplayProgress(args: any) {
+  try {
+    const replayEngine = getReplayEngine();
+    const progress = await replayEngine.getReplayProgress(args.session_id);
+    
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Replay progress for session: ${args.session_id}`,
+        },
+        {
+          type: 'text' as const,
+          text: JSON.stringify(progress, null, 2),
+        },
+      ],
+    };
+  } catch (error) {
+    throw new McpError(
+      ErrorCode.InternalError,
+      `Failed to get replay progress: ${(error as Error).message}`
+    );
+  }
+}
 
 // Start server
 async function main() {
