@@ -1328,13 +1328,6 @@ app.get('/api/flow/changes/counts', async (req, res) => {
     // 쿼리 파라미터에서 상태 필터링 옵션 가져오기
     const { status } = req.query // 'active', 'completed', 'all' (기본값: 'active')
     
-    let statusFilter = "status = 'active'"
-    if (status === 'completed') {
-      statusFilter = "status = 'completed'"
-    } else if (status === 'all') {
-      statusFilter = "status IN ('active', 'completed')"
-    }
-
     const counts: Record<string, number> = {}
     const detailedCounts: Record<string, { active: number; completed: number; total: number }> = {}
 

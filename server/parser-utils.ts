@@ -143,7 +143,6 @@ export function parseTasksFileFlexible(changeId: string, content: string): Tasks
     let matched = false
     
     // 메인 섹션 확인 (먼저 확인해야 함)
-    let isMajorSection = false
     for (const pattern of patterns.majorSections) {
       const match = line.match(pattern)
       if (match) {
@@ -182,7 +181,6 @@ export function parseTasksFileFlexible(changeId: string, content: string): Tasks
           groupOrder: majorOrder ?? groupCounter
         }
         taskCounter = 0
-        isMajorSection = true
         matched = true
         break
       }

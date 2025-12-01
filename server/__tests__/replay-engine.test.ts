@@ -6,23 +6,23 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { ReplayEngine } from '../replay-engine.js'
 import { ChangeLogManager } from '../change-log.js'
 import { getSqlite } from '../tasks/db/client.js'
-import { replaySessions, replayResults, rollbackPoints } from '../tasks/db/schema.js'
-import type { EventFilter, ReplayOptions, ReplayMode, ReplayStrategy } from '../types/change-log.js'
+import type { EventFilter, ReplayOptions } from '../types/change-log.js'
+import type Database from 'better-sqlite3'
 
 describe('ReplayEngine', () => {
   let replayEngine: ReplayEngine
   let changeLogManager: ChangeLogManager
-  let db: any
+  let db: Database.Database
 
   beforeEach(async () => {
     // 테스트용 데이터베이스 초기화
     db = getSqlite()
     
-    // 테이블 초기화
-    db.exec(`DELETE FROM change_events`)
-    db.exec(`DELETE FROM replay_sessions`)
+    // 테이블 초기화 (외래 키 제약 조건을 고려한 순서)
     db.exec(`DELETE FROM replay_results`)
     db.exec(`DELETE FROM rollback_points`)
+    db.exec(`DELETE FROM replay_sessions`)
+    db.exec(`DELETE FROM change_events`)
     
     // ChangeLogManager 및 ReplayEngine 인스턴스 생성
     changeLogManager = new ChangeLogManager()
@@ -54,7 +54,7 @@ describe('ReplayEngine', () => {
     })
     
     // ChangeLogManager를 EventStore로 래핑
-    const eventStore = changeLogManager as any
+    const eventStore = changeLogManager as unknown as import('../types/change-log.js').EventStore
     replayEngine = new ReplayEngine()
     await replayEngine.initialize(eventStore)
   })
@@ -69,12 +69,12 @@ describe('ReplayEngine', () => {
       await changeLogManager.close()
     }
     
-    // 테스트 데이터 정리
+    // 테스트 데이터 정리 (외래 키 제약 조건을 고려한 순서)
     if (db) {
-      db.exec(`DELETE FROM change_events`)
-      db.exec(`DELETE FROM replay_sessions`)
       db.exec(`DELETE FROM replay_results`)
       db.exec(`DELETE FROM rollback_points`)
+      db.exec(`DELETE FROM replay_sessions`)
+      db.exec(`DELETE FROM change_events`)
     }
   })
 
