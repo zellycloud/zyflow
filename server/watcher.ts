@@ -5,6 +5,7 @@
 
 import { watch, type FSWatcher } from 'chokidar'
 import { join } from 'path'
+import { getChangeLogManager } from './change-log.js'
 
 export interface WatcherOptions {
   /** 감시할 프로젝트 경로 */
@@ -39,13 +40,25 @@ export function createTasksWatcher(options: WatcherOptions): WatcherInstance {
   let watcher: FSWatcher | null = null
   const debounceTimers: Map<string, NodeJS.Timeout> = new Map()
 
-  const handleChange = (filePath: string) => {
+  const handleChange = async (filePath: string) => {
     // 상대 경로에서 changeId 추출 (Windows/Unix 모두 지원)
     // 예: openspec/changes/integrate-git-workflow/tasks.md -> integrate-git-workflow
     const match = filePath.match(/openspec[/\\]changes[/\\]([^/\\]+)[/\\]tasks\.md$/)
     if (!match) return
 
     const changeId = match[1]
+
+    // 파일 변경 이벤트 로깅
+    const changeLogManager = getChangeLogManager()
+    await changeLogManager.logFileChange({
+      filePath,
+      changeType: 'MODIFIED',
+      metadata: {
+        changeId,
+        projectPath,
+        timestamp: Date.now()
+      }
+    }, 'DEBUG')
 
     // 디바운스 처리 (파일 저장 중 여러 번 트리거 방지)
     const timerKey = `${projectPath}:${changeId}`
@@ -54,9 +67,22 @@ export function createTasksWatcher(options: WatcherOptions): WatcherInstance {
       clearTimeout(existingTimer)
     }
 
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       debounceTimers.delete(timerKey)
       console.log(`[Watcher] Detected change in ${changeId}/tasks.md (project: ${projectPath})`)
+      
+      // 파일 변경 완료 이벤트 로깅
+      await changeLogManager.logFileChange({
+        filePath,
+        changeType: 'MODIFIED',
+        metadata: {
+          changeId,
+          projectPath,
+          action: 'debounced_change_processed',
+          timestamp: Date.now()
+        }
+      }, 'INFO')
+      
       onTasksChange(changeId, filePath, projectPath)
     }, debounceMs)
 
@@ -85,9 +111,9 @@ export function createTasksWatcher(options: WatcherOptions): WatcherInstance {
     })
 
     // tasks.md 파일만 필터링하여 처리
-    const filterAndHandle = (filePath: string) => {
+    const filterAndHandle = async (filePath: string) => {
       if (filePath.endsWith('/tasks.md') || filePath.endsWith('\\tasks.md')) {
-        handleChange(filePath)
+        await handleChange(filePath)
       }
     }
 

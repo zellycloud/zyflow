@@ -13,6 +13,7 @@ import { join } from 'path'
 import { parseTasksFile } from './parser.js'
 import { getSqlite } from './tasks/db/client.js'
 import { getActiveProject } from './config.js'
+import { getChangeLogManager } from './change-log.js'
 
 export interface SyncResult {
   changeId: string
@@ -54,6 +55,15 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
   let tasksCreated = 0
   let tasksUpdated = 0
 
+  // 이벤트 로깅 시작
+  const changeLogManager = getChangeLogManager()
+  const eventId = await changeLogManager.logSyncOperation({
+    operationType: 'LOCAL_TO_REMOTE',
+    tableName: 'tasks',
+    recordId: changeId,
+    status: 'STARTED'
+  }, 'INFO')
+
   try {
     const tasksContent = await readFile(tasksPath, 'utf-8')
     const parsed = parseTasksFile(changeId, tasksContent)
@@ -78,6 +88,8 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
 
         if (existingTask) {
           // 기존 태스크 업데이트 (상태 + 그룹 정보)
+          const oldStatus = existingTask.status
+          
           sqlite.prepare(`
             UPDATE tasks
             SET status = ?,
@@ -99,9 +111,26 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
             existingTask.id
           )
           tasksUpdated++
+
+          // DB 변경 이벤트 로깅
+          await changeLogManager.logDBChange({
+            tableName: 'tasks',
+            operation: 'UPDATE',
+            recordId: existingTask.id.toString(),
+            oldValues: { status: oldStatus },
+            newValues: {
+              status: newStatus,
+              groupTitle,
+              groupOrder: majorOrder,
+              taskOrder,
+              majorTitle,
+              subOrder
+            },
+            transactionId: changeId
+          }, 'DEBUG')
         } else {
           // 새 태스크 생성 (3단계 계층 정보 포함, origin='openspec')
-          sqlite.prepare(`
+          const insertResult = sqlite.prepare(`
             INSERT INTO tasks (
               change_id, stage, title, status, priority, "order",
               group_title, group_order, task_order, major_title, sub_order,
@@ -122,14 +151,60 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
             now
           )
           tasksCreated++
+
+          // DB 변경 이벤트 로깅
+          await changeLogManager.logDBChange({
+            tableName: 'tasks',
+            operation: 'INSERT',
+            recordId: insertResult.lastInsertRowid?.toString(),
+            newValues: {
+              changeId,
+              title: task.title,
+              status: newStatus,
+              groupTitle,
+              groupOrder: majorOrder,
+              taskOrder,
+              majorTitle,
+              subOrder,
+              origin: 'openspec'
+            },
+            transactionId: changeId
+          }, 'DEBUG')
         }
       }
     }
 
     console.log(`[Sync] ${changeId}: ${tasksCreated} created, ${tasksUpdated} updated`)
+    
+    // 동기화 완료 이벤트 로깅
+    await changeLogManager.logSyncOperation({
+      operationType: 'LOCAL_TO_REMOTE',
+      tableName: 'tasks',
+      recordId: changeId,
+      status: 'COMPLETED',
+      result: {
+        recordsProcessed: tasksCreated + tasksUpdated,
+        recordsSucceeded: tasksCreated + tasksUpdated,
+        recordsFailed: 0,
+        duration: Date.now() - now
+      }
+    }, 'INFO')
   } catch (error) {
     // tasks.md not found or parse error
     console.warn(`[Sync] Error syncing ${changeId}:`, error)
+    
+    // 동기화 실패 이벤트 로깅
+    await changeLogManager.logSyncOperation({
+      operationType: 'LOCAL_TO_REMOTE',
+      tableName: 'tasks',
+      recordId: changeId,
+      status: 'FAILED',
+      error: {
+        code: 'SYNC_FAILED',
+        message: (error as Error).message,
+        details: { changeId, tasksPath }
+      }
+    }, 'ERROR')
   }
 
   return { changeId, tasksCreated, tasksUpdated }
@@ -149,6 +224,15 @@ export async function syncChangeTasksForProject(
 
   let tasksCreated = 0
   let tasksUpdated = 0
+
+  // 이벤트 로깅 시작
+  const changeLogManager = getChangeLogManager()
+  const eventId = await changeLogManager.logSyncOperation({
+    operationType: 'LOCAL_TO_REMOTE',
+    tableName: 'tasks',
+    recordId: changeId,
+    status: 'STARTED'
+  }, 'INFO')
 
   try {
     const tasksContent = await readFile(tasksPath, 'utf-8')
@@ -223,9 +307,36 @@ export async function syncChangeTasksForProject(
     }
 
     console.log(`[Sync] ${changeId} (${projectPath}): ${tasksCreated} created, ${tasksUpdated} updated`)
+    
+    // 동기화 완료 이벤트 로깅
+    await changeLogManager.logSyncOperation({
+      operationType: 'LOCAL_TO_REMOTE',
+      tableName: 'tasks',
+      recordId: changeId,
+      status: 'COMPLETED',
+      result: {
+        recordsProcessed: tasksCreated + tasksUpdated,
+        recordsSucceeded: tasksCreated + tasksUpdated,
+        recordsFailed: 0,
+        duration: Date.now() - now
+      }
+    }, 'INFO')
   } catch (error) {
     // tasks.md not found or parse error
     console.warn(`[Sync] Error syncing ${changeId} (${projectPath}):`, error)
+    
+    // 동기화 실패 이벤트 로깅
+    await changeLogManager.logSyncOperation({
+      operationType: 'LOCAL_TO_REMOTE',
+      tableName: 'tasks',
+      recordId: changeId,
+      status: 'FAILED',
+      error: {
+        code: 'SYNC_FAILED',
+        message: (error as Error).message,
+        details: { changeId, projectPath, tasksPath }
+      }
+    }, 'ERROR')
   }
 
   return { changeId, tasksCreated, tasksUpdated }
