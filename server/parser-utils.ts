@@ -171,14 +171,14 @@ export function parseTasksFileFlexible(changeId: string, content: string): Tasks
         }
         
         currentGroup = {
-          id: `group-${majorOrder ?? groupCounter}`,
+          id: `group-${groupCounter}`,
           title: majorTitle,
           tasks: [],
           majorOrder,
           majorTitle,
           subOrder: 1,
           groupTitle: majorTitle,
-          groupOrder: majorOrder ?? groupCounter
+          groupOrder: groupCounter
         }
         taskCounter = 0
         matched = true
@@ -213,15 +213,16 @@ export function parseTasksFileFlexible(changeId: string, content: string): Tasks
             subTitle = match[1]?.trim() || `Subsection ${groupCounter}`
           }
           
+          const parentMajorOrder = currentGroup?.majorOrder ?? groupCounter
           currentGroup = {
             id: `group-${groupCounter}`,
             title: subTitle,
             tasks: [],
-            majorOrder: currentGroup?.majorOrder ?? groupCounter,
+            majorOrder: parentMajorOrder,
             majorTitle: currentGroup?.majorTitle ?? subTitle,
             subOrder,
             groupTitle: subTitle,
-            groupOrder: currentGroup?.groupOrder ?? groupCounter
+            groupOrder: groupCounter
           }
           taskCounter = 0
           matched = true
