@@ -38,7 +38,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { useProjectsAllData, useAddProject, useActivateProject, useRemoveProject, useBrowseFolder } from '@/hooks/useProjects'
-import { useFlowChangeCounts } from '@/hooks/useFlowChanges'
+import { useFlowChangeCounts, useSelectedItem } from '@/hooks/useFlowChanges'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import type { SelectedItem } from '@/App'
@@ -53,7 +53,11 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
 
   const { data: projectsData, isLoading } = useProjectsAllData()
-  const { data: changeCounts } = useFlowChangeCounts()
+  const { data: changeCounts } = useFlowChangeCounts({
+    status: 'active',
+    enabled: !!projectsData?.projects.length
+  })
+  const { selectItem } = useSelectedItem()
 
   const addProject = useAddProject()
   const activateProject = useActivateProject()
@@ -81,8 +85,12 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
   }
 
   const handleSelectProject = (projectId: string) => {
+    const selectedItem: SelectedItem = { type: 'project', projectId }
+    
     // 먼저 UI 업데이트 (즉시 반응)
-    onSelect({ type: 'project', projectId })
+    onSelect(selectedItem)
+    selectItem(selectedItem)
+    
     setExpandedProjects((prev) => {
       const next = new Set(prev)
       next.add(projectId)
@@ -96,8 +104,11 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
   }
 
   const handleSelectChange = (projectId: string, changeId: string) => {
+    const selectedItem: SelectedItem = { type: 'change', projectId, changeId }
+    
     // 먼저 UI 업데이트 (즉시 반응)
-    onSelect({ type: 'change', projectId, changeId })
+    onSelect(selectedItem)
+    selectItem(selectedItem)
 
     // 프로젝트 활성화는 비동기로
     if (projectId !== projectsData?.activeProjectId) {
@@ -106,8 +117,11 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
   }
 
   const handleSelectStandaloneTasks = (projectId: string) => {
+    const selectedItem: SelectedItem = { type: 'standalone-tasks', projectId }
+    
     // 먼저 UI 업데이트 (즉시 반응)
-    onSelect({ type: 'standalone-tasks', projectId })
+    onSelect(selectedItem)
+    selectItem(selectedItem)
 
     // 프로젝트 활성화는 비동기로
     if (projectId !== projectsData?.activeProjectId) {

@@ -4,6 +4,7 @@ import { ProjectDashboard } from './ProjectDashboard'
 import { ChangeDetail } from './ChangeDetail'
 import { StandaloneTasks } from './StandaloneTasks'
 import { useProjectsAllData } from '@/hooks/useProjects'
+import { useSelectedData } from '@/hooks/useFlowChanges'
 
 interface FlowContentProps {
   selectedItem: SelectedItem
@@ -11,6 +12,8 @@ interface FlowContentProps {
 
 export function FlowContent({ selectedItem }: FlowContentProps) {
   const { data: projectsData, isLoading } = useProjectsAllData()
+  // 선택된 항목에 따라 관련 데이터 미리 가져오기 (성능 최적화)
+  useSelectedData(selectedItem)
 
   if (!selectedItem) {
     return (

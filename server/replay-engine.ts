@@ -22,7 +22,39 @@ import type {
 
 type ReplaySessionStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 import { getSqlite } from './tasks/db/client.js';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { replaySessions, replayResults, rollbackPoints } from './tasks/db/schema.js';
+
+// DB Row 타입 정의
+interface ReplaySessionRow {
+  id: string;
+  name: string | null;
+  description: string | null;
+  filter: string;
+  options: string;
+  status: string;
+  total_events: number;
+  processed_events: number;
+  succeeded_events: number;
+  failed_events: number;
+  skipped_events: number;
+  created_at: number;
+  started_at: number | null;
+  completed_at: number | null;
+  duration: number | null;
+  result: string | null;
+  metadata: string | null;
+}
+
+interface ReplayResultInput {
+  eventId: string;
+  status: string;
+  duration: number;
+  error?: string;
+  warnings?: string[];
+  order: number;
+  createdAt: number;
+}
 
 /**
  * 리플레이 엔진 구현
@@ -734,11 +766,11 @@ export class ReplayEngine implements IReplayEngine {
 
   private saveSession(session: ReplaySession): void {
     const db = getSqlite();
-    
+
     db.prepare(`
       INSERT OR REPLACE INTO replay_sessions (
-        id, name, description, filter, options, status, totalEvents, processedEvents,
-        succeededEvents, failedEvents, skippedEvents, createdAt, startedAt, completedAt,
+        id, name, description, filter, options, status, total_events, processed_events,
+        succeeded_events, failed_events, skipped_events, created_at, started_at, completed_at,
         duration, result, metadata
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
@@ -764,10 +796,10 @@ export class ReplayEngine implements IReplayEngine {
 
   private loadSession(sessionId: string): ReplaySession | null {
     const db = getSqlite();
-    
+
     const row = db.prepare(`
       SELECT * FROM replay_sessions WHERE id = ?
-    `).get(sessionId) as any;
+    `).get(sessionId) as ReplaySessionRow | undefined;
     
     if (!row) {
       return null;
@@ -776,7 +808,7 @@ export class ReplayEngine implements IReplayEngine {
     return this.deserializeSession(row);
   }
 
-  private deserializeSession(row: any): ReplaySession {
+  private deserializeSession(row: ReplaySessionRow): ReplaySession {
     return {
       id: row.id,
       name: row.name,
@@ -784,26 +816,26 @@ export class ReplayEngine implements IReplayEngine {
       filter: JSON.parse(row.filter),
       options: JSON.parse(row.options),
       status: row.status as ReplaySessionStatus,
-      totalEvents: row.totalEvents || 0,
-      processedEvents: row.processedEvents || 0,
-      succeededEvents: row.succeededEvents || 0,
-      failedEvents: row.failedEvents || 0,
-      skippedEvents: row.skippedEvents || 0,
-      createdAt: row.createdAt,
-      startedAt: row.startedAt,
-      completedAt: row.completedAt,
+      totalEvents: row.total_events || 0,
+      processedEvents: row.processed_events || 0,
+      succeededEvents: row.succeeded_events || 0,
+      failedEvents: row.failed_events || 0,
+      skippedEvents: row.skipped_events || 0,
+      createdAt: row.created_at,
+      startedAt: row.started_at,
+      completedAt: row.completed_at,
       duration: row.duration,
       result: row.result ? JSON.parse(row.result) : undefined,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined
     };
   }
 
-  private saveReplayResult(sessionId: string, result: any): void {
+  private saveReplayResult(sessionId: string, result: ReplayResultInput): void {
     const db = getSqlite();
-    
+
     db.prepare(`
       INSERT INTO replay_results (
-        sessionId, eventId, status, duration, error, warnings, order, createdAt
+        session_id, event_id, status, duration, error, warnings, "order", created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       sessionId,
@@ -819,11 +851,11 @@ export class ReplayEngine implements IReplayEngine {
 
   private saveRollbackPoint(rollbackPoint: RollbackPoint): void {
     const db = getSqlite();
-    
+
     db.prepare(`
       INSERT OR REPLACE INTO rollback_points (
-        id, sessionId, timestamp, description, snapshot, isActive, isExpired,
-        expiresAt, createdAt, updatedAt
+        id, session_id, timestamp, description, snapshot, is_active, is_expired,
+        expires_at, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       rollbackPoint.id,

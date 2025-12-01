@@ -179,3 +179,34 @@ export interface FlowSyncResponse {
   created: number
   updated: number
 }
+
+// =============================================
+// 프로젝트별 Change 집계 API 타입
+// =============================================
+
+export interface ProjectChangeCounts {
+  active: number
+  completed: number
+  total: number
+}
+
+export interface FlowChangeCountsResponse {
+  counts: Record<string, number> // 하위 호환성을 위한 단일 집계
+  detailed: Record<string, ProjectChangeCounts> // 상세 집계 (active/completed/total)
+}
+
+// =============================================
+// Tasks.md 파서 확장 타입
+// =============================================
+
+export interface ExtendedTaskGroup extends TaskGroup {
+  majorOrder?: number    // "## 1." -> 1
+  majorTitle?: string    // "## 1. 데이터베이스 및 기반" -> "데이터베이스 및 기반"
+  subOrder?: number      // "### 1.1" -> 1 (second part)
+  groupTitle?: string    // 그룹 제목 (title과 동일하지만 명시적)
+  groupOrder?: number    // 그룹 순서 (majorOrder와 동일하지만 명시적)
+}
+
+export interface ExtendedTasksFile extends TasksFile {
+  groups: ExtendedTaskGroup[]
+}

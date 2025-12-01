@@ -69,10 +69,14 @@ describe('parseTasksFile', () => {
 `
     const result = parseTasksFile('subsection-test', content)
 
-    expect(result.groups).toHaveLength(3)
-    expect(result.groups[1].id).toBe('group-1-1')
-    expect(result.groups[1].title).toBe('1.1 Subsection A')
-    expect(result.groups[2].id).toBe('group-1-2')
+    // 유연한 파서는 서브섹션만 그룹으로 처리 (메인 섹션은 컨테이너로 취급)
+    expect(result.groups).toHaveLength(2)
+    expect(result.groups[0].id).toBe('group-1-1')
+    expect(result.groups[0].title).toBe('1.1 Subsection A')
+    expect(result.groups[0].tasks).toHaveLength(2)
+    expect(result.groups[1].id).toBe('group-1-2')
+    expect(result.groups[1].title).toBe('1.2 Subsection B')
+    expect(result.groups[1].tasks).toHaveLength(1)
   })
 
   it('handles plain (unnumbered) tasks', () => {

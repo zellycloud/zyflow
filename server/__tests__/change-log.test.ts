@@ -5,12 +5,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { ChangeLogManager } from '../change-log.js'
 import { getSqlite } from '../tasks/db/client.js'
-import { changeEvents } from '../tasks/db/schema.js'
-import type { EventFilter, EventSeverity, EventType } from '../types/change-log.js'
+import type { EventFilter, EventType } from '../types/change-log.js'
+import type Database from 'better-sqlite3'
 
 describe('ChangeLogManager', () => {
   let changeLogManager: ChangeLogManager
-  let db: any
+  let db: Database.Database
 
   beforeEach(async () => {
     // 테스트용 데이터베이스 초기화

@@ -29,7 +29,58 @@ import {
 // Change Log & Replay imports
 import { getChangeLogManager } from '../server/change-log.js'
 import { getReplayEngine } from '../server/replay-engine.js'
-import type { EventFilter, ReplayOptions } from '../server/types/change-log.js'
+import type { EventFilter, ReplayOptions, EventType, EventSeverity, EventSource } from '../server/types/change-log.js'
+
+// MCP Handler Argument Types
+interface GetEventsArgs {
+  event_types?: EventType[];
+  severities?: EventSeverity[];
+  sources?: EventSource[];
+  project_ids?: string[];
+  change_ids?: string[];
+  time_range?: { start: string; end: string };
+  limit?: number;
+  offset?: number;
+  sort_by?: { field: string; direction: 'ASC' | 'DESC' };
+}
+
+interface GetEventStatisticsArgs {
+  event_types?: EventType[];
+  time_range?: { start: string; end: string };
+}
+
+interface SearchEventsArgs {
+  query: string;
+  event_types?: EventType[];
+  time_range?: { start: string; end: string };
+}
+
+interface ExportEventsArgs {
+  filter?: EventFilter;
+  format?: 'JSON' | 'CSV' | 'SQL';
+}
+
+interface CreateReplaySessionArgs {
+  name: string;
+  description?: string;
+  filter?: EventFilter;
+  mode?: 'SAFE' | 'FAST' | 'VERBOSE' | 'DRY_RUN';
+  strategy?: 'SEQUENTIAL' | 'PARALLEL' | 'DEPENDENCY_AWARE' | 'SELECTIVE';
+  stop_on_error?: boolean;
+  enable_validation?: boolean;
+  enable_rollback?: boolean;
+  max_concurrency?: number;
+  skip_events?: string[];
+  include_events?: string[];
+}
+
+interface StartReplayArgs {
+  session_id: string;
+}
+
+interface GetReplayProgressArgs {
+  session_id: string;
+}
 
 // Get project path from environment or use current directory
 const PROJECT_PATH = process.env.ZYFLOW_PROJECT || process.cwd()
@@ -738,7 +789,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 // Change Log & Replay Tool Handlers
 // =============================================
 
-async function handleGetEvents(args: any) {
+async function handleGetEvents(args: GetEventsArgs) {
   const changeLogManager = getChangeLogManager();
   
   try {
@@ -807,7 +858,7 @@ async function handleGetEvents(args: any) {
   }
 }
 
-async function handleGetEventStatistics(args: any) {
+async function handleGetEventStatistics(args: GetEventStatisticsArgs) {
   const changeLogManager = getChangeLogManager();
   
   try {
@@ -846,7 +897,7 @@ async function handleGetEventStatistics(args: any) {
   }
 }
 
-async function handleSearchEvents(args: any) {
+async function handleSearchEvents(args: SearchEventsArgs) {
   const changeLogManager = getChangeLogManager();
   
   try {
@@ -887,7 +938,7 @@ async function handleSearchEvents(args: any) {
   }
 }
 
-async function handleExportEvents(args: any) {
+async function handleExportEvents(args: ExportEventsArgs) {
   const changeLogManager = getChangeLogManager();
   
   try {
@@ -916,7 +967,7 @@ async function handleExportEvents(args: any) {
   }
 }
 
-async function handleCreateReplaySession(args: any) {
+async function handleCreateReplaySession(args: CreateReplaySessionArgs) {
   try {
     const replayEngine = getReplayEngine();
     
@@ -968,7 +1019,7 @@ async function handleCreateReplaySession(args: any) {
   }
 }
 
-async function handleStartReplay(args: any) {
+async function handleStartReplay(args: StartReplayArgs) {
   try {
     const replayEngine = getReplayEngine();
     await replayEngine.startReplay(args.session_id);
@@ -989,7 +1040,7 @@ async function handleStartReplay(args: any) {
   }
 }
 
-async function handleGetReplayProgress(args: any) {
+async function handleGetReplayProgress(args: GetReplayProgressArgs) {
   try {
     const replayEngine = getReplayEngine();
     const progress = await replayEngine.getReplayProgress(args.session_id);

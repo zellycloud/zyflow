@@ -25,7 +25,34 @@ import type {
   EventSource
 } from './types/change-log.js';
 import { getSqlite } from './tasks/db/client.js';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { changeEvents, eventStatistics } from './tasks/db/schema.js';
+
+// DB Row 타입 정의
+interface ChangeEventRow {
+  id: string;
+  type: EventType;
+  severity: EventSeverity;
+  source: EventSource;
+  timestamp: number;
+  project_id: string | null;
+  change_id: string | null;
+  correlation_id: string | null;
+  session_id: string | null;
+  user_id: string | null;
+  data_type: string;
+  data: string;
+  metadata: string;
+  processing_status: string;
+  processed_at: number | null;
+  processing_error: string | null;
+  retry_count: number;
+  max_retries: number;
+  checksum: string | null;
+  size: number;
+  created_at: number;
+  updated_at: number;
+}
 
 /**
  * SQLite 기반 이벤트 저장소 구현
@@ -84,9 +111,9 @@ class SQLiteEventStore implements EventStore {
 
     this.db.prepare(`
       INSERT INTO change_events (
-        id, type, severity, source, timestamp, projectId, changeId, correlationId,
-        sessionId, userId, dataType, data, metadata, processingStatus, retryCount,
-        maxRetries, checksum, size, createdAt, updatedAt
+        id, type, severity, source, timestamp, project_id, change_id, correlation_id,
+        session_id, user_id, data_type, data, metadata, processing_status, retry_count,
+        max_retries, checksum, size, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       serializedEvent.id,
@@ -94,11 +121,11 @@ class SQLiteEventStore implements EventStore {
       serializedEvent.severity,
       serializedEvent.source,
       serializedEvent.timestamp,
-      serializedEvent.projectId,
-      serializedEvent.changeId,
-      serializedEvent.correlationId,
-      serializedEvent.sessionId,
-      serializedEvent.userId,
+      serializedEvent.projectId ?? null,
+      serializedEvent.changeId ?? null,
+      serializedEvent.correlationId ?? null,
+      serializedEvent.sessionId ?? null,
+      serializedEvent.userId ?? null,
       this.getDataType(event.type),
       serializedEvent.data,
       serializedEvent.metadata,
@@ -138,7 +165,7 @@ class SQLiteEventStore implements EventStore {
 
     const row = this.db.prepare(`
       SELECT * FROM change_events WHERE id = ?
-    `).get(id) as any;
+    `).get(id) as ChangeEventRow | undefined;
 
     if (!row) {
       return null;
@@ -153,7 +180,7 @@ class SQLiteEventStore implements EventStore {
     }
 
     let query = 'SELECT * FROM change_events WHERE 1=1';
-    const params: any[] = [];
+    const params: (string | number)[] = [];
 
     // 필터 조건 추가
     if (filter.eventTypes && filter.eventTypes.length > 0) {
@@ -214,7 +241,7 @@ class SQLiteEventStore implements EventStore {
       params.push(filter.pagination.limit, filter.pagination.offset);
     }
 
-    const rows = this.db.prepare(query).all(...params) as any[];
+    const rows = this.db.prepare(query).all(...params) as ChangeEventRow[];
     return rows.map(row => this.deserializeEvent(row));
   }
 
@@ -224,7 +251,7 @@ class SQLiteEventStore implements EventStore {
     }
 
     let query = 'SELECT COUNT(*) as count FROM change_events WHERE 1=1';
-    const params: any[] = [];
+    const params: (string | number)[] = [];
 
     // 필터 조건 추가 (getEvents와 동일한 로직)
     if (filter) {
@@ -261,7 +288,7 @@ class SQLiteEventStore implements EventStore {
       SELECT type, COUNT(*) as count FROM (${baseQuery}) GROUP BY type
     `).all() as Array<{ type: EventType; count: number }>;
     
-    const eventsByType: Record<EventType, number> = {} as any;
+    const eventsByType = {} as Record<EventType, number>;
     typeStats.forEach(stat => {
       eventsByType[stat.type] = stat.count;
     });
@@ -270,8 +297,8 @@ class SQLiteEventStore implements EventStore {
     const severityStats = this.db.prepare(`
       SELECT severity, COUNT(*) as count FROM (${baseQuery}) GROUP BY severity
     `).all() as Array<{ severity: EventSeverity; count: number }>;
-    
-    const eventsBySeverity: Record<EventSeverity, number> = {} as any;
+
+    const eventsBySeverity = {} as Record<EventSeverity, number>;
     severityStats.forEach(stat => {
       eventsBySeverity[stat.severity] = stat.count;
     });
@@ -280,8 +307,8 @@ class SQLiteEventStore implements EventStore {
     const sourceStats = this.db.prepare(`
       SELECT source, COUNT(*) as count FROM (${baseQuery}) GROUP BY source
     `).all() as Array<{ source: EventSource; count: number }>;
-    
-    const eventsBySource: Record<EventSource, number> = {} as any;
+
+    const eventsBySource = {} as Record<EventSource, number>;
     sourceStats.forEach(stat => {
       eventsBySource[stat.source] = stat.count;
     });
@@ -316,8 +343,8 @@ class SQLiteEventStore implements EventStore {
   }
 
   async getAggregatedData(
-    groupBy: string[],
-    filter?: EventFilter
+    _groupBy: string[],
+    _filter?: EventFilter
   ): Promise<Record<string, unknown>[]> {
     // 구현 필요
     return [];
@@ -411,13 +438,10 @@ class SQLiteEventStore implements EventStore {
   }
 
   // 헬퍼 메서드
-  private buildFilterQuery(filter: EventFilter): string {
-    let query = 'SELECT * FROM change_events WHERE 1=1';
-    const params: any[] = [];
-
+  private buildFilterQuery(_filter: EventFilter): string {
+    const query = 'SELECT * FROM change_events WHERE 1=1';
     // 필터 조건 구성 (getEvents와 동일한 로직)
-    // ...
-
+    // 추가 구현 필요
     return query;
   }
 
@@ -451,26 +475,26 @@ class SQLiteEventStore implements EventStore {
     return Buffer.byteLength(JSON.stringify(event), 'utf8');
   }
 
-  private deserializeEvent(row: any): ChangeEvent {
+  private deserializeEvent(row: ChangeEventRow): ChangeEvent {
     return {
       id: row.id,
       type: row.type as EventType,
       severity: row.severity as EventSeverity,
       source: row.source as EventSource,
       timestamp: row.timestamp,
-      projectId: row.projectId,
-      changeId: row.changeId,
-      correlationId: row.correlationId,
-      sessionId: row.sessionId,
-      userId: row.userId,
+      projectId: row.project_id ?? undefined,
+      changeId: row.change_id ?? undefined,
+      correlationId: row.correlation_id ?? undefined,
+      sessionId: row.session_id ?? undefined,
+      userId: row.user_id ?? undefined,
       data: JSON.parse(row.data),
       metadata: JSON.parse(row.metadata),
       processing: {
-        status: row.processing_status,
-        processedAt: row.processedAt,
-        error: row.processingError,
-        retryCount: row.retryCount,
-        maxRetries: row.maxRetries
+        status: row.processing_status as 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED',
+        processedAt: row.processed_at ?? undefined,
+        error: row.processing_error ?? undefined,
+        retryCount: row.retry_count,
+        maxRetries: row.max_retries
       }
     };
   }
@@ -481,10 +505,10 @@ class SQLiteEventStore implements EventStore {
     
     this.db.prepare(`
       INSERT OR REPLACE INTO event_statistics (
-        projectId, eventType, severity, source, date, count, size, calculatedAt, createdAt, updatedAt
+        project_id, event_type, severity, source, date, count, size, calculated_at, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
     `).run(
-      event.projectId,
+      event.projectId ?? null,
       event.type,
       event.severity,
       event.source,
@@ -687,6 +711,11 @@ export class ChangeLogManager implements IChangeLogManager {
     return this.eventStore.getEvents(filter);
   }
 
+  async getEventCount(filter?: EventFilter): Promise<number> {
+    this.ensureInitialized();
+    return this.eventStore.getEventCount(filter);
+  }
+
   async searchEvents(query: string, filter?: EventFilter): Promise<ChangeEvent[]> {
     this.ensureInitialized();
     
@@ -753,12 +782,12 @@ export class ChangeLogManager implements IChangeLogManager {
     switch (format) {
       case 'JSON':
         return JSON.stringify(events, null, 2);
-      
-      case 'CSV':
+
+      case 'CSV': {
         // CSV 형식으로 변환
         const headers = ['id', 'type', 'severity', 'source', 'timestamp', 'projectId'];
         const csvRows = [headers.join(',')];
-        
+
         events.forEach(event => {
           const row = [
             event.id,
@@ -770,20 +799,22 @@ export class ChangeLogManager implements IChangeLogManager {
           ];
           csvRows.push(row.join(','));
         });
-        
+
         return csvRows.join('\n');
-      
-      case 'SQL':
+      }
+
+      case 'SQL': {
         // SQL INSERT 문으로 변환
         const sqlStatements = events.map(event => {
           const data = JSON.stringify(event.data).replace(/'/g, "''");
           const metadata = JSON.stringify(event.metadata).replace(/'/g, "''");
-          
+
           return `INSERT INTO change_events (id, type, severity, source, timestamp, data, metadata) VALUES ('${event.id}', '${event.type}', '${event.severity}', '${event.source}', ${event.timestamp}, '${data}', '${metadata}');`;
         });
-        
+
         return sqlStatements.join('\n');
-      
+      }
+
       default:
         throw new Error(`Unsupported export format: ${format}`);
     }
