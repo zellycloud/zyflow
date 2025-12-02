@@ -67,8 +67,12 @@ export function ChangeItem({ change, isExpanded, onToggle }: ChangeItemProps) {
           <span className="font-medium truncate flex-1">{change.title}</span>
 
           {/* Current Stage Badge */}
-          <Badge variant="outline" className="shrink-0">
-            {STAGE_CONFIG[change.currentStage].icon} {STAGE_CONFIG[change.currentStage].label}
+          <Badge variant="outline" className="shrink-0 flex items-center gap-1">
+            {(() => {
+              const IconComponent = STAGE_CONFIG[change.currentStage].icon
+              return <IconComponent className="h-3 w-3" />
+            })()}
+            {STAGE_CONFIG[change.currentStage].label}
           </Badge>
 
           {/* Progress */}

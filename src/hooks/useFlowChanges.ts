@@ -78,9 +78,6 @@ export function useSyncFlowChanges() {
 }
 
 // 프로젝트별 활성 Change 수
-interface FlowChangeCounts {
-  counts: Record<string, number>
-}
 
 export function useFlowChangeCounts(options?: {
   status?: 'active' | 'completed' | 'all'
@@ -92,8 +89,8 @@ export function useFlowChangeCounts(options?: {
     queryKey: ['flow', 'changes', 'counts', status],
     queryFn: async (): Promise<Record<string, number>> => {
       const params = new URLSearchParams()
-      if (status !== 'active') params.set('status', status)
-      
+      params.set('status', status) // 항상 status 파라미터 전달
+
       const res = await fetch(`${API_BASE}/flow/changes/counts?${params}`)
       const json: ApiResponse<FlowChangeCountsResponse> = await res.json()
       if (!json.success) throw new Error(json.error)
@@ -322,34 +319,34 @@ export function useSelectedItem() {
       refetchType: 'active'
     })
     
-    // 관련 데이터 미리 가져오기
+    // 관련 데이터 refetch (캐시 무효화 후 다시 가져오기)
     switch (item.type) {
       case 'project':
-        queryClient.prefetchQuery({
+        queryClient.invalidateQueries({
           queryKey: ['flow', 'changes'],
-          staleTime: 30000
+          refetchType: 'active'
         })
-        queryClient.prefetchQuery({
+        queryClient.invalidateQueries({
           queryKey: ['flow', 'tasks', { standalone: true }],
-          staleTime: 30000
+          refetchType: 'active'
         })
         break
-        
+
       case 'change':
-        queryClient.prefetchQuery({
+        queryClient.invalidateQueries({
           queryKey: ['flow', 'changes', item.changeId],
-          staleTime: 30000
+          refetchType: 'active'
         })
-        queryClient.prefetchQuery({
+        queryClient.invalidateQueries({
           queryKey: ['flow', 'tasks', { changeId: item.changeId }],
-          staleTime: 30000
+          refetchType: 'active'
         })
         break
-        
+
       case 'standalone-tasks':
-        queryClient.prefetchQuery({
+        queryClient.invalidateQueries({
           queryKey: ['flow', 'tasks', { standalone: true }],
-          staleTime: 30000
+          refetchType: 'active'
         })
         break
     }

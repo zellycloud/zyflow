@@ -201,7 +201,10 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>{STAGE_CONFIG[stage].icon}</span>
+          {(() => {
+            const IconComponent = STAGE_CONFIG[stage].icon
+            return <IconComponent className="h-4 w-4" />
+          })()}
           <span>{STAGE_CONFIG[stage].label} 태스크</span>
           <Badge variant="secondary" className="text-xs">
             {tasks.filter((t) => t.status === 'done').length}/{tasks.length}

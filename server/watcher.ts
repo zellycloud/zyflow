@@ -48,17 +48,21 @@ export function createTasksWatcher(options: WatcherOptions): WatcherInstance {
 
     const changeId = match[1]
 
-    // 파일 변경 이벤트 로깅
-    const changeLogManager = getChangeLogManager()
-    await changeLogManager.logFileChange({
-      filePath,
-      changeType: 'MODIFIED',
-      metadata: {
-        changeId,
-        projectPath,
-        timestamp: Date.now()
-      }
-    }, 'DEBUG')
+    // 파일 변경 이벤트 로깅 (ChangeLogManager가 초기화된 경우에만)
+    try {
+      const changeLogManager = getChangeLogManager()
+      await changeLogManager.logFileChange({
+        filePath,
+        changeType: 'MODIFIED',
+        metadata: {
+          changeId,
+          projectPath,
+          timestamp: Date.now()
+        }
+      }, 'DEBUG')
+    } catch {
+      // ChangeLogManager가 아직 초기화되지 않은 경우 무시
+    }
 
     // 디바운스 처리 (파일 저장 중 여러 번 트리거 방지)
     const timerKey = `${projectPath}:${changeId}`
@@ -70,19 +74,24 @@ export function createTasksWatcher(options: WatcherOptions): WatcherInstance {
     const timer = setTimeout(async () => {
       debounceTimers.delete(timerKey)
       console.log(`[Watcher] Detected change in ${changeId}/tasks.md (project: ${projectPath})`)
-      
-      // 파일 변경 완료 이벤트 로깅
-      await changeLogManager.logFileChange({
-        filePath,
-        changeType: 'MODIFIED',
-        metadata: {
-          changeId,
-          projectPath,
-          action: 'debounced_change_processed',
-          timestamp: Date.now()
-        }
-      }, 'INFO')
-      
+
+      // 파일 변경 완료 이벤트 로깅 (ChangeLogManager가 초기화된 경우에만)
+      try {
+        const logManager = getChangeLogManager()
+        await logManager.logFileChange({
+          filePath,
+          changeType: 'MODIFIED',
+          metadata: {
+            changeId,
+            projectPath,
+            action: 'debounced_change_processed',
+            timestamp: Date.now()
+          }
+        }, 'INFO')
+      } catch {
+        // ChangeLogManager가 아직 초기화되지 않은 경우 무시
+      }
+
       onTasksChange(changeId, filePath, projectPath)
     }, debounceMs)
 
