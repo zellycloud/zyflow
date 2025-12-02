@@ -121,7 +121,7 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
   }
 
   // 폴더 선택으로 경로 변경
-  const handleBrowseAndUpdatePath = async (projectId: string) => {
+  const handleBrowseAndUpdatePath = async () => {
     try {
       const result = await browseFolder.mutateAsync()
       if (result.cancelled || !result.path) return
@@ -327,7 +327,7 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                                       variant="ghost"
                                       size="icon"
                                       className="h-7 w-7 flex-shrink-0"
-                                      onClick={() => handleBrowseAndUpdatePath(project.id)}
+                                      onClick={handleBrowseAndUpdatePath}
                                       disabled={browseFolder.isPending}
                                     >
                                       <FolderOpen className="h-3 w-3" />

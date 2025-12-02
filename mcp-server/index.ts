@@ -26,6 +26,16 @@ import {
   handleTaskView,
 } from './task-tools.js'
 
+// Integration Hub imports
+import {
+  integrationToolDefinitions,
+  handleIntegrationContext,
+  handleListAccounts,
+  handleGetEnv,
+  handleApplyGit,
+  handleGetTestAccount,
+} from './integration-tools.js'
+
 // Change Log & Replay imports
 import { getChangeLogManager } from '../server/change-log.js'
 import { getReplayEngine } from '../server/replay-engine.js'
@@ -363,7 +373,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       // Task management tools (SQLite-based)
       ...taskToolDefinitions,
-      
+
+      // Integration Hub Tools
+      ...integrationToolDefinitions,
+
       // Change Log Tools
       {
         name: 'get_events',
@@ -750,6 +763,47 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
 
+      // Integration Hub Tools
+      case 'integration_context': {
+        const result = await handleIntegrationContext(args as { projectId: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'integration_list_accounts': {
+        const result = await handleListAccounts(args as { type?: 'github' | 'supabase' | 'vercel' | 'sentry' | 'custom' })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'integration_get_env': {
+        const result = await handleGetEnv(args as { projectId: string; envId?: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'integration_apply_git': {
+        const result = await handleApplyGit(args as { projectId: string; scope?: 'local' | 'global' }, PROJECT_PATH)
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'integration_get_test_account': {
+        const result = await handleGetTestAccount(args as { projectId: string; role?: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
       // Change Log Tools
       case 'get_events':
         return await handleGetEvents(args);
@@ -759,7 +813,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleSearchEvents(args);
       case 'export_events':
         return await handleExportEvents(args);
-      
+
       // Replay Tools
       case 'create_replay_session':
         return await handleCreateReplaySession(args);
