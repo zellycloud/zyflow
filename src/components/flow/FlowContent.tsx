@@ -3,6 +3,7 @@ import type { SelectedItem } from '@/App'
 import { ProjectDashboard } from './ProjectDashboard'
 import { ChangeDetail } from './ChangeDetail'
 import { StandaloneTasks } from './StandaloneTasks'
+import { IntegrationsSettings } from '@/components/integrations'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { useSelectedData } from '@/hooks/useFlowChanges'
 
@@ -37,9 +38,14 @@ export function FlowContent({ selectedItem }: FlowContentProps) {
     )
   }
 
+  // Settings 페이지는 프로젝트 선택 없이 표시
+  if (selectedItem.type === 'settings') {
+    return <IntegrationsSettings />
+  }
+
   // 선택된 프로젝트가 활성 프로젝트와 다르면 렌더링하지 않음 (404 방지)
   // 프로젝트 전환 중일 때 이전 프로젝트의 Change를 요청하지 않도록 함
-  if (selectedItem.projectId !== projectsData?.activeProjectId) {
+  if ('projectId' in selectedItem && selectedItem.projectId !== projectsData?.activeProjectId) {
     return (
       <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
         <Loader2 className="h-8 w-8 mb-4 animate-spin opacity-50" />

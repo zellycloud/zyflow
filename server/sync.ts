@@ -355,3 +355,51 @@ export async function syncChangeTasksForProject(
 
   return { changeId, tasksCreated, tasksUpdated }
 }
+
+/**
+ * Change가 DB에 없으면 등록 (새 Change 생성 시 자동 등록)
+ * proposal.md에서 제목을 추출하여 Change 레코드 생성
+ */
+export async function ensureChangeExists(
+  changeId: string,
+  projectPath: string
+): Promise<boolean> {
+  const sqlite = getSqlite()
+
+  // 프로젝트 ID 계산 (경로 기반)
+  const projectId = projectPath.toLowerCase().replace(/[^a-z0-9]/g, '-')
+
+  // 이미 존재하는지 확인
+  const existing = sqlite.prepare(`
+    SELECT id FROM changes WHERE id = ? AND project_id = ?
+  `).get(changeId, projectId)
+
+  if (existing) {
+    return false // 이미 존재
+  }
+
+  // proposal.md에서 제목 추출
+  let title = changeId
+  try {
+    const proposalPath = join(projectPath, 'openspec', 'changes', changeId, 'proposal.md')
+    const proposalContent = await readFile(proposalPath, 'utf-8')
+    const titleMatch = proposalContent.match(/^#\s+(?:Change:\s+)?(.+)$/m)
+    if (titleMatch) {
+      title = titleMatch[1].trim()
+    }
+  } catch {
+    // proposal.md 없으면 changeId를 제목으로 사용
+  }
+
+  const now = Date.now()
+  const specPath = `openspec/changes/${changeId}/proposal.md`
+
+  // Change 레코드 생성
+  sqlite.prepare(`
+    INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'active', 'task', 0, ?, ?)
+  `).run(changeId, projectId, title, specPath, now, now)
+
+  console.log(`[Sync] Created new Change: ${changeId} (${title})`)
+  return true
+}

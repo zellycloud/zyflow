@@ -1,0 +1,357 @@
+/**
+ * Integration Hub MCP Tools
+ * 프로젝트별 서비스 계정, 환경 설정, 테스트 계정 조회 도구
+ */
+
+import type { Tool } from '@modelcontextprotocol/sdk/types.js'
+
+// Integration Hub 서버 API 기본 URL
+const API_BASE = 'http://localhost:3001/api/integrations'
+
+// =============================================
+// Tool Definitions
+// =============================================
+
+export const integrationToolDefinitions: Tool[] = [
+  {
+    name: 'integration_context',
+    description:
+      '현재 프로젝트의 Integration 컨텍스트를 조회합니다. 연결된 GitHub/Supabase/Vercel/Sentry 계정 정보, 환경 목록, 테스트 계정 목록을 반환합니다. 민감한 정보(토큰, 비밀번호)는 포함되지 않습니다.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        projectId: {
+          type: 'string',
+          description: '프로젝트 ID (경로 또는 식별자)',
+        },
+      },
+      required: ['projectId'],
+    },
+  },
+  {
+    name: 'integration_list_accounts',
+    description:
+      '등록된 서비스 계정 목록을 조회합니다. 타입별로 필터링할 수 있습니다. 민감한 정보는 마스킹되어 반환됩니다.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['github', 'supabase', 'vercel', 'sentry', 'custom'],
+          description: '서비스 타입 (선택사항, 미지정 시 모든 타입 반환)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'integration_get_env',
+    description:
+      '프로젝트의 환경 설정 및 환경 변수를 조회합니다. 활성 환경 또는 지정한 환경의 변수를 반환합니다. DB URL 등 민감 정보 포함.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        projectId: {
+          type: 'string',
+          description: '프로젝트 ID',
+        },
+        envId: {
+          type: 'string',
+          description: '환경 ID (선택사항, 미지정 시 활성 환경 반환)',
+        },
+      },
+      required: ['projectId'],
+    },
+  },
+  {
+    name: 'integration_apply_git',
+    description:
+      '프로젝트에 연결된 GitHub 계정의 git config를 현재 디렉토리에 적용합니다. user.name, user.email을 설정합니다.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        projectId: {
+          type: 'string',
+          description: '프로젝트 ID',
+        },
+        scope: {
+          type: 'string',
+          enum: ['local', 'global'],
+          description: 'git config 범위 (기본: local)',
+        },
+      },
+      required: ['projectId'],
+    },
+  },
+  {
+    name: 'integration_get_test_account',
+    description:
+      '프로젝트의 테스트 계정 정보를 조회합니다. 역할별로 필터링할 수 있습니다. 비밀번호는 원본으로 반환됩니다.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        projectId: {
+          type: 'string',
+          description: '프로젝트 ID',
+        },
+        role: {
+          type: 'string',
+          description: '역할 필터 (선택사항, 예: admin, user)',
+        },
+      },
+      required: ['projectId'],
+    },
+  },
+]
+
+// =============================================
+// Tool Handlers
+// =============================================
+
+interface IntegrationContextArgs {
+  projectId: string
+}
+
+interface ListAccountsArgs {
+  type?: 'github' | 'supabase' | 'vercel' | 'sentry' | 'custom'
+}
+
+interface GetEnvArgs {
+  projectId: string
+  envId?: string
+}
+
+interface ApplyGitArgs {
+  projectId: string
+  scope?: 'local' | 'global'
+}
+
+interface GetTestAccountArgs {
+  projectId: string
+  role?: string
+}
+
+export async function handleIntegrationContext(args: IntegrationContextArgs) {
+  try {
+    const res = await fetch(`${API_BASE}/projects/${args.projectId}/context`)
+    if (!res.ok) {
+      const error = await res.json()
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch project context',
+      }
+    }
+    const data = await res.json()
+    return {
+      success: true,
+      context: data.context,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to connect to Integration Hub',
+    }
+  }
+}
+
+export async function handleListAccounts(args: ListAccountsArgs) {
+  try {
+    const url = args.type ? `${API_BASE}/accounts?type=${args.type}` : `${API_BASE}/accounts`
+    const res = await fetch(url)
+    if (!res.ok) {
+      const error = await res.json()
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch accounts',
+      }
+    }
+    const data = await res.json()
+    return {
+      success: true,
+      accounts: data.accounts,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to connect to Integration Hub',
+    }
+  }
+}
+
+export async function handleGetEnv(args: GetEnvArgs) {
+  try {
+    // 환경 목록 조회
+    const listRes = await fetch(`${API_BASE}/projects/${args.projectId}/environments`)
+    if (!listRes.ok) {
+      const error = await listRes.json()
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch environments',
+      }
+    }
+    const listData = await listRes.json()
+    const environments = listData.environments
+
+    if (!environments || environments.length === 0) {
+      return {
+        success: false,
+        error: 'No environments configured for this project',
+      }
+    }
+
+    // 환경 ID가 지정되지 않은 경우 활성 환경 사용
+    let targetEnv = args.envId
+      ? environments.find((e: { id: string }) => e.id === args.envId)
+      : environments.find((e: { isActive: boolean }) => e.isActive)
+
+    if (!targetEnv) {
+      targetEnv = environments[0]
+    }
+
+    // 환경 변수 조회 (복호화된 원본)
+    const varsRes = await fetch(
+      `${API_BASE}/projects/${args.projectId}/environments/${targetEnv.id}/variables`
+    )
+    if (!varsRes.ok) {
+      return {
+        success: true,
+        environment: targetEnv,
+        variables: {},
+        note: 'Failed to decrypt environment variables',
+      }
+    }
+    const varsData = await varsRes.json()
+
+    return {
+      success: true,
+      environment: {
+        id: targetEnv.id,
+        name: targetEnv.name,
+        description: targetEnv.description,
+        serverUrl: targetEnv.serverUrl,
+        isActive: targetEnv.isActive,
+      },
+      variables: varsData.variables,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to connect to Integration Hub',
+    }
+  }
+}
+
+export async function handleApplyGit(args: ApplyGitArgs, projectPath: string) {
+  try {
+    // 프로젝트 컨텍스트에서 GitHub 정보 가져오기
+    const res = await fetch(`${API_BASE}/projects/${args.projectId}/context`)
+    if (!res.ok) {
+      const error = await res.json()
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch project context',
+      }
+    }
+    const data = await res.json()
+    const github = data.context?.github
+
+    if (!github || !github.username) {
+      return {
+        success: false,
+        error: 'No GitHub account connected to this project',
+      }
+    }
+
+    const { execSync } = await import('child_process')
+    const scope = args.scope === 'global' ? '--global' : '--local'
+
+    // Git config 설정
+    execSync(`git config ${scope} user.name "${github.username}"`, {
+      cwd: projectPath,
+      encoding: 'utf-8',
+    })
+
+    if (github.email) {
+      execSync(`git config ${scope} user.email "${github.email}"`, {
+        cwd: projectPath,
+        encoding: 'utf-8',
+      })
+    }
+
+    return {
+      success: true,
+      applied: {
+        'user.name': github.username,
+        'user.email': github.email || '(not set)',
+      },
+      scope: args.scope || 'local',
+      message: `Git config applied: user.name="${github.username}"${github.email ? `, user.email="${github.email}"` : ''}`,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to apply git config',
+    }
+  }
+}
+
+export async function handleGetTestAccount(args: GetTestAccountArgs) {
+  try {
+    const res = await fetch(`${API_BASE}/projects/${args.projectId}/test-accounts`)
+    if (!res.ok) {
+      const error = await res.json()
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch test accounts',
+      }
+    }
+    const data = await res.json()
+    let accounts = data.accounts
+
+    // 역할 필터링
+    if (args.role) {
+      accounts = accounts.filter((a: { role: string }) =>
+        a.role.toLowerCase().includes(args.role!.toLowerCase())
+      )
+    }
+
+    if (accounts.length === 0) {
+      return {
+        success: false,
+        error: args.role
+          ? `No test accounts found with role: ${args.role}`
+          : 'No test accounts configured for this project',
+      }
+    }
+
+    // 각 계정의 비밀번호 조회 (복호화된 원본)
+    const accountsWithPasswords = await Promise.all(
+      accounts.map(async (account: { id: string; role: string; email: string; description: string }) => {
+        const passRes = await fetch(
+          `${API_BASE}/projects/${args.projectId}/test-accounts/${account.id}/password`
+        )
+        let password = '(failed to decrypt)'
+        if (passRes.ok) {
+          const passData = await passRes.json()
+          password = passData.password
+        }
+        return {
+          role: account.role,
+          email: account.email,
+          password,
+          description: account.description,
+        }
+      })
+    )
+
+    return {
+      success: true,
+      accounts: accountsWithPasswords,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to connect to Integration Hub',
+    }
+  }
+}

@@ -1,16 +1,24 @@
+import { createServer } from 'http'
 import { app } from './app.js'
 import {
   createMultiWatcherManager,
   setGlobalMultiWatcher,
   getGlobalMultiWatcher,
 } from './watcher.js'
-import { syncChangeTasksForProject } from './sync.js'
+import { syncChangeTasksForProject, ensureChangeExists } from './sync.js'
 import { loadConfig } from './config.js'
+import { initWebSocket, emit } from './websocket.js'
 
 const PORT = 3001
 
+// HTTP 서버 생성 (Express + WebSocket 공유)
+const httpServer = createServer(app)
+
+// WebSocket 서버 초기화
+initWebSocket(httpServer)
+
 // 서버 시작
-const server = app.listen(PORT, async () => {
+httpServer.listen(PORT, async () => {
   console.log(`ZyFlow API server running on http://localhost:${PORT}`)
 
   // Multi-Project Watcher 초기화 - 모든 등록된 프로젝트 감시
@@ -35,15 +43,27 @@ async function initMultiWatcher() {
       async (changeId, filePath, projectPath) => {
         console.log(`[Watcher] Syncing ${changeId} due to file change: ${filePath}`)
         try {
+          // 1. Change가 DB에 없으면 먼저 등록 (새 Change 생성 시)
+          await ensureChangeExists(changeId, projectPath)
+
+          // 2. tasks.md 파싱하여 DB에 동기화
           const result = await syncChangeTasksForProject(changeId, projectPath)
           console.log(
             `[Watcher] Sync complete for ${changeId}: ${result.tasksCreated} created, ${result.tasksUpdated} updated`
           )
+
+          // 3. WebSocket으로 클라이언트에 변경 알림
+          emit('change:synced', {
+            changeId,
+            projectPath,
+            tasksCreated: result.tasksCreated,
+            tasksUpdated: result.tasksUpdated
+          })
         } catch (error) {
           console.error(`[Watcher] Sync error for ${changeId}:`, error)
         }
       },
-      500 // debounceMs
+      1000 // debounceMs - 1초로 늘려서 파일 쓰기 완료 대기
     )
 
     // 모든 프로젝트에 대해 watcher 추가
@@ -65,7 +85,7 @@ process.on('SIGINT', async () => {
   if (multiWatcher) {
     await multiWatcher.stopAll()
   }
-  server.close(() => {
+  httpServer.close(() => {
     console.log('Server closed')
     process.exit(0)
   })

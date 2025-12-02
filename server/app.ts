@@ -12,6 +12,8 @@ import {
   removeProject,
   setActiveProject,
   getActiveProject,
+  updateProjectPath,
+  reorderProjects,
 } from './config.js'
 import {
   initDb,
@@ -28,7 +30,9 @@ import {
   TaskPriority,
 } from './tasks/index.js'
 import { gitRouter, gitPull } from './git/index.js'
+import { emit } from './websocket.js'
 import { getGlobalMultiWatcher } from './watcher.js'
+import { integrationsRouter, initIntegrationsDb } from './integrations/index.js'
 
 const execAsync = promisify(exec)
 
@@ -50,6 +54,10 @@ app.use(express.json())
 
 // Git API 라우터 등록
 app.use('/api/git', gitRouter)
+
+// Integration Hub API 라우터 등록
+initIntegrationsDb()
+app.use('/api/integrations', integrationsRouter)
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
@@ -289,6 +297,66 @@ app.put('/api/projects/:id/activate', async (req, res) => {
   } catch (error) {
     console.error('Error activating project:', error)
     res.status(500).json({ success: false, error: 'Failed to activate project' })
+  }
+})
+
+// PUT /api/projects/:id/path - Update project path
+app.put('/api/projects/:id/path', async (req, res) => {
+  try {
+    const projectId = req.params.id
+    const { path: newPath } = req.body
+
+    if (!newPath) {
+      return res.status(400).json({ success: false, error: 'Path is required' })
+    }
+
+    // Check if openspec directory exists in new path
+    const openspecPath = join(newPath, 'openspec')
+    try {
+      await access(openspecPath)
+    } catch {
+      return res.status(400).json({
+        success: false,
+        error: 'No openspec directory found in the specified path',
+      })
+    }
+
+    const project = await updateProjectPath(projectId, newPath)
+
+    // Multi-Watcher 업데이트 (기존 watcher 제거 후 새 경로로 추가)
+    const multiWatcher = getGlobalMultiWatcher()
+    if (multiWatcher) {
+      await multiWatcher.removeProject(projectId)
+      multiWatcher.addProject(projectId, newPath)
+    }
+
+    res.json({ success: true, data: { project } })
+  } catch (error) {
+    console.error('Error updating project path:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update project path',
+    })
+  }
+})
+
+// PUT /api/projects/reorder - Reorder projects
+app.put('/api/projects/reorder', async (req, res) => {
+  try {
+    const { projectIds } = req.body
+
+    if (!projectIds || !Array.isArray(projectIds)) {
+      return res.status(400).json({ success: false, error: 'projectIds array is required' })
+    }
+
+    const projects = await reorderProjects(projectIds)
+    res.json({ success: true, data: { projects } })
+  } catch (error) {
+    console.error('Error reordering projects:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to reorder projects',
+    })
   }
 })
 
@@ -1757,6 +1825,9 @@ app.post('/api/flow/tasks', async (req, res) => {
 
     const task = sqlite.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid)
 
+    // WebSocket으로 태스크 생성 알림
+    emit('task:created', { task })
+
     res.json({ success: true, data: { task } })
   } catch (error) {
     console.error('Error creating flow task:', error)
@@ -1927,6 +1998,9 @@ app.patch('/api/flow/tasks/:id', async (req, res) => {
     sqlite.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`).run(...params)
 
     const task = sqlite.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id)
+
+    // WebSocket으로 태스크 업데이트 알림
+    emit('task:updated', { task })
 
     res.json({ success: true, data: { task } })
   } catch (error) {

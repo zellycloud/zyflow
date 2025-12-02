@@ -144,3 +144,62 @@ export function useBrowseFolder() {
     mutationFn: browseFolder,
   })
 }
+
+// ==================== 프로젝트 경로 변경 ====================
+
+async function updateProjectPath(projectId: string, newPath: string): Promise<Project> {
+  const response = await fetch(`/api/projects/${projectId}/path`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: newPath }),
+  })
+  const json: ApiResponse<{ project: Project }> = await response.json()
+
+  if (!json.success || !json.data) {
+    throw new Error(json.error || 'Failed to update project path')
+  }
+
+  return json.data.project
+}
+
+export function useUpdateProjectPath() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ projectId, path }: { projectId: string; path: string }) =>
+      updateProjectPath(projectId, path),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['projects-all-data'] })
+    },
+  })
+}
+
+// ==================== 프로젝트 순서 변경 ====================
+
+async function reorderProjects(projectIds: string[]): Promise<Project[]> {
+  const response = await fetch('/api/projects/reorder', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectIds }),
+  })
+  const json: ApiResponse<{ projects: Project[] }> = await response.json()
+
+  if (!json.success || !json.data) {
+    throw new Error(json.error || 'Failed to reorder projects')
+  }
+
+  return json.data.projects
+}
+
+export function useReorderProjects() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: reorderProjects,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['projects-all-data'] })
+    },
+  })
+}
