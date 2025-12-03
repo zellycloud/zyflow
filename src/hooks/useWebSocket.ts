@@ -2,7 +2,7 @@
  * WebSocket 연결 및 실시간 이벤트 처리 훅
  */
 
-import { useEffect, useRef, useCallback, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 export type WSEventType =
@@ -39,83 +39,141 @@ interface UseWebSocketOptions {
 
 export function useWebSocket(options: UseWebSocketOptions = {}) {
   const { autoReconnect = true, onEvent, onConnect, onDisconnect } = options
-  const wsRef = useRef<WebSocket | null>(null)
-  const reconnectAttempts = useRef(0)
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const queryClient = useQueryClient()
 
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      return
+  // refs로 콜백을 저장하여 useEffect 재실행 방지
+  const optionsRef = useRef({ autoReconnect, onEvent, onConnect, onDisconnect })
+  optionsRef.current = { autoReconnect, onEvent, onConnect, onDisconnect }
+
+  const wsRef = useRef<WebSocket | null>(null)
+  const reconnectAttemptsRef = useRef(0)
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const connect = () => {
+      // 이미 연결 중이거나 연결됨
+      if (wsRef.current?.readyState === WebSocket.OPEN ||
+          wsRef.current?.readyState === WebSocket.CONNECTING) {
+        return
+      }
+
+      if (!isMounted) return
+
+      try {
+        const ws = new WebSocket(WS_URL)
+
+        ws.onopen = () => {
+          if (!isMounted) {
+            ws.close()
+            return
+          }
+          console.log('[WebSocket] Connected')
+          setIsConnected(true)
+          reconnectAttemptsRef.current = 0
+          optionsRef.current.onConnect?.()
+        }
+
+        ws.onclose = () => {
+          if (!isMounted) return
+
+          console.log('[WebSocket] Disconnected')
+          setIsConnected(false)
+          wsRef.current = null
+          optionsRef.current.onDisconnect?.()
+
+          // 자동 재연결
+          if (optionsRef.current.autoReconnect &&
+              isMounted &&
+              reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttemptsRef.current++
+            console.log(`[WebSocket] Reconnecting... (${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`)
+            reconnectTimeoutRef.current = setTimeout(connect, RECONNECT_INTERVAL)
+          }
+        }
+
+        ws.onerror = () => {
+          // 에러는 onclose에서 처리되므로 여기서는 무시
+          // Strict Mode로 인한 early close 에러도 무시
+        }
+
+        ws.onmessage = (event) => {
+          if (!isMounted) return
+          try {
+            const data: WSEvent = JSON.parse(event.data)
+            optionsRef.current.onEvent?.(data)
+            handleEventInvalidation(data, queryClient)
+          } catch (error) {
+            console.error('[WebSocket] Failed to parse message:', error)
+          }
+        }
+
+        wsRef.current = ws
+      } catch (error) {
+        console.error('[WebSocket] Connection failed:', error)
+      }
     }
 
-    try {
-      const ws = new WebSocket(WS_URL)
+    connect()
 
-      ws.onopen = () => {
-        console.log('[WebSocket] Connected')
-        setIsConnected(true)
-        reconnectAttempts.current = 0
-        onConnect?.()
+    return () => {
+      isMounted = false
+
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
       }
 
-      ws.onclose = () => {
-        console.log('[WebSocket] Disconnected')
-        setIsConnected(false)
+      reconnectAttemptsRef.current = MAX_RECONNECT_ATTEMPTS // 재연결 방지
+
+      if (wsRef.current) {
+        wsRef.current.close()
         wsRef.current = null
-        onDisconnect?.()
-
-        // 자동 재연결
-        if (autoReconnect && reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
-          reconnectAttempts.current++
-          console.log(`[WebSocket] Reconnecting... (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`)
-          reconnectTimeoutRef.current = setTimeout(connect, RECONNECT_INTERVAL)
-        }
       }
+    }
+  }, [queryClient]) // queryClient는 stable하므로 한 번만 실행됨
 
-      ws.onerror = (error) => {
-        console.error('[WebSocket] Error:', error)
+  const connect = () => {
+    reconnectAttemptsRef.current = 0
+    if (wsRef.current?.readyState !== WebSocket.OPEN &&
+        wsRef.current?.readyState !== WebSocket.CONNECTING) {
+      // 기존 연결이 없으면 새로 연결
+      const ws = new WebSocket(WS_URL)
+      ws.onopen = () => {
+        setIsConnected(true)
+        optionsRef.current.onConnect?.()
       }
-
+      ws.onclose = () => {
+        setIsConnected(false)
+        optionsRef.current.onDisconnect?.()
+      }
       ws.onmessage = (event) => {
         try {
           const data: WSEvent = JSON.parse(event.data)
-
-          // 커스텀 이벤트 핸들러 호출
-          onEvent?.(data)
-
-          // 이벤트 타입에 따라 React Query 캐시 무효화
+          optionsRef.current.onEvent?.(data)
           handleEventInvalidation(data, queryClient)
         } catch (error) {
           console.error('[WebSocket] Failed to parse message:', error)
         }
       }
-
       wsRef.current = ws
-    } catch (error) {
-      console.error('[WebSocket] Connection failed:', error)
     }
-  }, [autoReconnect, onConnect, onDisconnect, onEvent, queryClient])
+  }
 
-  const disconnect = useCallback(() => {
+  const disconnect = () => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
       reconnectTimeoutRef.current = null
     }
-    reconnectAttempts.current = MAX_RECONNECT_ATTEMPTS // 재연결 방지
-    wsRef.current?.close()
-    wsRef.current = null
-    setIsConnected(false)
-  }, [])
-
-  // 컴포넌트 마운트 시 연결, 언마운트 시 해제
-  useEffect(() => {
-    connect()
-    return () => {
-      disconnect()
+    reconnectAttemptsRef.current = MAX_RECONNECT_ATTEMPTS
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
     }
-  }, [connect, disconnect])
+    setIsConnected(false)
+  }
 
   return {
     isConnected,
@@ -169,13 +227,23 @@ export function useWebSocketStatus() {
   const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
+    let isMounted = true
     const ws = new WebSocket(WS_URL)
 
-    ws.onopen = () => setIsConnected(true)
-    ws.onclose = () => setIsConnected(false)
-    ws.onerror = () => setIsConnected(false)
+    ws.onopen = () => {
+      if (isMounted) setIsConnected(true)
+    }
+    ws.onclose = () => {
+      if (isMounted) setIsConnected(false)
+    }
+    ws.onerror = () => {
+      // 에러는 onclose에서 처리
+    }
 
-    return () => ws.close()
+    return () => {
+      isMounted = false
+      ws.close()
+    }
   }, [])
 
   return isConnected
