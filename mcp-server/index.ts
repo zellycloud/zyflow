@@ -806,21 +806,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // Change Log Tools
       case 'get_events':
-        return await handleGetEvents(args);
+        return await handleGetEvents((args || {}) as GetEventsArgs);
       case 'get_event_statistics':
-        return await handleGetEventStatistics(args);
+        return await handleGetEventStatistics((args || {}) as GetEventStatisticsArgs);
       case 'search_events':
-        return await handleSearchEvents(args);
+        return await handleSearchEvents(args as unknown as SearchEventsArgs);
       case 'export_events':
-        return await handleExportEvents(args);
+        return await handleExportEvents((args || {}) as ExportEventsArgs);
 
       // Replay Tools
       case 'create_replay_session':
-        return await handleCreateReplaySession(args);
+        return await handleCreateReplaySession(args as unknown as CreateReplaySessionArgs);
       case 'start_replay':
-        return await handleStartReplay(args);
+        return await handleStartReplay(args as unknown as StartReplayArgs);
       case 'get_replay_progress':
-        return await handleGetReplayProgress(args);
+        return await handleGetReplayProgress(args as unknown as GetReplayProgressArgs);
       
       default:
         throw new Error(`Unknown tool: ${name}`)

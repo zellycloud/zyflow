@@ -131,17 +131,67 @@ interface GetTestAccountArgs {
   role?: string
 }
 
+// API 응답 타입
+interface ApiErrorResponse {
+  message?: string
+}
+
+interface ContextResponse {
+  context: {
+    github?: { username: string; email?: string }
+    supabase?: unknown
+    vercel?: unknown
+    sentry?: unknown
+  }
+}
+
+interface AccountsResponse {
+  accounts: Array<{
+    id: string
+    type: string
+    name: string
+    credentials: Record<string, string>
+  }>
+}
+
+interface EnvironmentsResponse {
+  environments: Array<{
+    id: string
+    name: string
+    description?: string
+    serverUrl?: string
+    isActive: boolean
+  }>
+}
+
+interface VariablesResponse {
+  variables: Record<string, string>
+}
+
+interface TestAccountsResponse {
+  accounts: Array<{
+    id: string
+    role: string
+    email: string
+    description?: string
+  }>
+}
+
+interface PasswordResponse {
+  password: string
+}
+
 export async function handleIntegrationContext(args: IntegrationContextArgs) {
   try {
     const res = await fetch(`${API_BASE}/projects/${args.projectId}/context`)
     if (!res.ok) {
-      const error = await res.json()
+      const error = (await res.json()) as ApiErrorResponse
       return {
         success: false,
         error: error.message || 'Failed to fetch project context',
       }
     }
-    const data = await res.json()
+    const data = (await res.json()) as ContextResponse
     return {
       success: true,
       context: data.context,
@@ -159,13 +209,13 @@ export async function handleListAccounts(args: ListAccountsArgs) {
     const url = args.type ? `${API_BASE}/accounts?type=${args.type}` : `${API_BASE}/accounts`
     const res = await fetch(url)
     if (!res.ok) {
-      const error = await res.json()
+      const error = (await res.json()) as ApiErrorResponse
       return {
         success: false,
         error: error.message || 'Failed to fetch accounts',
       }
     }
-    const data = await res.json()
+    const data = (await res.json()) as AccountsResponse
     return {
       success: true,
       accounts: data.accounts,
@@ -183,13 +233,13 @@ export async function handleGetEnv(args: GetEnvArgs) {
     // 환경 목록 조회
     const listRes = await fetch(`${API_BASE}/projects/${args.projectId}/environments`)
     if (!listRes.ok) {
-      const error = await listRes.json()
+      const error = (await listRes.json()) as ApiErrorResponse
       return {
         success: false,
         error: error.message || 'Failed to fetch environments',
       }
     }
-    const listData = await listRes.json()
+    const listData = (await listRes.json()) as EnvironmentsResponse
     const environments = listData.environments
 
     if (!environments || environments.length === 0) {
@@ -201,8 +251,8 @@ export async function handleGetEnv(args: GetEnvArgs) {
 
     // 환경 ID가 지정되지 않은 경우 활성 환경 사용
     let targetEnv = args.envId
-      ? environments.find((e: { id: string }) => e.id === args.envId)
-      : environments.find((e: { isActive: boolean }) => e.isActive)
+      ? environments.find((e) => e.id === args.envId)
+      : environments.find((e) => e.isActive)
 
     if (!targetEnv) {
       targetEnv = environments[0]
@@ -220,7 +270,7 @@ export async function handleGetEnv(args: GetEnvArgs) {
         note: 'Failed to decrypt environment variables',
       }
     }
-    const varsData = await varsRes.json()
+    const varsData = (await varsRes.json()) as VariablesResponse
 
     return {
       success: true,
@@ -246,13 +296,13 @@ export async function handleApplyGit(args: ApplyGitArgs, projectPath: string) {
     // 프로젝트 컨텍스트에서 GitHub 정보 가져오기
     const res = await fetch(`${API_BASE}/projects/${args.projectId}/context`)
     if (!res.ok) {
-      const error = await res.json()
+      const error = (await res.json()) as ApiErrorResponse
       return {
         success: false,
         error: error.message || 'Failed to fetch project context',
       }
     }
-    const data = await res.json()
+    const data = (await res.json()) as ContextResponse
     const github = data.context?.github
 
     if (!github || !github.username) {
@@ -299,18 +349,18 @@ export async function handleGetTestAccount(args: GetTestAccountArgs) {
   try {
     const res = await fetch(`${API_BASE}/projects/${args.projectId}/test-accounts`)
     if (!res.ok) {
-      const error = await res.json()
+      const error = (await res.json()) as ApiErrorResponse
       return {
         success: false,
         error: error.message || 'Failed to fetch test accounts',
       }
     }
-    const data = await res.json()
+    const data = (await res.json()) as TestAccountsResponse
     let accounts = data.accounts
 
     // 역할 필터링
     if (args.role) {
-      accounts = accounts.filter((a: { role: string }) =>
+      accounts = accounts.filter((a) =>
         a.role.toLowerCase().includes(args.role!.toLowerCase())
       )
     }
@@ -326,13 +376,13 @@ export async function handleGetTestAccount(args: GetTestAccountArgs) {
 
     // 각 계정의 비밀번호 조회 (복호화된 원본)
     const accountsWithPasswords = await Promise.all(
-      accounts.map(async (account: { id: string; role: string; email: string; description: string }) => {
+      accounts.map(async (account) => {
         const passRes = await fetch(
           `${API_BASE}/projects/${args.projectId}/test-accounts/${account.id}/password`
         )
         let password = '(failed to decrypt)'
         if (passRes.ok) {
-          const passData = await passRes.json()
+          const passData = (await passRes.json()) as PasswordResponse
           password = passData.password
         }
         return {

@@ -345,3 +345,166 @@ Claude: [task_list(kanban: true) 호출]
         ## Done (5개)
         - TASK-1 ~ TASK-9
 ```
+
+---
+
+## Integration Hub 도구
+
+프로젝트별 서비스 계정, 환경 설정, 테스트 계정을 관리하는 도구입니다.
+
+### integration_context
+
+프로젝트의 통합 컨텍스트를 조회합니다. 연결된 서비스 계정, 환경 목록, 테스트 계정 정보를 반환합니다.
+
+**파라미터:**
+- `projectId` (필수): 프로젝트 ID
+
+**반환값 예시:**
+```json
+{
+  "success": true,
+  "context": {
+    "github": { "username": "myuser", "email": "user@example.com" },
+    "supabase": { "projectUrl": "https://xxx.supabase.co" },
+    "environments": [
+      { "id": "env1", "name": "local", "isActive": true }
+    ],
+    "testAccounts": [
+      { "role": "admin", "email": "admin@test.com" }
+    ]
+  }
+}
+```
+
+> **참고:** 민감한 정보(토큰, 비밀번호)는 포함되지 않습니다.
+
+### integration_list_accounts
+
+등록된 서비스 계정 목록을 조회합니다.
+
+**파라미터:**
+- `type` (선택): 서비스 타입 필터 (`github`, `supabase`, `vercel`, `sentry`, `custom`)
+
+**반환값 예시:**
+```json
+{
+  "success": true,
+  "accounts": [
+    {
+      "id": "acc1",
+      "type": "github",
+      "name": "My GitHub",
+      "credentials": { "username": "myuser", "pat": "ghp_...xxxx" }
+    }
+  ]
+}
+```
+
+> **참고:** 민감 정보는 마스킹되어 반환됩니다.
+
+### integration_get_env
+
+프로젝트의 환경 설정 및 환경 변수를 조회합니다.
+
+**파라미터:**
+- `projectId` (필수): 프로젝트 ID
+- `envId` (선택): 환경 ID (미지정 시 활성 환경 반환)
+
+**반환값 예시:**
+```json
+{
+  "success": true,
+  "environment": {
+    "id": "env1",
+    "name": "local",
+    "serverUrl": "http://localhost:3000",
+    "isActive": true
+  },
+  "variables": {
+    "DATABASE_URL": "postgresql://...",
+    "API_KEY": "sk-xxx"
+  }
+}
+```
+
+> **참고:** 환경 변수는 복호화된 원본으로 반환됩니다.
+
+### integration_apply_git
+
+프로젝트에 연결된 GitHub 계정의 git config를 현재 디렉토리에 적용합니다.
+
+**파라미터:**
+- `projectId` (필수): 프로젝트 ID
+- `scope` (선택): git config 범위 (`local`, `global`), 기본값: `local`
+
+**반환값 예시:**
+```json
+{
+  "success": true,
+  "applied": {
+    "user.name": "myuser",
+    "user.email": "user@example.com"
+  },
+  "scope": "local",
+  "message": "Git config applied: user.name=\"myuser\", user.email=\"user@example.com\""
+}
+```
+
+### integration_get_test_account
+
+프로젝트의 테스트 계정 정보를 조회합니다.
+
+**파라미터:**
+- `projectId` (필수): 프로젝트 ID
+- `role` (선택): 역할 필터 (예: `admin`, `user`)
+
+**반환값 예시:**
+```json
+{
+  "success": true,
+  "accounts": [
+    {
+      "role": "admin",
+      "email": "admin@test.com",
+      "password": "actualPassword123",
+      "description": "관리자 테스트 계정"
+    }
+  ]
+}
+```
+
+> **참고:** 비밀번호는 복호화된 원본으로 반환됩니다.
+
+### Integration Hub 사용 예시
+
+#### E2E 테스트 계정 사용
+
+```
+사용자: "관리자 테스트 계정으로 로그인해서 테스트해줘"
+
+Claude: [integration_get_test_account(projectId: "my-project", role: "admin") 호출]
+        테스트 계정: admin@test.com / password123
+
+        [해당 계정으로 E2E 테스트 수행...]
+```
+
+#### 멀티 계정 프로젝트에서 Git 설정
+
+```
+사용자: "이 프로젝트에 맞는 git 설정 적용해줘"
+
+Claude: [integration_apply_git(projectId: "company-project") 호출]
+        Git config가 적용되었습니다:
+        - user.name: "company-user"
+        - user.email: "dev@company.com"
+```
+
+#### 환경 변수 확인
+
+```
+사용자: "현재 프로젝트의 데이터베이스 URL이 뭐야?"
+
+Claude: [integration_get_env(projectId: "my-project") 호출]
+        현재 환경: local
+        DATABASE_URL: postgresql://localhost:5432/mydb
+```
