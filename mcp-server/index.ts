@@ -34,6 +34,8 @@ import {
   handleGetEnv,
   handleApplyGit,
   handleGetTestAccount,
+  handleScanEnv,
+  handleImportEnv,
 } from './integration-tools.js'
 
 // Change Log & Replay imports
@@ -798,6 +800,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'integration_get_test_account': {
         const result = await handleGetTestAccount(args as { projectId: string; role?: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'integration_scan_env': {
+        const result = await handleScanEnv(args as { projectPath: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'integration_import_env': {
+        const result = await handleImportEnv(args as { projectPath: string; services: Array<{ type: string; name: string }> })
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
           isError: !result.success,

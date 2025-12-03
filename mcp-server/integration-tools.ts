@@ -102,6 +102,54 @@ export const integrationToolDefinitions: Tool[] = [
       required: ['projectId'],
     },
   },
+  {
+    name: 'integration_scan_env',
+    description:
+      '프로젝트의 .env 파일을 스캔하여 감지된 서비스 목록을 반환합니다. GitHub, Supabase, Stripe, OpenAI 등 30+ 서비스를 자동으로 인식합니다. 민감한 정보는 마스킹되어 반환됩니다.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        projectPath: {
+          type: 'string',
+          description: '프로젝트 경로 (절대 경로)',
+        },
+      },
+      required: ['projectPath'],
+    },
+  },
+  {
+    name: 'integration_import_env',
+    description:
+      '프로젝트의 .env 파일에서 감지된 서비스를 Integration Hub에 등록합니다. 먼저 integration_scan_env로 스캔한 후 사용하세요.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        projectPath: {
+          type: 'string',
+          description: '프로젝트 경로 (절대 경로)',
+        },
+        services: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              type: {
+                type: 'string',
+                description: '서비스 타입 (예: github, supabase, openai)',
+              },
+              name: {
+                type: 'string',
+                description: '계정 이름 (표시용)',
+              },
+            },
+            required: ['type', 'name'],
+          },
+          description: '임포트할 서비스 목록',
+        },
+      },
+      required: ['projectPath', 'services'],
+    },
+  },
 ]
 
 // =============================================
@@ -129,6 +177,18 @@ interface ApplyGitArgs {
 interface GetTestAccountArgs {
   projectId: string
   role?: string
+}
+
+interface ScanEnvArgs {
+  projectPath: string
+}
+
+interface ImportEnvArgs {
+  projectPath: string
+  services: Array<{
+    type: string
+    name: string
+  }>
 }
 
 // API 응답 타입
@@ -179,6 +239,38 @@ interface TestAccountsResponse {
 
 interface PasswordResponse {
   password: string
+}
+
+interface ScanEnvResponse {
+  files: string[]
+  services: Array<{
+    type: string
+    displayName: string
+    credentials: Record<string, string>
+    isComplete: boolean
+    missingRequired: string[]
+    sources: string[]
+    existingAccount?: {
+      id: string
+      name: string
+    }
+  }>
+  unmatchedCount: number
+}
+
+interface ImportEnvResponse {
+  created: number
+  updated: number
+  skipped: number
+  errors: Array<{
+    type: string
+    error: string
+  }>
+  accounts: Array<{
+    id: string
+    type: string
+    name: string
+  }>
 }
 
 export async function handleIntegrationContext(args: IntegrationContextArgs) {
@@ -397,6 +489,93 @@ export async function handleGetTestAccount(args: GetTestAccountArgs) {
     return {
       success: true,
       accounts: accountsWithPasswords,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to connect to Integration Hub',
+    }
+  }
+}
+
+export async function handleScanEnv(args: ScanEnvArgs) {
+  try {
+    const url = `${API_BASE}/env/scan?projectPath=${encodeURIComponent(args.projectPath)}`
+    const res = await fetch(url)
+    if (!res.ok) {
+      const error = (await res.json()) as ApiErrorResponse
+      return {
+        success: false,
+        error: error.message || 'Failed to scan env files',
+      }
+    }
+    const data = (await res.json()) as ScanEnvResponse
+
+    if (data.services.length === 0) {
+      return {
+        success: true,
+        files: data.files,
+        services: [],
+        message: data.files.length === 0
+          ? 'No .env files found in the project'
+          : 'No known services detected in .env files',
+      }
+    }
+
+    return {
+      success: true,
+      files: data.files,
+      services: data.services.map((s) => ({
+        type: s.type,
+        displayName: s.displayName,
+        credentials: s.credentials,
+        isComplete: s.isComplete,
+        missingRequired: s.missingRequired,
+        sources: s.sources,
+        existingAccount: s.existingAccount,
+      })),
+      unmatchedCount: data.unmatchedCount,
+      message: `Found ${data.services.length} service(s) in ${data.files.length} file(s)`,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to connect to Integration Hub',
+    }
+  }
+}
+
+export async function handleImportEnv(args: ImportEnvArgs) {
+  try {
+    const res = await fetch(`${API_BASE}/env/import`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        projectPath: args.projectPath,
+        services: args.services,
+      }),
+    })
+
+    if (!res.ok) {
+      const error = (await res.json()) as ApiErrorResponse
+      return {
+        success: false,
+        error: error.message || 'Failed to import services',
+      }
+    }
+
+    const data = (await res.json()) as ImportEnvResponse
+
+    return {
+      success: true,
+      created: data.created,
+      updated: data.updated,
+      skipped: data.skipped,
+      errors: data.errors,
+      accounts: data.accounts,
+      message: `Imported ${data.created} service(s), ${data.updated} updated, ${data.skipped} skipped`,
     }
   } catch (error) {
     return {
