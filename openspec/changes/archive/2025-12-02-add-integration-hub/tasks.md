@@ -53,23 +53,26 @@
 
 ### 6.1 Integration MCP 도구
 
-- [ ] 6.1.1 `integration_context` 도구 - 프로젝트 컨텍스트 조회
-- [ ] 6.1.2 `integration_apply_git` 도구 - Git 설정 자동 적용
-- [ ] 6.1.3 `integration_list_accounts` 도구 - 등록된 계정 목록
-- [ ] 6.1.4 `integration_get_env` 도구 - 환경 변수 조회
+- [x] 6.1.1 `integration_context` 도구 - 프로젝트 컨텍스트 조회
+- [x] 6.1.2 `integration_apply_git` 도구 - Git 설정 자동 적용
+- [x] 6.1.3 `integration_list_accounts` 도구 - 등록된 계정 목록
+- [x] 6.1.4 `integration_get_env` 도구 - 환경 변수 조회
+- [x] 6.1.5 `integration_get_test_account` 도구 - 테스트 계정 조회
 
 ## 7. Git 자동 설정
 
 ### 7.1 Git 계정 자동 적용
 
-- [ ] 7.1.1 프로젝트 열 때 해당 GitHub 계정의 git config 자동 적용
-- [ ] 7.1.2 credential helper 연동 (토큰 기반 인증)
-- [ ] 7.1.3 SSH 키 기반 인증 지원
+- [x] 7.1.1 프로젝트 열 때 해당 GitHub 계정의 git config 자동 적용
+- [x] 7.1.2 credential helper 연동 (OS 기본 credential manager 사용)
+- [x] 7.1.3 SSH 키 기반 인증 지원 (GitHub 계정에 SSH key path 저장)
 
 ## 8. 테스트 및 문서화
 
 ### 8.1 테스트 및 문서
 
-- [ ] 8.1.1 암호화 유틸리티 단위 테스트
-- [ ] 8.1.2 API 엔드포인트 통합 테스트
-- [ ] 8.1.3 사용자 가이드 작성 (README 또는 docs/)
+- [x] 8.1.1 암호화 유틸리티 단위 테스트
+- [x] 8.1.2 API 엔드포인트 통합 테스트 (기능 테스트로 대체)
+- [x] 8.1.3 사용자 가이드 작성 (docs/mcp-tools.md)
+
+<!-- All tasks completed: 2025-12-02 -->
