@@ -5,7 +5,7 @@ import {
   setGlobalMultiWatcher,
   getGlobalMultiWatcher,
 } from './watcher.js'
-import { syncChangeTasksForProject, ensureChangeExists } from './sync.js'
+import { syncChangeTasksForProject, ensureChangeExists, syncAllChangesOnStartup } from './sync.js'
 import { loadConfig } from './config.js'
 import { initWebSocket, emit } from './websocket.js'
 
@@ -21,7 +21,15 @@ initWebSocket(httpServer)
 httpServer.listen(PORT, async () => {
   console.log(`ZyFlow API server running on http://localhost:${PORT}`)
 
-  // Multi-Project Watcher 초기화 - 모든 등록된 프로젝트 감시
+  // 1. 서버 시작 시 모든 프로젝트의 Changes 초기 동기화
+  try {
+    const syncResult = await syncAllChangesOnStartup()
+    console.log(`[Startup] Initial sync: ${syncResult.totalCreated} created, ${syncResult.totalUpdated} updated`)
+  } catch (error) {
+    console.error('[Startup] Initial sync failed:', error)
+  }
+
+  // 2. Multi-Project Watcher 초기화 - 파일 변경 감시
   await initMultiWatcher()
 })
 

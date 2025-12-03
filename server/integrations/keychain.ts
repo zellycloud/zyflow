@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, chmodSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, chmodSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { platform } from 'os';
 import { generateMasterKey } from './crypto.js';
@@ -101,7 +101,6 @@ function deleteFromFile(): boolean {
     return true;
   }
   try {
-    const { unlinkSync } = require('fs');
     unlinkSync(keyPath);
     return true;
   } catch {

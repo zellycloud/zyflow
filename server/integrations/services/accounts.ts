@@ -312,7 +312,7 @@ export async function updateServiceAccount(
 export async function deleteServiceAccount(id: string): Promise<boolean> {
   const db = getIntegrationsDb();
 
-  const result = await db.delete(serviceAccounts).where(eq(serviceAccounts.id, id));
+  await db.delete(serviceAccounts).where(eq(serviceAccounts.id, id));
 
   // better-sqlite3는 changes 수를 반환하지 않으므로 삭제 전 존재 여부로 판단
   const remaining = await db.select().from(serviceAccounts).where(eq(serviceAccounts.id, id));

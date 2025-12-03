@@ -48,6 +48,13 @@ export function initDb(projectRoot?: string): ReturnType<typeof drizzle<typeof s
     INSERT OR IGNORE INTO sequences (name, value) VALUES ('task', 0);
   `);
 
+  // Sync sequence value with actual max task ID to prevent ID conflicts
+  sqlite.exec(`
+    UPDATE sequences
+    SET value = COALESCE((SELECT MAX(id) FROM tasks), 0)
+    WHERE name = 'task' AND value < COALESCE((SELECT MAX(id) FROM tasks), 0);
+  `);
+
   // Create changes table (Flow의 최상위 단위)
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS changes (

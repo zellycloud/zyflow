@@ -13,7 +13,7 @@ import {
 } from '../db/schema.js';
 import { encryptObject, decryptObject, maskSensitive } from '../crypto.js';
 import { getMasterKey } from '../keychain.js';
-import { getServiceAccountCredentials, getServiceAccount } from './accounts.js';
+import { getServiceAccount } from './accounts.js';
 
 // =============================================
 // 프로젝트 연동 (Project Integration) 관리

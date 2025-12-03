@@ -47,6 +47,7 @@ interface ReplaySessionRow {
 }
 
 interface ReplayResultInput {
+  sessionId?: string; // optional - passed separately to saveReplayResult
   eventId: string;
   status: string;
   duration: number;
@@ -811,20 +812,20 @@ export class ReplayEngine implements IReplayEngine {
   private deserializeSession(row: ReplaySessionRow): ReplaySession {
     return {
       id: row.id,
-      name: row.name,
-      description: row.description,
+      name: row.name ?? undefined,
+      description: row.description ?? undefined,
       filter: JSON.parse(row.filter),
       options: JSON.parse(row.options),
       status: row.status as ReplaySessionStatus,
-      totalEvents: row.total_events || 0,
-      processedEvents: row.processed_events || 0,
-      succeededEvents: row.succeeded_events || 0,
-      failedEvents: row.failed_events || 0,
-      skippedEvents: row.skipped_events || 0,
+      totalEvents: row.total_events ?? 0,
+      processedEvents: row.processed_events ?? 0,
+      succeededEvents: row.succeeded_events ?? 0,
+      failedEvents: row.failed_events ?? 0,
+      skippedEvents: row.skipped_events ?? 0,
       createdAt: row.created_at,
-      startedAt: row.started_at,
-      completedAt: row.completed_at,
-      duration: row.duration,
+      startedAt: row.started_at ?? undefined,
+      completedAt: row.completed_at ?? undefined,
+      duration: row.duration ?? undefined,
       result: row.result ? JSON.parse(row.result) : undefined,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined
     };
