@@ -25,6 +25,11 @@ import {
   getTestAccountPassword,
   getProjectContext,
 } from './services/projects.js';
+import {
+  scanAndCacheProjectEnv,
+  importServices,
+  type ImportRequest,
+} from './services/env-import.js';
 import type { ServiceType, Credentials } from './db/schema.js';
 
 const router = Router();
@@ -636,6 +641,75 @@ router.get('/projects/:projectId/test-accounts/:id/password', async (req: Reques
     console.error('Failed to get test account password:', error);
     res.status(500).json({
       error: 'Failed to get test account password',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// =============================================
+// 환경변수 임포트 API
+// =============================================
+
+/**
+ * GET /api/integrations/env/scan
+ * 프로젝트의 .env 파일 스캔 및 서비스 감지
+ */
+router.get('/env/scan', async (req: Request, res: Response) => {
+  try {
+    const projectPath = req.query.projectPath as string;
+
+    if (!projectPath) {
+      res.status(400).json({
+        error: 'Missing required parameter',
+        message: 'projectPath query parameter is required',
+      });
+      return;
+    }
+
+    const result = await scanAndCacheProjectEnv(projectPath);
+    res.json(result);
+  } catch (error) {
+    console.error('Failed to scan env files:', error);
+    res.status(500).json({
+      error: 'Failed to scan env files',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/integrations/env/import
+ * 선택한 서비스를 Integration Hub에 등록
+ */
+router.post('/env/import', async (req: Request, res: Response) => {
+  try {
+    const { projectPath, services } = req.body as {
+      projectPath: string;
+      services: ImportRequest['services'];
+    };
+
+    if (!projectPath || !services || !Array.isArray(services)) {
+      res.status(400).json({
+        error: 'Missing required fields',
+        message: 'projectPath and services array are required',
+      });
+      return;
+    }
+
+    if (services.length === 0) {
+      res.status(400).json({
+        error: 'No services selected',
+        message: 'At least one service must be selected for import',
+      });
+      return;
+    }
+
+    const result = await importServices(projectPath, { services });
+    res.json(result);
+  } catch (error) {
+    console.error('Failed to import services:', error);
+    res.status(500).json({
+      error: 'Failed to import services',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
