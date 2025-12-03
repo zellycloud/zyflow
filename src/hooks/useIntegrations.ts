@@ -524,3 +524,79 @@ export function useTestAccountPassword(projectId: string, id: string, enabled = 
     enabled: enabled && !!projectId && !!id,
   });
 }
+
+// =============================================
+// Env Import Types
+// =============================================
+
+export interface DetectedService {
+  type: string;
+  displayName: string;
+  credentials: Record<string, string>;
+  isComplete: boolean;
+  missingRequired: string[];
+  sources: string[];
+  existingAccount?: {
+    id: string;
+    name: string;
+  };
+}
+
+export interface EnvScanResult {
+  files: string[];
+  services: DetectedService[];
+  unmatchedCount: number;
+}
+
+export interface EnvImportResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: Array<{ type: string; error: string }>;
+  accounts: Array<{ id: string; type: string; name: string }>;
+}
+
+// =============================================
+// Env Import Hooks
+// =============================================
+
+export function useScanEnv(projectPath: string, enabled = false) {
+  return useQuery({
+    queryKey: ['integrations', 'env', 'scan', projectPath],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/env/scan?projectPath=${encodeURIComponent(projectPath)}`);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to scan env files');
+      }
+      const data = await res.json();
+      return data as EnvScanResult;
+    },
+    enabled: enabled && !!projectPath,
+  });
+}
+
+export function useImportEnv() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: {
+      projectPath: string;
+      services: Array<{ type: string; name: string }>;
+    }) => {
+      const res = await fetch(`${API_BASE}/env/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to import services');
+      }
+      return res.json() as Promise<EnvImportResult>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['integrations', 'accounts'] });
+    },
+  });
+}

@@ -11,6 +11,7 @@ import {
   Copy,
   Check,
   Loader2,
+  Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +23,7 @@ import {
   type ServiceType,
 } from '@/hooks/useIntegrations';
 import { ServiceAccountDialog } from './ServiceAccountDialog';
+import { EnvImportDialog } from './EnvImportDialog';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
@@ -55,6 +57,7 @@ interface ServiceAccountListProps {
 
 export function ServiceAccountList({ onEdit }: ServiceAccountListProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<ServiceAccount | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -126,10 +129,16 @@ export function ServiceAccountList({ onEdit }: ServiceAccountListProps) {
             GitHub, Supabase, Vercel 등 외부 서비스 계정을 관리합니다.
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          계정 추가
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Import from .env
+          </Button>
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            계정 추가
+          </Button>
+        </div>
       </div>
 
       {!accounts?.length ? (
@@ -243,6 +252,11 @@ export function ServiceAccountList({ onEdit }: ServiceAccountListProps) {
         variant="destructive"
         onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
         isLoading={deleteAccount.isPending}
+      />
+
+      <EnvImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
       />
     </div>
   );
