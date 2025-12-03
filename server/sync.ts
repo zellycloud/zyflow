@@ -41,6 +41,36 @@ interface ExtendedTaskGroup {
 }
 
 /**
+ * ChangeLogManager 안전 호출 헬퍼
+ * 초기화되지 않았으면 로깅을 건너뛰고 계속 진행
+ */
+async function safeLogSyncOperation(
+  data: { operationType: string; tableName: string; recordId: string; status: string; result?: unknown; error?: unknown },
+  severity: 'INFO' | 'ERROR' | 'DEBUG' = 'INFO'
+): Promise<string | null> {
+  try {
+    const changeLogManager = getChangeLogManager()
+    return await changeLogManager.logSyncOperation(data as Parameters<typeof changeLogManager.logSyncOperation>[0], severity)
+  } catch {
+    // ChangeLogManager가 초기화되지 않음 - 로깅 건너뛰기
+    return null
+  }
+}
+
+async function safeLogDBChange(
+  data: { tableName: string; operation: string; recordId: string | undefined; oldValues?: unknown; newValues?: unknown; transactionId?: string },
+  severity: 'INFO' | 'ERROR' | 'DEBUG' = 'DEBUG'
+): Promise<string | null> {
+  try {
+    const changeLogManager = getChangeLogManager()
+    return await changeLogManager.logDBChange(data as Parameters<typeof changeLogManager.logDBChange>[0], severity)
+  } catch {
+    // ChangeLogManager가 초기화되지 않음 - 로깅 건너뛰기
+    return null
+  }
+}
+
+/**
  * 특정 Change의 tasks.md를 DB에 동기화
  */
 export async function syncChangeTasksFromFile(changeId: string): Promise<SyncResult> {
@@ -56,9 +86,8 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
   let tasksCreated = 0
   let tasksUpdated = 0
 
-  // 이벤트 로깅 시작
-  const changeLogManager = getChangeLogManager()
-  const eventId = await changeLogManager.logSyncOperation({
+  // 이벤트 로깅 시작 (초기화 안 됐으면 건너뛰기)
+  await safeLogSyncOperation({
     operationType: 'LOCAL_TO_REMOTE',
     tableName: 'tasks',
     recordId: changeId,
@@ -126,8 +155,8 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
           )
           tasksUpdated++
 
-          // DB 변경 이벤트 로깅
-          await changeLogManager.logDBChange({
+          // DB 변경 이벤트 로깅 (초기화 안 됐으면 건너뛰기)
+          await safeLogDBChange({
             tableName: 'tasks',
             operation: 'UPDATE',
             recordId: existingTask.id.toString(),
@@ -166,8 +195,8 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
           )
           tasksCreated++
 
-          // DB 변경 이벤트 로깅
-          await changeLogManager.logDBChange({
+          // DB 변경 이벤트 로깅 (초기화 안 됐으면 건너뛰기)
+          await safeLogDBChange({
             tableName: 'tasks',
             operation: 'INSERT',
             recordId: insertResult.lastInsertRowid?.toString(),
@@ -189,9 +218,9 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
     }
 
     console.log(`[Sync] ${changeId}: ${tasksCreated} created, ${tasksUpdated} updated`)
-    
-    // 동기화 완료 이벤트 로깅
-    await changeLogManager.logSyncOperation({
+
+    // 동기화 완료 이벤트 로깅 (초기화 안 됐으면 건너뛰기)
+    await safeLogSyncOperation({
       operationType: 'LOCAL_TO_REMOTE',
       tableName: 'tasks',
       recordId: changeId,
@@ -206,9 +235,9 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
   } catch (error) {
     // tasks.md not found or parse error
     console.warn(`[Sync] Error syncing ${changeId}:`, error)
-    
-    // 동기화 실패 이벤트 로깅
-    await changeLogManager.logSyncOperation({
+
+    // 동기화 실패 이벤트 로깅 (초기화 안 됐으면 건너뛰기)
+    await safeLogSyncOperation({
       operationType: 'LOCAL_TO_REMOTE',
       tableName: 'tasks',
       recordId: changeId,
@@ -239,9 +268,8 @@ export async function syncChangeTasksForProject(
   let tasksCreated = 0
   let tasksUpdated = 0
 
-  // 이벤트 로깅 시작
-  const changeLogManager = getChangeLogManager()
-  const eventId = await changeLogManager.logSyncOperation({
+  // 이벤트 로깅 시작 (초기화 안 됐으면 건너뛰기)
+  await safeLogSyncOperation({
     operationType: 'LOCAL_TO_REMOTE',
     tableName: 'tasks',
     recordId: changeId,
@@ -321,9 +349,9 @@ export async function syncChangeTasksForProject(
     }
 
     console.log(`[Sync] ${changeId} (${projectPath}): ${tasksCreated} created, ${tasksUpdated} updated`)
-    
-    // 동기화 완료 이벤트 로깅
-    await changeLogManager.logSyncOperation({
+
+    // 동기화 완료 이벤트 로깅 (초기화 안 됐으면 건너뛰기)
+    await safeLogSyncOperation({
       operationType: 'LOCAL_TO_REMOTE',
       tableName: 'tasks',
       recordId: changeId,
@@ -338,9 +366,9 @@ export async function syncChangeTasksForProject(
   } catch (error) {
     // tasks.md not found or parse error
     console.warn(`[Sync] Error syncing ${changeId} (${projectPath}):`, error)
-    
-    // 동기화 실패 이벤트 로깅
-    await changeLogManager.logSyncOperation({
+
+    // 동기화 실패 이벤트 로깅 (초기화 안 됐으면 건너뛰기)
+    await safeLogSyncOperation({
       operationType: 'LOCAL_TO_REMOTE',
       tableName: 'tasks',
       recordId: changeId,
@@ -402,4 +430,159 @@ export async function ensureChangeExists(
 
   console.log(`[Sync] Created new Change: ${changeId} (${title})`)
   return true
+}
+
+/**
+ * 모든 프로젝트의 모든 Changes를 초기 동기화
+ * 서버 시작 시 호출되어 tasks.md 파일을 DB에 동기화
+ */
+export async function syncAllChangesOnStartup(): Promise<{
+  totalCreated: number
+  totalUpdated: number
+  projectsSynced: number
+}> {
+  // Lazy import to avoid circular dependency
+  const { loadConfig } = await import('./config.js')
+  const { readdir, readFile } = await import('fs/promises')
+  const { join } = await import('path')
+  const { parseTasksFile } = await import('./parser.js')
+
+  const sqlite = getSqlite()
+  const config = await loadConfig()
+
+  if (config.projects.length === 0) {
+    console.log('[Sync] No projects registered, skipping initial sync')
+    return { totalCreated: 0, totalUpdated: 0, projectsSynced: 0 }
+  }
+
+  let totalCreated = 0
+  let totalUpdated = 0
+  let projectsSynced = 0
+
+  console.log(`[Sync] Starting initial sync for ${config.projects.length} project(s)...`)
+
+  for (const project of config.projects) {
+    const openspecDir = join(project.path, 'openspec', 'changes')
+    let entries
+
+    try {
+      entries = await readdir(openspecDir, { withFileTypes: true })
+    } catch {
+      // openspec/changes 폴더가 없는 프로젝트는 스킵
+      continue
+    }
+
+    projectsSynced++
+    const now = Date.now()
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === 'archive') continue
+
+      const changeId = entry.name
+      const changeDir = join(openspecDir, changeId)
+
+      // proposal.md에서 제목 추출
+      let title = changeId
+      const specPath = `openspec/changes/${changeId}/proposal.md`
+      try {
+        const proposalPath = join(changeDir, 'proposal.md')
+        const proposalContent = await readFile(proposalPath, 'utf-8')
+        const titleMatch = proposalContent.match(/^#\s+(?:Change:\s+)?(.+)$/m)
+        if (titleMatch) {
+          title = titleMatch[1].trim()
+        }
+      } catch {
+        // proposal.md not found
+      }
+
+      // Change가 존재하는지 확인
+      const existing = sqlite.prepare('SELECT id FROM changes WHERE id = ? AND project_id = ?').get(changeId, project.id)
+
+      if (existing) {
+        sqlite.prepare(`
+          UPDATE changes SET title = ?, spec_path = ?, updated_at = ? WHERE id = ? AND project_id = ?
+        `).run(title, specPath, now, changeId, project.id)
+        totalUpdated++
+      } else {
+        sqlite.prepare(`
+          INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
+          VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
+        `).run(changeId, project.id, title, specPath, now, now)
+        totalCreated++
+      }
+
+      // tasks.md 동기화
+      try {
+        const tasksPath = join(changeDir, 'tasks.md')
+        const tasksContent = await readFile(tasksPath, 'utf-8')
+        const parsed = parseTasksFile(changeId, tasksContent)
+
+        interface ExtendedGroup {
+          title: string
+          tasks: Array<{ title: string; completed: boolean; lineNumber: number }>
+          majorOrder?: number
+          majorTitle?: string
+          subOrder?: number
+        }
+
+        for (const group of parsed.groups as ExtendedGroup[]) {
+          const majorOrder = group.majorOrder ?? 1
+          const majorTitle = group.majorTitle ?? group.title
+          const subOrder = group.subOrder ?? 1
+          const groupTitle = group.title
+
+          for (let taskIdx = 0; taskIdx < group.tasks.length; taskIdx++) {
+            const task = group.tasks[taskIdx]
+            const taskOrder = taskIdx + 1
+
+            const existingTask = sqlite.prepare(`
+              SELECT id FROM tasks WHERE change_id = ? AND title = ?
+            `).get(changeId, task.title) as { id: number } | undefined
+
+            if (existingTask) {
+              const newStatus = task.completed ? 'done' : 'todo'
+              sqlite.prepare(`
+                UPDATE tasks
+                SET status = ?,
+                    group_title = ?,
+                    group_order = ?,
+                    task_order = ?,
+                    major_title = ?,
+                    sub_order = ?,
+                    updated_at = ?
+                WHERE id = ?
+              `).run(newStatus, groupTitle, majorOrder, taskOrder, majorTitle, subOrder, now, existingTask.id)
+            } else {
+              sqlite.prepare(`
+                INSERT INTO tasks (
+                  change_id, stage, title, status, priority, "order",
+                  group_title, group_order, task_order, major_title, sub_order,
+                  origin, created_at, updated_at
+                )
+                VALUES (?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
+              `).run(
+                changeId,
+                task.title,
+                task.completed ? 'done' : 'todo',
+                task.lineNumber,
+                groupTitle,
+                majorOrder,
+                taskOrder,
+                majorTitle,
+                subOrder,
+                now,
+                now
+              )
+            }
+          }
+        }
+      } catch {
+        // tasks.md not found or parse error
+      }
+    }
+  }
+
+  console.log(`[Sync] Initial sync complete: ${totalCreated} created, ${totalUpdated} updated across ${projectsSynced} project(s)`)
+
+  return { totalCreated, totalUpdated, projectsSynced }
 }
