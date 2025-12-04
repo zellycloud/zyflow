@@ -1,19 +1,13 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import {
   FolderOpen,
   Plus,
-  Trash2,
   Loader2,
   Settings,
   ChevronRight,
   ChevronDown,
   GitBranch,
   ListTodo,
-  Link2,
-  GripVertical,
-  Pencil,
-  Check,
-  X,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -30,20 +24,11 @@ import {
 } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
-import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { useProjectsAllData, useAddProject, useActivateProject, useRemoveProject, useBrowseFolder, useUpdateProjectPath, useReorderProjects } from '@/hooks/useProjects'
-import { Input } from '@/components/ui/input'
+import { useProjectsAllData, useAddProject, useActivateProject, useBrowseFolder } from '@/hooks/useProjects'
 import { useFlowChangeCounts, useSelectedItem } from '@/hooks/useFlowChanges'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -55,12 +40,7 @@ interface FlowSidebarProps {
 }
 
 export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
-  const [editingPathId, setEditingPathId] = useState<string | null>(null)
-  const [editingPath, setEditingPath] = useState('')
-  const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null)
-  const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null)
 
   const { data: projectsData, isLoading } = useProjectsAllData()
   const { data: changeCounts } = useFlowChangeCounts({
@@ -71,10 +51,7 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
 
   const addProject = useAddProject()
   const activateProject = useActivateProject()
-  const removeProject = useRemoveProject()
   const browseFolder = useBrowseFolder()
-  const updateProjectPath = useUpdateProjectPath()
-  const reorderProjects = useReorderProjects()
 
   const handleBrowseAndAdd = async () => {
     try {
@@ -86,106 +63,6 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
       toast.error(error instanceof Error ? error.message : '프로젝트 등록 실패')
     }
   }
-
-  const handleRemoveProject = async (projectId: string) => {
-    try {
-      await removeProject.mutateAsync(projectId)
-      toast.success('프로젝트가 삭제되었습니다')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '프로젝트 삭제 실패')
-    }
-  }
-
-  // 경로 편집 시작
-  const handleStartEditPath = (projectId: string, currentPath: string) => {
-    setEditingPathId(projectId)
-    setEditingPath(currentPath)
-  }
-
-  // 경로 편집 취소
-  const handleCancelEditPath = () => {
-    setEditingPathId(null)
-    setEditingPath('')
-  }
-
-  // 경로 편집 저장
-  const handleSavePath = async (projectId: string) => {
-    try {
-      await updateProjectPath.mutateAsync({ projectId, path: editingPath })
-      toast.success('프로젝트 경로가 변경되었습니다')
-      setEditingPathId(null)
-      setEditingPath('')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '경로 변경 실패')
-    }
-  }
-
-  // 폴더 선택으로 경로 변경
-  const handleBrowseAndUpdatePath = async () => {
-    try {
-      const result = await browseFolder.mutateAsync()
-      if (result.cancelled || !result.path) return
-      setEditingPath(result.path)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '폴더 선택 실패')
-    }
-  }
-
-  // 드래그 앤 드롭 핸들러
-  const handleDragStart = useCallback((e: React.DragEvent, projectId: string) => {
-    setDraggedProjectId(projectId)
-    e.dataTransfer.effectAllowed = 'move'
-  }, [])
-
-  const handleDragOver = useCallback((e: React.DragEvent, projectId: string) => {
-    e.preventDefault()
-    if (draggedProjectId && draggedProjectId !== projectId) {
-      setDragOverProjectId(projectId)
-    }
-  }, [draggedProjectId])
-
-  const handleDragLeave = useCallback(() => {
-    setDragOverProjectId(null)
-  }, [])
-
-  const handleDrop = useCallback(async (e: React.DragEvent, targetProjectId: string) => {
-    e.preventDefault()
-    if (!draggedProjectId || draggedProjectId === targetProjectId || !projectsData?.projects) {
-      setDraggedProjectId(null)
-      setDragOverProjectId(null)
-      return
-    }
-
-    const currentOrder = projectsData.projects.map(p => p.id)
-    const draggedIndex = currentOrder.indexOf(draggedProjectId)
-    const targetIndex = currentOrder.indexOf(targetProjectId)
-
-    if (draggedIndex === -1 || targetIndex === -1) {
-      setDraggedProjectId(null)
-      setDragOverProjectId(null)
-      return
-    }
-
-    // 새 순서 계산
-    const newOrder = [...currentOrder]
-    newOrder.splice(draggedIndex, 1)
-    newOrder.splice(targetIndex, 0, draggedProjectId)
-
-    try {
-      await reorderProjects.mutateAsync(newOrder)
-      toast.success('프로젝트 순서가 변경되었습니다')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '순서 변경 실패')
-    }
-
-    setDraggedProjectId(null)
-    setDragOverProjectId(null)
-  }, [draggedProjectId, projectsData?.projects, reorderProjects])
-
-  const handleDragEnd = useCallback(() => {
-    setDraggedProjectId(null)
-    setDragOverProjectId(null)
-  }, [])
 
   const handleSelectProject = (projectId: string) => {
     const selectedItem: SelectedItem = { type: 'project', projectId }
@@ -251,169 +128,19 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
         <SidebarGroup>
           <SidebarGroupLabel className="flex items-center justify-between">
             <span>프로젝트</span>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5"
-                onClick={handleBrowseAndAdd}
-                disabled={browseFolder.isPending || addProject.isPending}
-              >
-                {browseFolder.isPending || addProject.isPending ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Plus className="h-3 w-3" />
-                )}
-              </Button>
-              <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-5 w-5">
-                    <Settings className="h-3 w-3" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>프로젝트 관리</DialogTitle>
-                    <DialogDescription>
-                      등록된 프로젝트를 관리합니다.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-2 mt-4">
-                    <p className="text-xs text-muted-foreground mb-3">
-                      드래그하여 순서를 변경할 수 있습니다.
-                    </p>
-                    {projectsData?.projects.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-4">
-                        등록된 프로젝트가 없습니다.
-                      </p>
-                    ) : (
-                      projectsData?.projects.map((project) => {
-                        const isEditing = editingPathId === project.id
-                        const isDragging = draggedProjectId === project.id
-                        const isDragOver = dragOverProjectId === project.id
-
-                        return (
-                          <div
-                            key={project.id}
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, project.id)}
-                            onDragOver={(e) => handleDragOver(e, project.id)}
-                            onDragLeave={handleDragLeave}
-                            onDrop={(e) => handleDrop(e, project.id)}
-                            onDragEnd={handleDragEnd}
-                            className={cn(
-                              'p-3 rounded-lg border transition-all',
-                              isDragging && 'opacity-50 border-dashed',
-                              isDragOver && 'border-primary bg-primary/5',
-                              !isDragging && !isDragOver && 'hover:border-muted-foreground/50'
-                            )}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="cursor-grab active:cursor-grabbing">
-                                <GripVertical className="h-4 w-4 text-muted-foreground" />
-                              </div>
-                              <FolderOpen className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm">{project.name}</p>
-                                {isEditing ? (
-                                  <div className="flex items-center gap-2 mt-1">
-                                    <Input
-                                      value={editingPath}
-                                      onChange={(e) => setEditingPath(e.target.value)}
-                                      className="h-7 text-xs"
-                                      placeholder="프로젝트 경로"
-                                    />
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7 flex-shrink-0"
-                                      onClick={handleBrowseAndUpdatePath}
-                                      disabled={browseFolder.isPending}
-                                    >
-                                      <FolderOpen className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                ) : (
-                                  <p className="text-xs text-muted-foreground truncate">
-                                    {project.path}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                {isEditing ? (
-                                  <>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 text-green-600 hover:text-green-600 hover:bg-green-600/10"
-                                      onClick={() => handleSavePath(project.id)}
-                                      disabled={updateProjectPath.isPending || !editingPath}
-                                    >
-                                      {updateProjectPath.isPending ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                      ) : (
-                                        <Check className="h-4 w-4" />
-                                      )}
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8"
-                                      onClick={handleCancelEditPath}
-                                    >
-                                      <X className="h-4 w-4" />
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8"
-                                      onClick={() => handleStartEditPath(project.id, project.path)}
-                                      title="경로 변경"
-                                    >
-                                      <Pencil className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      onClick={() => handleRemoveProject(project.id)}
-                                      disabled={removeProject.isPending}
-                                      title="프로젝트 삭제"
-                                    >
-                                      {removeProject.isPending ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                      ) : (
-                                        <Trash2 className="h-4 w-4" />
-                                      )}
-                                    </Button>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })
-                    )}
-                    <Button
-                      variant="outline"
-                      className="w-full mt-4"
-                      onClick={handleBrowseAndAdd}
-                      disabled={browseFolder.isPending || addProject.isPending}
-                    >
-                      {browseFolder.isPending || addProject.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <Plus className="h-4 w-4 mr-2" />
-                      )}
-                      프로젝트 추가
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5"
+              onClick={handleBrowseAndAdd}
+              disabled={browseFolder.isPending || addProject.isPending}
+            >
+              {browseFolder.isPending || addProject.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Plus className="h-3 w-3" />
+              )}
+            </Button>
           </SidebarGroupLabel>
           <SidebarMenu>
             {isLoading ? (
@@ -521,7 +248,7 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
         </SidebarGroup>
 
         {/* Settings */}
-        <SidebarGroup className="mt-auto">
+        <SidebarGroup className="border-t pt-2">
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
@@ -531,8 +258,8 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                 }}
                 isActive={selectedItem?.type === 'settings'}
               >
-                <Link2 className="size-4" />
-                <span>Integrations</span>
+                <Settings className="size-4" />
+                <span>Settings</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

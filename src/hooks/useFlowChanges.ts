@@ -300,11 +300,11 @@ export function useChangeSpecContent(changeId: string | null, specId: string | n
 // 선택 상태 관리 훅
 // =============================================
 
-export interface SelectedItem {
-  type: 'project' | 'change' | 'standalone-tasks'
-  projectId: string
-  changeId?: string
-}
+export type SelectedItem =
+  | { type: 'project'; projectId: string }
+  | { type: 'change'; projectId: string; changeId: string }
+  | { type: 'standalone-tasks'; projectId: string }
+  | { type: 'settings' }
 
 export function useSelectedItem() {
   const queryClient = useQueryClient()
@@ -348,6 +348,10 @@ export function useSelectedItem() {
           queryKey: ['flow', 'tasks', { standalone: true }],
           refetchType: 'active'
         })
+        break
+
+      case 'settings':
+        // Settings 페이지는 별도 데이터 refetch 불필요
         break
     }
   }

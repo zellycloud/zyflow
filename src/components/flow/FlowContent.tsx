@@ -3,7 +3,7 @@ import type { SelectedItem } from '@/App'
 import { ProjectDashboard } from './ProjectDashboard'
 import { ChangeDetail } from './ChangeDetail'
 import { StandaloneTasks } from './StandaloneTasks'
-import { IntegrationsSettings } from '@/components/integrations'
+import { SettingsPage } from '@/components/settings'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { useSelectedData } from '@/hooks/useFlowChanges'
 
@@ -40,7 +40,7 @@ export function FlowContent({ selectedItem }: FlowContentProps) {
 
   // Settings 페이지는 프로젝트 선택 없이 표시
   if (selectedItem.type === 'settings') {
-    return <IntegrationsSettings />
+    return <SettingsPage />
   }
 
   // 선택된 프로젝트가 활성 프로젝트와 다르면 렌더링하지 않음 (404 방지)
