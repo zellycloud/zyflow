@@ -10,11 +10,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Github, Database, Triangle, Bug, Key, Loader2, Plus, Trash2 } from 'lucide-react';
 import {
   useCreateServiceAccount,
   useUpdateServiceAccount,
+  useServiceAccountCredentials,
   type ServiceAccount,
   type ServiceType,
   type Credentials,
@@ -45,25 +46,35 @@ export function ServiceAccountDialog({ open, onOpenChange, account }: ServiceAcc
   const createAccount = useCreateServiceAccount();
   const updateAccount = useUpdateServiceAccount();
 
+  // 편집 모드일 때 실제 credentials 가져오기
+  const { data: realCredentials, isLoading: isLoadingCredentials } = useServiceAccountCredentials(
+    account?.id || '',
+    open && isEditing
+  );
+
   // 편집 모드일 때 폼 초기화
   useEffect(() => {
-    if (account) {
+    if (account && open) {
       setSelectedType(account.type);
       setName(account.name);
-      // credentials는 마스킹되어 있으므로 빈 값으로 시작
-      setCredentials({});
-      if (account.type === 'custom') {
-        setCustomFields(
-          Object.entries(account.credentials).map(([key]) => ({ key, value: '' }))
-        );
+      // 실제 credentials가 로드되면 설정
+      if (realCredentials) {
+        const creds = realCredentials as Record<string, string>;
+        setCredentials(creds);
+        if (account.type === 'custom') {
+          setCustomFields(
+            Object.entries(creds).map(([key, value]) => ({ key, value }))
+          );
+        }
       }
-    } else {
+    } else if (!open) {
+      // 다이얼로그 닫힐 때 초기화
       setSelectedType('github');
       setName('');
       setCredentials({});
       setCustomFields([{ key: '', value: '' }]);
     }
-  }, [account, open]);
+  }, [account, open, realCredentials]);
 
   const handleCredentialChange = (field: string, value: string) => {
     setCredentials((prev) => ({ ...prev, [field]: value }));
@@ -123,7 +134,7 @@ export function ServiceAccountDialog({ open, onOpenChange, account }: ServiceAcc
     }
   };
 
-  const isPending = createAccount.isPending || updateAccount.isPending;
+  const isPending = createAccount.isPending || updateAccount.isPending || isLoadingCredentials;
 
   const renderCredentialFields = () => {
     switch (selectedType) {
@@ -351,7 +362,16 @@ export function ServiceAccountDialog({ open, onOpenChange, account }: ServiceAcc
             />
           </div>
 
-          <div className="space-y-4 pt-2">{renderCredentialFields()}</div>
+          <div className="space-y-4 pt-2">
+            {isLoadingCredentials ? (
+              <div className="flex items-center justify-center py-8 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                <span>인증 정보 로드 중...</span>
+              </div>
+            ) : (
+              renderCredentialFields()
+            )}
+          </div>
         </div>
 
         <DialogFooter>
