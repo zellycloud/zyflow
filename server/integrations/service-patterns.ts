@@ -543,6 +543,8 @@ export const SERVICE_PATTERNS: ServicePattern[] = [
 // 매칭 결과 타입
 // =============================================
 
+export type EnvironmentHint = 'production' | 'staging' | 'development' | 'local' | 'unknown'
+
 export interface DetectedService {
   type: ExtendedServiceType
   displayName: string
@@ -550,6 +552,7 @@ export interface DetectedService {
   missingRequired: string[]
   sources: string[] // 어떤 .env 파일에서 왔는지
   isComplete: boolean // 필수 credential 모두 있는지
+  environment?: EnvironmentHint // .env 파일명에서 추론된 환경
 }
 
 export interface ScanResult {
@@ -694,8 +697,14 @@ export function detectServices(variables: EnvVariable[]): ScanResult {
   // 매칭되지 않은 변수
   const unmatchedVariables = variables.filter((v) => !matchedKeys.has(v.key))
 
+  // 환경 추론 추가
+  const servicesWithEnv = Array.from(serviceMap.values()).map(service => ({
+    ...service,
+    environment: inferEnvironmentFromSource(service.sources),
+  }))
+
   return {
-    services: Array.from(serviceMap.values()),
+    services: servicesWithEnv,
     unmatchedVariables,
     files: [...new Set(variables.map((v) => v.source))],
   }
@@ -726,4 +735,37 @@ export function maskCredentialValue(value: string): string {
   }
   const prefix = value.substring(0, 4)
   return `${prefix}...****`
+}
+
+/**
+ * .env 파일명에서 환경 추론
+ */
+export function inferEnvironmentFromSource(sources: string[]): EnvironmentHint {
+  // 우선순위: production > staging > development > local
+  for (const source of sources) {
+    const lower = source.toLowerCase()
+    if (lower.includes('production') || lower.includes('prod')) {
+      return 'production'
+    }
+  }
+  for (const source of sources) {
+    const lower = source.toLowerCase()
+    if (lower.includes('staging') || lower.includes('stage')) {
+      return 'staging'
+    }
+  }
+  for (const source of sources) {
+    const lower = source.toLowerCase()
+    if (lower.includes('development') || lower.includes('dev')) {
+      return 'development'
+    }
+  }
+  for (const source of sources) {
+    const lower = source.toLowerCase()
+    if (lower.includes('local')) {
+      return 'local'
+    }
+  }
+  // .env 또는 .env.local만 있으면 unknown
+  return 'unknown'
 }

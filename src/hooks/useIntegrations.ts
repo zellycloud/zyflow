@@ -529,6 +529,14 @@ export function useTestAccountPassword(projectId: string, id: string, enabled = 
 // Env Import Types
 // =============================================
 
+export interface EnvFileInfo {
+  name: string;
+  variableCount: number;
+  size: number;
+}
+
+export type EnvironmentHint = 'production' | 'staging' | 'development' | 'local' | 'unknown';
+
 export interface DetectedService {
   type: string;
   displayName: string;
@@ -536,6 +544,7 @@ export interface DetectedService {
   isComplete: boolean;
   missingRequired: string[];
   sources: string[];
+  environment?: EnvironmentHint;
   existingAccount?: {
     id: string;
     name: string;
@@ -560,11 +569,37 @@ export interface EnvImportResult {
 // Env Import Hooks
 // =============================================
 
-export function useScanEnv(projectPath: string, enabled = false) {
+/**
+ * 프로젝트의 .env 파일 목록 조회
+ */
+export function useEnvFiles(projectPath: string, enabled = false) {
   return useQuery({
-    queryKey: ['integrations', 'env', 'scan', projectPath],
+    queryKey: ['integrations', 'env', 'files', projectPath],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/env/scan?projectPath=${encodeURIComponent(projectPath)}`);
+      const res = await fetch(`${API_BASE}/env/files?projectPath=${encodeURIComponent(projectPath)}`);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to list env files');
+      }
+      const data = await res.json();
+      return data.files as EnvFileInfo[];
+    },
+    enabled: enabled && !!projectPath,
+  });
+}
+
+/**
+ * .env 파일 스캔 (선택된 파일만 스캔 가능)
+ */
+export function useScanEnv(projectPath: string, selectedFiles?: string[], enabled = false) {
+  return useQuery({
+    queryKey: ['integrations', 'env', 'scan', projectPath, selectedFiles],
+    queryFn: async () => {
+      let url = `${API_BASE}/env/scan?projectPath=${encodeURIComponent(projectPath)}`;
+      if (selectedFiles && selectedFiles.length > 0) {
+        url += `&files=${encodeURIComponent(selectedFiles.join(','))}`;
+      }
+      const res = await fetch(url);
       if (!res.ok) {
         const error = await res.json();
         throw new Error(error.message || 'Failed to scan env files');

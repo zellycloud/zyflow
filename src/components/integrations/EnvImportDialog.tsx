@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -10,9 +10,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   AlertCircle,
   CheckCircle2,
@@ -20,12 +26,16 @@ import {
   Loader2,
   RefreshCw,
   AlertTriangle,
+  FolderOpen,
 } from 'lucide-react';
 import {
   useImportEnv,
+  useEnvFiles,
   type DetectedService,
   type EnvScanResult,
+  type EnvFileInfo,
 } from '@/hooks/useIntegrations';
+import { useProjects } from '@/hooks/useProjects';
 import { toast } from 'sonner';
 
 const API_BASE = 'http://localhost:3001/api/integrations';
@@ -46,7 +56,25 @@ export function EnvImportDialog({
   onOpenChange,
   defaultProjectPath = '',
 }: EnvImportDialogProps) {
-  const [projectPath, setProjectPath] = useState(defaultProjectPath);
+  // 프로젝트 목록 조회
+  const { data: projectsData } = useProjects();
+  const projects = projectsData?.projects || [];
+
+  // 선택된 프로젝트
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const selectedProject = projects.find(p => p.id === selectedProjectId);
+  const projectPath = selectedProject?.path || defaultProjectPath;
+
+  // .env 파일 목록 조회
+  const { data: envFiles, isLoading: isLoadingFiles } = useEnvFiles(
+    projectPath,
+    !!projectPath && open
+  );
+
+  // 선택된 .env 파일들
+  const [selectedEnvFiles, setSelectedEnvFiles] = useState<Set<string>>(new Set());
+
+  // 스캔 상태
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<EnvScanResult | null>(null);
   const [selectedServices, setSelectedServices] = useState<Map<string, SelectedService>>(
@@ -55,27 +83,78 @@ export function EnvImportDialog({
 
   const importEnv = useImportEnv();
 
-  // Reset state when dialog opens - called from onOpenChange handler
+  // 프로젝트 변경 시 초기화
+  useEffect(() => {
+    if (selectedProjectId) {
+      setSelectedEnvFiles(new Set());
+      setScanResult(null);
+      setSelectedServices(new Map());
+    }
+  }, [selectedProjectId]);
+
+  // .env 파일 목록이 로드되면 모든 파일 기본 선택
+  useEffect(() => {
+    if (envFiles && envFiles.length > 0) {
+      setSelectedEnvFiles(new Set(envFiles.map(f => f.name)));
+    }
+  }, [envFiles]);
+
+  // Reset state when dialog opens
   const handleOpenChange = useCallback((newOpen: boolean) => {
     if (newOpen) {
       // Opening dialog - reset state
-      setProjectPath(defaultProjectPath || '');
-      setSelectedServices(new Map());
+      setSelectedProjectId('');
+      setSelectedEnvFiles(new Set());
       setScanning(false);
       setScanResult(null);
+      setSelectedServices(new Map());
     }
     onOpenChange(newOpen);
-  }, [defaultProjectPath, onOpenChange]);
+  }, [onOpenChange]);
+
+  // .env 파일 선택/해제
+  const handleToggleEnvFile = (fileName: string) => {
+    const newSelected = new Set(selectedEnvFiles);
+    if (newSelected.has(fileName)) {
+      newSelected.delete(fileName);
+    } else {
+      newSelected.add(fileName);
+    }
+    setSelectedEnvFiles(newSelected);
+    // 파일 선택 변경 시 스캔 결과 초기화
+    setScanResult(null);
+    setSelectedServices(new Map());
+  };
+
+  // 모든 파일 선택/해제
+  const handleToggleAllFiles = () => {
+    if (envFiles) {
+      if (selectedEnvFiles.size === envFiles.length) {
+        setSelectedEnvFiles(new Set());
+      } else {
+        setSelectedEnvFiles(new Set(envFiles.map(f => f.name)));
+      }
+      setScanResult(null);
+      setSelectedServices(new Map());
+    }
+  };
 
   const handleScan = async () => {
-    if (!projectPath.trim()) {
-      toast.error('프로젝트 경로를 입력해주세요');
+    if (!projectPath) {
+      toast.error('프로젝트를 선택해주세요');
+      return;
+    }
+
+    if (selectedEnvFiles.size === 0) {
+      toast.error('.env 파일을 선택해주세요');
       return;
     }
 
     setScanning(true);
     try {
-      const res = await fetch(`${API_BASE}/env/scan?projectPath=${encodeURIComponent(projectPath)}`);
+      const filesParam = Array.from(selectedEnvFiles).join(',');
+      const url = `${API_BASE}/env/scan?projectPath=${encodeURIComponent(projectPath)}&files=${encodeURIComponent(filesParam)}`;
+      const res = await fetch(url);
       if (!res.ok) {
         const error = await res.json();
         throw new Error(error.message || 'Failed to scan env files');
@@ -145,11 +224,11 @@ export function EnvImportDialog({
     }
   };
 
-  const isLoading = scanning || importEnv.isPending;
+  const isLoading = scanning || importEnv.isPending || isLoadingFiles;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+      <DialogContent className="max-w-2xl h-[90vh] max-h-[800px] flex flex-col">
         <DialogHeader>
           <DialogTitle>Import from .env</DialogTitle>
           <DialogDescription>
@@ -157,44 +236,103 @@ export function EnvImportDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
-          {/* Project Path Input */}
+        <div className="space-y-4 flex-1 overflow-y-auto flex flex-col">
+          {/* Step 1: Project Selection */}
           <div className="space-y-2">
-            <Label htmlFor="projectPath">프로젝트 경로</Label>
-            <div className="flex gap-2">
-              <Input
-                id="projectPath"
-                value={projectPath}
-                onChange={(e) => setProjectPath(e.target.value)}
-                placeholder="/path/to/project"
-                disabled={isLoading}
-              />
-              <Button onClick={handleScan} disabled={isLoading || !projectPath.trim()}>
-                {scanning ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-                <span className="ml-2">스캔</span>
-              </Button>
-            </div>
+            <Label>프로젝트 선택</Label>
+            <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+              <SelectTrigger>
+                <SelectValue placeholder="프로젝트를 선택하세요" />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    <div className="flex items-center gap-2">
+                      <FolderOpen className="h-4 w-4" />
+                      <span>{project.name}</span>
+                      <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                        ({project.path})
+                      </span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          {/* Scan Results */}
+          {/* Step 2: .env File Selection */}
+          {selectedProjectId && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>.env 파일 선택</Label>
+                <div className="flex items-center gap-2">
+                  {envFiles && envFiles.length > 0 && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleToggleAllFiles}
+                        className="h-auto py-1 px-2 text-xs"
+                      >
+                        {selectedEnvFiles.size === envFiles.length ? '전체 해제' : '전체 선택'}
+                      </Button>
+                      <Button
+                        onClick={handleScan}
+                        disabled={isLoading || selectedEnvFiles.size === 0}
+                        size="sm"
+                      >
+                        {scanning ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                        )}
+                        {selectedEnvFiles.size}개 파일 스캔
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {isLoadingFiles ? (
+                <div className="flex items-center justify-center py-4 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  파일 목록 조회 중...
+                </div>
+              ) : envFiles && envFiles.length > 0 ? (
+                <div className="max-h-[250px] overflow-y-auto border rounded-lg p-3 space-y-2">
+                  {envFiles.map((file) => (
+                    <EnvFileItem
+                      key={file.name}
+                      file={file}
+                      selected={selectedEnvFiles.has(file.name)}
+                      onToggle={() => handleToggleEnvFile(file.name)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center py-4 text-muted-foreground">
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  .env 파일을 찾을 수 없습니다
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: Scan Results */}
           {scanResult && (
-            <div className="flex-1 overflow-hidden flex flex-col space-y-4">
+            <div className="flex-1 min-h-0 flex flex-col space-y-3">
               {/* Found Files */}
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <FileText className="h-4 w-4" />
-                <span>
-                  발견된 파일: {scanResult.files.length > 0 ? scanResult.files.join(', ') : '없음'}
+              <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                <FileText className="h-4 w-4 shrink-0 mt-0.5" />
+                <span className="break-all">
+                  스캔된 파일: {scanResult.files.length > 0 ? scanResult.files.join(', ') : '없음'}
                 </span>
               </div>
 
               {/* Services List */}
               {scanResult.services.length > 0 ? (
-                <ScrollArea className="flex-1 border rounded-lg p-4">
-                  <div className="space-y-3">
+                <ScrollArea className="flex-1 min-h-[200px] max-h-[400px] border rounded-lg">
+                  <div className="p-4 space-y-3">
                     {scanResult.services.map((service) => (
                       <ServiceItem
                         key={service.type}
@@ -229,11 +367,11 @@ export function EnvImportDialog({
           )}
 
           {/* Initial State */}
-          {!scanResult && !scanning && (
+          {!selectedProjectId && (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
               <div className="text-center">
-                <FileText className="h-8 w-8 mx-auto mb-2" />
-                <p>프로젝트 경로를 입력하고 스캔 버튼을 눌러주세요.</p>
+                <FolderOpen className="h-8 w-8 mx-auto mb-2" />
+                <p>프로젝트를 선택하세요</p>
               </div>
             </div>
           )}
@@ -257,6 +395,30 @@ export function EnvImportDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface EnvFileItemProps {
+  file: EnvFileInfo;
+  selected: boolean;
+  onToggle: () => void;
+}
+
+function EnvFileItem({ file, selected, onToggle }: EnvFileItemProps) {
+  return (
+    <div
+      className={`flex items-center gap-3 p-2 rounded-md cursor-pointer transition-colors ${
+        selected ? 'bg-primary/10' : 'hover:bg-muted/50'
+      }`}
+      onClick={onToggle}
+    >
+      <Checkbox checked={selected} onCheckedChange={onToggle} />
+      <FileText className="h-4 w-4 text-muted-foreground" />
+      <span className="font-mono text-sm">{file.name}</span>
+      <Badge variant="secondary" className="text-xs">
+        {file.variableCount}개 변수
+      </Badge>
+    </div>
   );
 }
 
@@ -305,6 +467,20 @@ function ServiceItem({ service, selected, onToggle }: ServiceItemProps) {
             <Badge variant="secondary" className="text-xs">
               <AlertTriangle className="h-3 w-3 mr-1" />
               기존 계정 있음
+            </Badge>
+          )}
+
+          {service.environment && service.environment !== 'unknown' && (
+            <Badge
+              variant="outline"
+              className={`text-xs ${
+                service.environment === 'production' ? 'border-red-500 text-red-600' :
+                service.environment === 'staging' ? 'border-yellow-500 text-yellow-600' :
+                service.environment === 'development' ? 'border-blue-500 text-blue-600' :
+                'border-green-500 text-green-600'
+              }`}
+            >
+              {service.environment}
             </Badge>
           )}
         </div>

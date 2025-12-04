@@ -3,14 +3,14 @@
  * .env 파일에서 서비스 계정을 자동으로 감지하고 등록
  */
 
-import { parseProjectEnvFiles, type EnvParseResult } from '../env-parser.js'
+import { parseProjectEnvFiles, getEnvFileInfos, type EnvParseResult, type EnvFileInfo } from '../env-parser.js'
 import {
   detectServices,
   mapToIntegrationHubType,
   maskCredentialValue,
-  type DetectedService,
   type ScanResult,
   type ExtendedServiceType,
+  type EnvironmentHint,
 } from '../service-patterns.js'
 import { createServiceAccount, listServiceAccounts } from './accounts.js'
 import type { ServiceType } from '../db/schema.js'
@@ -28,6 +28,7 @@ export interface EnvScanResponse {
     isComplete: boolean
     missingRequired: string[]
     sources: string[]
+    environment?: EnvironmentHint
     existingAccount?: {
       id: string
       name: string
@@ -115,11 +116,14 @@ const scanCache = new Map<string, ScanResult & { rawCredentials: Map<ExtendedSer
 
 /**
  * 스캔 결과를 캐시에 저장 (임포트 시 사용)
+ * @param projectPath 프로젝트 경로
+ * @param selectedFiles 선택된 파일들 (없으면 모든 파일 스캔)
  */
 export async function scanAndCacheProjectEnv(
-  projectPath: string
+  projectPath: string,
+  selectedFiles?: string[]
 ): Promise<EnvScanResponse> {
-  const parseResult = await parseProjectEnvFiles(projectPath)
+  const parseResult = await parseProjectEnvFiles(projectPath, selectedFiles)
   const scanResult = detectServices(parseResult.variables)
 
   // 원본 credential 저장 (마스킹 전)
@@ -152,6 +156,7 @@ export async function scanAndCacheProjectEnv(
       isComplete: service.isComplete,
       missingRequired: service.missingRequired,
       sources: service.sources,
+      environment: service.environment,
       existingAccount: existing
         ? {
             id: existing.id,
@@ -260,4 +265,15 @@ export function clearScanCache(projectPath?: string): void {
   } else {
     scanCache.clear()
   }
+}
+
+// =============================================
+// .env 파일 목록 조회
+// =============================================
+
+/**
+ * 프로젝트의 .env 파일 목록과 정보 조회
+ */
+export async function listEnvFiles(projectPath: string): Promise<EnvFileInfo[]> {
+  return getEnvFileInfos(projectPath)
 }
