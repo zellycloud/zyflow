@@ -28,6 +28,7 @@ import {
 import {
   scanAndCacheProjectEnv,
   importServices,
+  listEnvFiles,
   type ImportRequest,
 } from './services/env-import.js';
 import type { ServiceType, Credentials } from './db/schema.js';
@@ -651,10 +652,10 @@ router.get('/projects/:projectId/test-accounts/:id/password', async (req: Reques
 // =============================================
 
 /**
- * GET /api/integrations/env/scan
- * 프로젝트의 .env 파일 스캔 및 서비스 감지
+ * GET /api/integrations/env/files
+ * 프로젝트의 .env 파일 목록 조회
  */
-router.get('/env/scan', async (req: Request, res: Response) => {
+router.get('/env/files', async (req: Request, res: Response) => {
   try {
     const projectPath = req.query.projectPath as string;
 
@@ -666,7 +667,42 @@ router.get('/env/scan', async (req: Request, res: Response) => {
       return;
     }
 
-    const result = await scanAndCacheProjectEnv(projectPath);
+    const files = await listEnvFiles(projectPath);
+    res.json({ files });
+  } catch (error) {
+    console.error('Failed to list env files:', error);
+    res.status(500).json({
+      error: 'Failed to list env files',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /api/integrations/env/scan
+ * 프로젝트의 .env 파일 스캔 및 서비스 감지
+ * @query projectPath - 프로젝트 경로 (필수)
+ * @query files - 스캔할 파일 목록 (쉼표 구분, 선택사항 - 미지정시 모든 파일)
+ */
+router.get('/env/scan', async (req: Request, res: Response) => {
+  try {
+    const projectPath = req.query.projectPath as string;
+    const filesParam = req.query.files as string | undefined;
+
+    if (!projectPath) {
+      res.status(400).json({
+        error: 'Missing required parameter',
+        message: 'projectPath query parameter is required',
+      });
+      return;
+    }
+
+    // 파일 목록 파싱 (쉼표 구분)
+    const selectedFiles = filesParam
+      ? filesParam.split(',').map(f => f.trim()).filter(Boolean)
+      : undefined;
+
+    const result = await scanAndCacheProjectEnv(projectPath, selectedFiles);
     res.json(result);
   } catch (error) {
     console.error('Failed to scan env files:', error);

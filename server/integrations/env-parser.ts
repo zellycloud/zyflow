@@ -3,8 +3,14 @@
  * 환경변수 파일을 파싱하여 key-value 쌍으로 변환
  */
 
-import { readFile, readdir, access } from 'fs/promises'
+import { readFile, readdir, access, stat } from 'fs/promises'
 import { join } from 'path'
+
+export interface EnvFileInfo {
+  name: string
+  variableCount: number
+  size: number
+}
 
 export interface EnvVariable {
   key: string
@@ -159,9 +165,41 @@ export async function findEnvFiles(projectPath: string): Promise<string[]> {
 }
 
 /**
- * 프로젝트의 모든 .env 파일 파싱
+ * 프로젝트의 .env 파일 정보 조회 (파일 목록 + 변수 개수)
  */
-export async function parseProjectEnvFiles(projectPath: string): Promise<EnvParseResult> {
+export async function getEnvFileInfos(projectPath: string): Promise<EnvFileInfo[]> {
+  const envFiles = await findEnvFiles(projectPath)
+  const fileInfos: EnvFileInfo[] = []
+
+  for (const fileName of envFiles) {
+    const filePath = join(projectPath, fileName)
+    try {
+      const content = await readFile(filePath, 'utf-8')
+      const fileStat = await stat(filePath)
+      const parsed = parseEnvContent(content)
+
+      fileInfos.push({
+        name: fileName,
+        variableCount: parsed.size,
+        size: fileStat.size,
+      })
+    } catch {
+      // 파일 읽기 실패 시 스킵
+    }
+  }
+
+  return fileInfos
+}
+
+/**
+ * 프로젝트의 모든 .env 파일 파싱
+ * @param projectPath 프로젝트 경로
+ * @param selectedFiles 선택된 파일들 (없으면 모든 파일 스캔)
+ */
+export async function parseProjectEnvFiles(
+  projectPath: string,
+  selectedFiles?: string[]
+): Promise<EnvParseResult> {
   const result: EnvParseResult = {
     variables: [],
     files: [],
@@ -169,12 +207,18 @@ export async function parseProjectEnvFiles(projectPath: string): Promise<EnvPars
   }
 
   const envFiles = await findEnvFiles(projectPath)
-  result.files = envFiles
+
+  // 선택된 파일만 필터링 (없으면 모든 파일)
+  const filesToParse = selectedFiles && selectedFiles.length > 0
+    ? envFiles.filter(f => selectedFiles.includes(f))
+    : envFiles
+
+  result.files = filesToParse
 
   // 각 파일 파싱 (나중 파일이 우선)
   const allVariables = new Map<string, EnvVariable>()
 
-  for (const fileName of envFiles) {
+  for (const fileName of filesToParse) {
     const filePath = join(projectPath, fileName)
     try {
       const content = await readFile(filePath, 'utf-8')
