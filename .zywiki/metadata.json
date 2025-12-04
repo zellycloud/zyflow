@@ -1,0 +1,1970 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-12-04T06:48:04.728Z",
+  "snippets": [
+    {
+      "id": "61f6007b43d2",
+      "path": "server/app.ts",
+      "lines": [
+        1,
+        2012
+      ],
+      "hash": "26621205a63b21037f145cfd4dbe7847178ff24aab4ab909f963743ed4bd412a",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.415Z"
+    },
+    {
+      "id": "2742cf217d69",
+      "path": "server/change-log.ts",
+      "lines": [
+        1,
+        868
+      ],
+      "hash": "6e75ecbdb4c7e2848777130d502696077f2b412e217e14c0743fb83a69831bee",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.416Z"
+    },
+    {
+      "id": "b8fbce30a5b7",
+      "path": "server/config.d.ts",
+      "lines": [
+        1,
+        18
+      ],
+      "hash": "5bbad270ab456a361626b72def7c4453402697ba65e6a66f3573ad054634d7e5",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.417Z"
+    },
+    {
+      "id": "19e4da2a9e09",
+      "path": "server/config.js",
+      "lines": [
+        1,
+        79
+      ],
+      "hash": "bfb910bd037ea32e3e1ce2df15192169ff1310cb8f283062899c724808414d08",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.417Z"
+    },
+    {
+      "id": "beba6b3a8d03",
+      "path": "server/config.ts",
+      "lines": [
+        1,
+        193
+      ],
+      "hash": "a7769acd2f87d80ca131ad91eb6e982d88305997a47c1dae40306adefd2153f2",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.418Z"
+    },
+    {
+      "id": "282ffcd5a9e7",
+      "path": "server/git/change-workflow.ts",
+      "lines": [
+        1,
+        447
+      ],
+      "hash": "cacf1f64bd164ab852b3dcc5274738f8b20e7c6cc2313c7896acc0c0dfd7823b",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.419Z"
+    },
+    {
+      "id": "64170c6ce3ce",
+      "path": "server/git/commands.ts",
+      "lines": [
+        1,
+        299
+      ],
+      "hash": "b9f41b510adcd597454e31f0be9978993ffafefe996006ae238f095448e2fe2a",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.420Z"
+    },
+    {
+      "id": "e3079f7ba3a0",
+      "path": "server/git/github.ts",
+      "lines": [
+        1,
+        248
+      ],
+      "hash": "a98379d7138f169a664c2cbd73abe41131be11ca9a8af249d6fb75fa07606e34",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.420Z"
+    },
+    {
+      "id": "e93460366497",
+      "path": "server/git/index.ts",
+      "lines": [
+        1,
+        1104
+      ],
+      "hash": "2b475da6c350c2539e70e187b8a50d52920e1e90a9da7bed612b250ae240d5e0",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.422Z"
+    },
+    {
+      "id": "3f6e97e00fd0",
+      "path": "server/git/status.ts",
+      "lines": [
+        1,
+        323
+      ],
+      "hash": "8a25faafad95454bb3c203aa2ca6129550bdeb77c6ba32a23d11cb2aabdb9916",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.423Z"
+    },
+    {
+      "id": "3c47ddf4335d",
+      "path": "server/index.ts",
+      "lines": [
+        1,
+        117
+      ],
+      "hash": "6d925a7b930f9be18d01b52d604554e0014f2ac903e0e016a4ef031955ef6826",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.423Z"
+    },
+    {
+      "id": "f436c9686a31",
+      "path": "server/integrations/crypto.ts",
+      "lines": [
+        1,
+        143
+      ],
+      "hash": "b88a50cae855fb4002f2ef284dba35a5ad12be51486fb6e9196438c388b5b862",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.424Z"
+    },
+    {
+      "id": "275729118e0a",
+      "path": "server/integrations/db/client.ts",
+      "lines": [
+        1,
+        170
+      ],
+      "hash": "518f950d4e7820161cfdd106377938bc2da13e77314c96144f2a4e42d9c02732",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.425Z"
+    },
+    {
+      "id": "290858908505",
+      "path": "server/integrations/db/schema.ts",
+      "lines": [
+        1,
+        160
+      ],
+      "hash": "2b8d8f803dc539995a4efa11b57bc13c97f185e17f71aecfdd4338ec98daaab4",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.425Z"
+    },
+    {
+      "id": "663e6270b52c",
+      "path": "server/integrations/env-parser.ts",
+      "lines": [
+        1,
+        263
+      ],
+      "hash": "462ab930e62e2c97753639f1e51482a2f6c8e33c10e1d7429d9dc112b98d0277",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.425Z"
+    },
+    {
+      "id": "1bf48aac35cb",
+      "path": "server/integrations/index.ts",
+      "lines": [
+        1,
+        60
+      ],
+      "hash": "86a39c9b7c3eb25d945f5e1ca5e07d3584863d963fade8cf0188a4bf2a978954",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.426Z"
+    },
+    {
+      "id": "7f523a0af192",
+      "path": "server/integrations/keychain.ts",
+      "lines": [
+        1,
+        240
+      ],
+      "hash": "80483e4ce6fca4ead846d85a90eb3f8a3aa79ee9767de6673ac6956d0eb2fe0c",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.427Z"
+    },
+    {
+      "id": "08982123ef4f",
+      "path": "server/integrations/routes.ts",
+      "lines": [
+        1,
+        755
+      ],
+      "hash": "795369c621627cf24286f7cbffae97359a85a484a74df844e9f4aaf2c346bf54",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.428Z"
+    },
+    {
+      "id": "40a64ac70787",
+      "path": "server/integrations/service-patterns.ts",
+      "lines": [
+        1,
+        772
+      ],
+      "hash": "541563e23a4bf7fe10e740899da01ca64577c7ab9b61c32e25b56b9baef8f57b",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.429Z"
+    },
+    {
+      "id": "4b47e3e15bae",
+      "path": "server/integrations/services/accounts.ts",
+      "lines": [
+        1,
+        338
+      ],
+      "hash": "625dcfaa5cb2bc8d9ab33ed31de8c1d1ad0b265ef8ca44f20ea24340315f8f00",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.429Z"
+    },
+    {
+      "id": "d9d31c14d94a",
+      "path": "server/integrations/services/env-import.ts",
+      "lines": [
+        1,
+        280
+      ],
+      "hash": "5e7b8ca536a868d48996d9545e3c50f5d2cf73a336ade657b7f8993ff0db3595",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.430Z"
+    },
+    {
+      "id": "5aa7036a538c",
+      "path": "server/integrations/services/projects.ts",
+      "lines": [
+        1,
+        553
+      ],
+      "hash": "3d8f5a74b4656ea97c5dadcd0d6f632afa25f34af747d3a59388088ae7f519fd",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.430Z"
+    },
+    {
+      "id": "17cd417fe87b",
+      "path": "server/parser-debug.ts",
+      "lines": [
+        1,
+        37
+      ],
+      "hash": "3b66c9e41e09b37f7eb357d7307279f22b173ecfd499d14988c8fe09781414a3",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.431Z"
+    },
+    {
+      "id": "dc1a784e7b4f",
+      "path": "server/parser-utils.ts",
+      "lines": [
+        1,
+        312
+      ],
+      "hash": "5ff3a7e05943b0ea552f4dfb614e486a7667517b4225378e5f99e9ec2d57efab",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.431Z"
+    },
+    {
+      "id": "2a9647ecc4cf",
+      "path": "server/parser.d.ts",
+      "lines": [
+        1,
+        17
+      ],
+      "hash": "626fb3e8ee6f4ad1fde7ecf2dbfb82af764f2a221688a1015b74ec3e2ec376bd",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.432Z"
+    },
+    {
+      "id": "8a8610c7a706",
+      "path": "server/parser.js",
+      "lines": [
+        1,
+        222
+      ],
+      "hash": "c3522c0a7be6a1e9ea1158776534ca0564eb18a338ee91c4b274daa85f3eadd9",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.432Z"
+    },
+    {
+      "id": "990ddb5ad482",
+      "path": "server/parser.ts",
+      "lines": [
+        1,
+        349
+      ],
+      "hash": "9ab96547d6ba38d404b45d5e9529cd17ee407318c29376625fc99c5e8002a3d0",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.433Z"
+    },
+    {
+      "id": "fcd0b41afec0",
+      "path": "server/replay-engine.ts",
+      "lines": [
+        1,
+        915
+      ],
+      "hash": "ef9bcae548715ae697c6b20ac49b302d4eeff374f23d7a3c793bd226d44b81c0",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.433Z"
+    },
+    {
+      "id": "613485890ca3",
+      "path": "server/server/parser.js",
+      "lines": [
+        1,
+        266
+      ],
+      "hash": "cf53ce8d05adb7ebc2582680a35598f4fcdc0cb445550661f364470e3cd6ff40",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.434Z"
+    },
+    {
+      "id": "219f7bdc009f",
+      "path": "server/src/types/index.js",
+      "lines": [
+        1,
+        2
+      ],
+      "hash": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.434Z"
+    },
+    {
+      "id": "0cfe58d6e4e9",
+      "path": "server/sync-failure-detector.ts",
+      "lines": [
+        1,
+        779
+      ],
+      "hash": "83024ee63cb5ec8d00b6425d32e2e687b51e2a5a6b9b0d2acaae90327394684c",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.435Z"
+    },
+    {
+      "id": "1a0c1d295ba2",
+      "path": "server/sync-recovery-strategies.ts",
+      "lines": [
+        1,
+        904
+      ],
+      "hash": "b57d458ed1eafc257c76d3d708a01743f6a16bcbc3e32f322a7a3fe38cb7b55f",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.436Z"
+    },
+    {
+      "id": "8ec9299d0736",
+      "path": "server/sync-recovery.ts",
+      "lines": [
+        1,
+        1069
+      ],
+      "hash": "f13a7f5fa01889d0a055b74c0804e06fb706fe740fe94bfd385b42cf73781942",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.437Z"
+    },
+    {
+      "id": "4fbc5d559c32",
+      "path": "server/sync.ts",
+      "lines": [
+        1,
+        589
+      ],
+      "hash": "807554f1d14a2fd0d525b7c847c0cd51cfcd31aa2046d7fd6a0f5beb7bf403e0",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.437Z"
+    },
+    {
+      "id": "f37cead92849",
+      "path": "server/tasks/cli/commands.ts",
+      "lines": [
+        1,
+        270
+      ],
+      "hash": "0e51abafbe132537752beb746ab7e393c49dbe50b500da84398cc71fb77644a3",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.437Z"
+    },
+    {
+      "id": "2cbb0a507c4d",
+      "path": "server/tasks/cli/index.ts",
+      "lines": [
+        1,
+        153
+      ],
+      "hash": "b8c70be5b14baaa7149e042a51eb4fa46b66d828ef98e031e8895046aff1ee71",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.438Z"
+    },
+    {
+      "id": "1f648c7e42c5",
+      "path": "server/tasks/core/search.ts",
+      "lines": [
+        1,
+        76
+      ],
+      "hash": "32e497020536fa647953eb3fdb7f1ca684be4038e984088156012d9902d0a2aa",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.438Z"
+    },
+    {
+      "id": "e7efbc815ccf",
+      "path": "server/tasks/core/task.ts",
+      "lines": [
+        1,
+        295
+      ],
+      "hash": "962beae9b03e39b53bef880b48b45475da57e912f8e5c8b0bf32d3abf3e1dadf",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.438Z"
+    },
+    {
+      "id": "207494ee3751",
+      "path": "server/tasks/db/client.ts",
+      "lines": [
+        1,
+        532
+      ],
+      "hash": "6da8453efe1c25b4a4e91cfeccbe54e577e8615b9559b58f83daa6e416229a03",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.439Z"
+    },
+    {
+      "id": "5e11a7506426",
+      "path": "server/tasks/db/schema.ts",
+      "lines": [
+        1,
+        302
+      ],
+      "hash": "b8287623680e1d1bb1429fe1a69315aa578a2dfaa2c54c33e522426d514a6a26",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.439Z"
+    },
+    {
+      "id": "57ad38789cbe",
+      "path": "server/tasks/index.ts",
+      "lines": [
+        1,
+        24
+      ],
+      "hash": "d122523fecd75de72da2ebd7ca83ce4261c6f1f3936b6e3a0011a7f1102aec89",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.440Z"
+    },
+    {
+      "id": "7503114850ee",
+      "path": "server/types/change-log.ts",
+      "lines": [
+        1,
+        643
+      ],
+      "hash": "cdbe0880f6604b2a70c3d5bd56d4b1c35ecb7731aea2e847e963340ed308941d",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.440Z"
+    },
+    {
+      "id": "ba061d84465f",
+      "path": "server/watcher.ts",
+      "lines": [
+        1,
+        268
+      ],
+      "hash": "4339c58c15e1cad144bc7fc92d4e78d1ac25e34a16554d7ff34d3b2b7424cb91",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.441Z"
+    },
+    {
+      "id": "00f2a8b2ceb7",
+      "path": "server/websocket.ts",
+      "lines": [
+        1,
+        91
+      ],
+      "hash": "abf0f8d3fab8a09ee74d460a95470ac1b6061d2921a6ce40f721f5c4b16e4a2e",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.441Z"
+    },
+    {
+      "id": "0d28b819351e",
+      "path": "src/App.tsx",
+      "lines": [
+        1,
+        155
+      ],
+      "hash": "b243d1b6148651166e63d5273abce15cf20b27b8155cb835c2b941156183db48",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.442Z"
+    },
+    {
+      "id": "f8f6d38ec49a",
+      "path": "src/components/dashboard/ChangeList.tsx",
+      "lines": [
+        1,
+        71
+      ],
+      "hash": "9acdad0af1dbcd4da06addabe68ca7853f32c1d8b177cdf77702527b09abe312",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.442Z"
+    },
+    {
+      "id": "039146e3573d",
+      "path": "src/components/dashboard/ExecutionModal.tsx",
+      "lines": [
+        1,
+        222
+      ],
+      "hash": "af688b7ddc5fd06cf1edd039662bbe014ae0b9ebbd83e0c8435f713602834cbc",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.443Z"
+    },
+    {
+      "id": "799cf53375f8",
+      "path": "src/components/dashboard/Header.tsx",
+      "lines": [
+        1,
+        116
+      ],
+      "hash": "7bc6dc5d346c4ecf0ceb07a978bb6bea1d19ca5b943a990eb2f3c2fc1ea56624",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.443Z"
+    },
+    {
+      "id": "131c0db4de24",
+      "path": "src/components/dashboard/Sidebar.tsx",
+      "lines": [
+        1,
+        227
+      ],
+      "hash": "df4b4205d0639c8908399a1eae31609fc432abcc8d20da54296b08cbc13b3832",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.444Z"
+    },
+    {
+      "id": "6e9e5fe123bb",
+      "path": "src/components/dashboard/SortableTaskItem.tsx",
+      "lines": [
+        1,
+        125
+      ],
+      "hash": "1bdcbd3bf94d0c8c39c7b5d388f94f8fce12564390869994add7e749e4d4a682",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.444Z"
+    },
+    {
+      "id": "b04c4878d25b",
+      "path": "src/components/dashboard/SpecContent.tsx",
+      "lines": [
+        1,
+        83
+      ],
+      "hash": "f11eae23f0456e58ef1a21d318f6de2e8f4d2e70f59594115bf10275047fd075",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.444Z"
+    },
+    {
+      "id": "bfb1cd10a0df",
+      "path": "src/components/dashboard/SpecsViewer.tsx",
+      "lines": [
+        1,
+        137
+      ],
+      "hash": "38c45152189d5574a6dbfc17148deb4de4e515a53afacd5e57240115b8836060",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.445Z"
+    },
+    {
+      "id": "f2b7c0aba92d",
+      "path": "src/components/dashboard/TaskBoard.tsx",
+      "lines": [
+        1,
+        100
+      ],
+      "hash": "e3d183be3114f5af8eed9a334a33004ea30f3e97c0fde1695e874b6e2b96216f",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.445Z"
+    },
+    {
+      "id": "9409726eea67",
+      "path": "src/components/dashboard/TaskGroup.tsx",
+      "lines": [
+        1,
+        93
+      ],
+      "hash": "141302ec60d4b3184f18d42f31864da24699ea8fcf4169d343364160c0364cee",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.446Z"
+    },
+    {
+      "id": "93e95ac4403b",
+      "path": "src/components/dashboard/TasksPage.tsx",
+      "lines": [
+        1,
+        160
+      ],
+      "hash": "349855d2add6a3f467eb15cb9fb1edfd81f3c2b4a7d5fcc27794e0a54e601a7f",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.446Z"
+    },
+    {
+      "id": "e9a0cc3a21b7",
+      "path": "src/components/dashboard/ThemeToggle.tsx",
+      "lines": [
+        1,
+        34
+      ],
+      "hash": "257d7836fa91bb989acb0ce11e80e1d7b757fa09775fff7c5585b9e9ffe72fae",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.446Z"
+    },
+    {
+      "id": "ba645110809b",
+      "path": "src/components/flow/ChangeDetail.tsx",
+      "lines": [
+        1,
+        306
+      ],
+      "hash": "207891d014e82e026f2a194564fcf9d5f45d317254303af2f390520a6da8e583",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.447Z"
+    },
+    {
+      "id": "7148c6eb0242",
+      "path": "src/components/flow/ChangeItem.tsx",
+      "lines": [
+        1,
+        217
+      ],
+      "hash": "72eb826149fd241a676bb641366b5c55d000e8e53f82c3089504e15cca815d71",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.447Z"
+    },
+    {
+      "id": "cfe5427defb6",
+      "path": "src/components/flow/ChangeList.tsx",
+      "lines": [
+        1,
+        81
+      ],
+      "hash": "1666a7ea7418be949a1f5dbb62ac0caf0c43480df3335189c61f1010d91e649f",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.448Z"
+    },
+    {
+      "id": "4db93acb1d0d",
+      "path": "src/components/flow/FlowContent.tsx",
+      "lines": [
+        1,
+        73
+      ],
+      "hash": "5575a4a586f190f434b892a8af9b6d433902c5e5fb9244c67926775d52a3e167",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.448Z"
+    },
+    {
+      "id": "60e50ad0ef8e",
+      "path": "src/components/flow/FlowPage.tsx",
+      "lines": [
+        1,
+        10
+      ],
+      "hash": "17500f0d8c975022f833d6b5afb4c66c44a28853d6ee96e0d556bb58de7ce36c",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.448Z"
+    },
+    {
+      "id": "bae6555d6f18",
+      "path": "src/components/flow/PipelineBar.tsx",
+      "lines": [
+        1,
+        215
+      ],
+      "hash": "0c5cf6256947a9b89b04b24f6bf480c068e8cccbf35bcabd2baad0fa4e4c07ed",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.449Z"
+    },
+    {
+      "id": "60f78582fe6d",
+      "path": "src/components/flow/ProjectDashboard.tsx",
+      "lines": [
+        1,
+        157
+      ],
+      "hash": "394c5251598bc89fea3a3e261becfc5c7a4654ed54ba267a8afc53582339eb72",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.449Z"
+    },
+    {
+      "id": "3d9f2b82a9c5",
+      "path": "src/components/flow/StageContent.tsx",
+      "lines": [
+        1,
+        337
+      ],
+      "hash": "b5bc76243c9917e6a0b0c25f1a4fb13fa4b9d459e0ad5e297da5b02f2c769698",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.449Z"
+    },
+    {
+      "id": "8f5aea7a0eee",
+      "path": "src/components/flow/StandaloneTasks.tsx",
+      "lines": [
+        1,
+        868
+      ],
+      "hash": "153885b3dac235ee4a5be072543320d555e9ffe6cdef5fa348961a462fbe112e",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.450Z"
+    },
+    {
+      "id": "dbc0f6fa1760",
+      "path": "src/components/flow/index.ts",
+      "lines": [
+        1,
+        10
+      ],
+      "hash": "77dee547d8c79a024d9c58dc1a015d8bcfd46e89d62cb9479102e83081f8c127",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.450Z"
+    },
+    {
+      "id": "794bbe6c52e3",
+      "path": "src/components/git/ChangeWorkflowDialog.tsx",
+      "lines": [
+        1,
+        583
+      ],
+      "hash": "f1804aea55e128c55a802c7321f1883e851ef4598e3a0705a162e8fb5c452c90",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.451Z"
+    },
+    {
+      "id": "0186007e40f5",
+      "path": "src/components/git/ConflictResolutionDialog.tsx",
+      "lines": [
+        1,
+        399
+      ],
+      "hash": "fe58a58ec5b9a4873ee69ee820a097061b86c19442611699fb6738fd05acabee",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.451Z"
+    },
+    {
+      "id": "e1d7fae522c4",
+      "path": "src/components/git/GitBranchSelector.tsx",
+      "lines": [
+        1,
+        213
+      ],
+      "hash": "87b5cfb28cb8b8f91f9556abf199ed8fdfa80e0b06736f108a8d1697eed18225",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.451Z"
+    },
+    {
+      "id": "447055556c40",
+      "path": "src/components/git/GitCommitDialog.tsx",
+      "lines": [
+        1,
+        255
+      ],
+      "hash": "7f3eb9483f2ade034c5a8d2ad312598f43e5c2e5c6df06da35eef438e7ce07ad",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.452Z"
+    },
+    {
+      "id": "b15d83a8cc26",
+      "path": "src/components/git/GitStatusBadge.tsx",
+      "lines": [
+        1,
+        149
+      ],
+      "hash": "9060c67b71826aebef5feae6fec530a5ca5d82103df532c0b887958e916d707b",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.452Z"
+    },
+    {
+      "id": "883dcf4d6eb2",
+      "path": "src/components/git/GitSyncButton.tsx",
+      "lines": [
+        1,
+        129
+      ],
+      "hash": "7eaf1d8d50cbc9c579f91b350ea974f76c6e3b7628012529d5efae60b2f09282",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.452Z"
+    },
+    {
+      "id": "5ed713ac4e93",
+      "path": "src/components/git/RemoteStatusBanner.tsx",
+      "lines": [
+        1,
+        144
+      ],
+      "hash": "27f2f2667ac99c5beefcb70bdb9ceb1b8a901c39740ef5cedf09c5898c02dc30",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.453Z"
+    },
+    {
+      "id": "b16d47f29f40",
+      "path": "src/components/git/index.ts",
+      "lines": [
+        1,
+        10
+      ],
+      "hash": "2675fad67849466f1032e83ab13edcdf1ce25545d15645fb5e026e94b018db65",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.453Z"
+    },
+    {
+      "id": "3c136b53f2c6",
+      "path": "src/components/integrations/EnvImportDialog.tsx",
+      "lines": [
+        1,
+        522
+      ],
+      "hash": "ae2cddf949a6979cd2197f672e49f91c516cea84db05ce0a2d022af73fcbdf82",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.453Z"
+    },
+    {
+      "id": "102373ad7f87",
+      "path": "src/components/integrations/EnvironmentDialog.tsx",
+      "lines": [
+        1,
+        229
+      ],
+      "hash": "54570a4c36ae2a7cef693920fce8d39d31c4c9ffacdac43c70e2c5ef06333294",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.454Z"
+    },
+    {
+      "id": "04e2b383ef0e",
+      "path": "src/components/integrations/IntegrationsSettings.tsx",
+      "lines": [
+        1,
+        56
+      ],
+      "hash": "3dc1eec650e25608251af92cdc77b5dc21c2b2c89ed8d0ed0799685f76b2545d",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.454Z"
+    },
+    {
+      "id": "2b6d450e6201",
+      "path": "src/components/integrations/ProjectIntegrations.tsx",
+      "lines": [
+        1,
+        484
+      ],
+      "hash": "9f6dc0ddf7b31ae9884aa5418cd2b5783e31e5a1450fe22f5926243a477581e9",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.454Z"
+    },
+    {
+      "id": "978f544cf9c8",
+      "path": "src/components/integrations/ServiceAccountDialog.tsx",
+      "lines": [
+        1,
+        390
+      ],
+      "hash": "ea8d5a4ff282b1eb2844c8dae4d3067a991b5a27b76c7bcb19fb521056e64ebe",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.455Z"
+    },
+    {
+      "id": "d215e6acf62c",
+      "path": "src/components/integrations/ServiceAccountList.tsx",
+      "lines": [
+        1,
+        264
+      ],
+      "hash": "563f62ff44862c4353510d477ca47f62ad4ff12d704178260dd245984b35bf11",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.455Z"
+    },
+    {
+      "id": "5dbcf5ded6ba",
+      "path": "src/components/integrations/TestAccountDialog.tsx",
+      "lines": [
+        1,
+        163
+      ],
+      "hash": "774d319d80c63566bc5a4efac984133297832382f9cb447a4fdb1797b7f92645",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.455Z"
+    },
+    {
+      "id": "ace0c3d717bd",
+      "path": "src/components/integrations/index.ts",
+      "lines": [
+        1,
+        7
+      ],
+      "hash": "a507fc27d95fe7c1ead3ffa3d551dae769550cc7af33c6dfa14ccfe2c0794d6e",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.455Z"
+    },
+    {
+      "id": "910cde6f374e",
+      "path": "src/components/layout/AppSidebar.tsx",
+      "lines": [
+        1,
+        285
+      ],
+      "hash": "6ef08e1fbfe6197bfd66911001ea4a849e08890f634e39640dddeebd51b611ba",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.456Z"
+    },
+    {
+      "id": "ff0709fc6eb8",
+      "path": "src/components/layout/FlowSidebar.tsx",
+      "lines": [
+        1,
+        271
+      ],
+      "hash": "a8f91670c51b9f2d9b02e0f532291dd165f1580636ebcf63ff50bd6e02e07af7",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.456Z"
+    },
+    {
+      "id": "15391a62dbf7",
+      "path": "src/components/settings/IntegrationsSettings.tsx",
+      "lines": [
+        1,
+        51
+      ],
+      "hash": "8df1711ea1ace10f045ec0381dfe6e03835106062899704fdbe6c3d82d03c190",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.457Z"
+    },
+    {
+      "id": "25a3875f1688",
+      "path": "src/components/settings/ProjectsSettings.tsx",
+      "lines": [
+        1,
+        309
+      ],
+      "hash": "ee5f5c64378964604195b76a163a47a2af7587278b576ec50b0a10b48f9e3a1f",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.457Z"
+    },
+    {
+      "id": "5499a02d82bc",
+      "path": "src/components/settings/SettingsPage.tsx",
+      "lines": [
+        1,
+        42
+      ],
+      "hash": "1b530a466f68c1c4ecf15500a583dab6174b4d7fb24800ef3560f48899e08b94",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.457Z"
+    },
+    {
+      "id": "4e344adb6de1",
+      "path": "src/components/settings/index.ts",
+      "lines": [
+        1,
+        4
+      ],
+      "hash": "a72538b5df6ee68be70bb2d73ac32333c3ffa630d9aca5fbf516753422a3ef0a",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.457Z"
+    },
+    {
+      "id": "dc16ff7b232d",
+      "path": "src/components/tasks/ArchiveTable.tsx",
+      "lines": [
+        1,
+        204
+      ],
+      "hash": "41f327d8dd9a38e51c2fda781ebcc232aac250b3599dcbf0d7f1bbc0b05ced5a",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.458Z"
+    },
+    {
+      "id": "b05d893e8d39",
+      "path": "src/components/tasks/KanbanBoard.tsx",
+      "lines": [
+        1,
+        261
+      ],
+      "hash": "27f6c9d4226e8614e2e7cd75affd8a90f6d5f632dba9dde2dffdf2ed33a16da0",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.458Z"
+    },
+    {
+      "id": "5e5e12c4b5d5",
+      "path": "src/components/tasks/TaskCard.tsx",
+      "lines": [
+        1,
+        135
+      ],
+      "hash": "84db7879f649540006cb0927b68bca6f8f73be011d782265fc2ef60488ce89de",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.459Z"
+    },
+    {
+      "id": "21069dfaa344",
+      "path": "src/components/tasks/TaskColumn.tsx",
+      "lines": [
+        1,
+        82
+      ],
+      "hash": "78c6c8d45831411449abb5c6707150b43438c642880012de7b4ec9a947be3efe",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.459Z"
+    },
+    {
+      "id": "b7bde4b7bb87",
+      "path": "src/components/tasks/TaskDialog.tsx",
+      "lines": [
+        1,
+        275
+      ],
+      "hash": "6c2e827f294f44e77112cd472021c738b91952405af21b07989d25825f7ed3e3",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.459Z"
+    },
+    {
+      "id": "9eaee97695e7",
+      "path": "src/components/tasks/index.ts",
+      "lines": [
+        1,
+        6
+      ],
+      "hash": "efda83675d8a6a0769d75f5845347d3ace932d7150f6d793949c886ce594cc61",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.460Z"
+    },
+    {
+      "id": "8c5a80d0af5e",
+      "path": "src/components/tasks/types.ts",
+      "lines": [
+        1,
+        44
+      ],
+      "hash": "453baed6ccdcee23c87b36089635c8e889fdfffd9a1e234f9c932dc9fcfe9d6a",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.460Z"
+    },
+    {
+      "id": "a8883c016bd6",
+      "path": "src/components/ui/alert-dialog.tsx",
+      "lines": [
+        1,
+        155
+      ],
+      "hash": "6776c50c8e284f2493a05ccd3e73148ad3ad507901e1abf31ac98ef1ad7294f2",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.460Z"
+    },
+    {
+      "id": "2600a0b83ef5",
+      "path": "src/components/ui/alert.tsx",
+      "lines": [
+        1,
+        66
+      ],
+      "hash": "b4046a16b0bc566c70a9ecf1beb2ded9f23808d7522821120ccf115861ae59e3",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.461Z"
+    },
+    {
+      "id": "2ee6fc0b7dbb",
+      "path": "src/components/ui/badge.tsx",
+      "lines": [
+        1,
+        46
+      ],
+      "hash": "a642d7a932b91ec610f09078452d34c379900845066955311506b6d503ea11e6",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.461Z"
+    },
+    {
+      "id": "df78ad9d4033",
+      "path": "src/components/ui/button.tsx",
+      "lines": [
+        1,
+        59
+      ],
+      "hash": "97ed8ef5651a6e264ded042b024b5be39673ba2ff222017fbcf845cf3ed37226",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.461Z"
+    },
+    {
+      "id": "efe5be3ff422",
+      "path": "src/components/ui/card.tsx",
+      "lines": [
+        1,
+        92
+      ],
+      "hash": "4311f75113c917ecf05e614913a591fcefdcecc185917b418f0f69b73f4a39fa",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.462Z"
+    },
+    {
+      "id": "cef99a064e63",
+      "path": "src/components/ui/checkbox.tsx",
+      "lines": [
+        1,
+        30
+      ],
+      "hash": "112db912f9d12927dc2a6bf5c8972b53caf6f361f6779696865b1b44cb516c86",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.462Z"
+    },
+    {
+      "id": "cb13a4543f58",
+      "path": "src/components/ui/collapsible.tsx",
+      "lines": [
+        1,
+        32
+      ],
+      "hash": "9fd25f52e0f6fd1bbfff0f1f3853fecd6a1c7ee1a9118a73f2e59a2ffa411e0a",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.462Z"
+    },
+    {
+      "id": "89f890af4cc9",
+      "path": "src/components/ui/confirm-dialog.tsx",
+      "lines": [
+        1,
+        53
+      ],
+      "hash": "cf8f401305b66ef3b3ac2f5b70596ac48414465b2e7d3f6254553462d528809a",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.462Z"
+    },
+    {
+      "id": "cf78b876dbb3",
+      "path": "src/components/ui/dialog.tsx",
+      "lines": [
+        1,
+        143
+      ],
+      "hash": "4dea9bc9f5a02f631c114172ce8a142de8d03e6b2c889e90a8d017cb937949e2",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.463Z"
+    },
+    {
+      "id": "66d2fb0421d1",
+      "path": "src/components/ui/dropdown-menu.tsx",
+      "lines": [
+        1,
+        255
+      ],
+      "hash": "ae55c29936ac03b178664cc4b3fc9d1b6cb8ad0e6d3564f34b8a20f2a18971bc",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.463Z"
+    },
+    {
+      "id": "7c91794618ea",
+      "path": "src/components/ui/input.tsx",
+      "lines": [
+        1,
+        21
+      ],
+      "hash": "73d121f1c4a431669a7a45807b37b74192cdc8a69dd8d0a3f6c2f581d4f40cd3",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.463Z"
+    },
+    {
+      "id": "2659cf3884af",
+      "path": "src/components/ui/label.tsx",
+      "lines": [
+        1,
+        23
+      ],
+      "hash": "70d2b90324e521926a48678ce5329446caaed155c6e5954a454499d5b67a014c",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.463Z"
+    },
+    {
+      "id": "8fe1b1ba4313",
+      "path": "src/components/ui/markdown.tsx",
+      "lines": [
+        1,
+        101
+      ],
+      "hash": "8cd454bdcdef1b61127e21999e02ebb8c4c5156f30a88e21d2840cbed7a5d755",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.464Z"
+    },
+    {
+      "id": "df6cd687eff6",
+      "path": "src/components/ui/progress.tsx",
+      "lines": [
+        1,
+        28
+      ],
+      "hash": "87b2ff205419ec0aebb927fa8f62d29bbde1eacb73c735b394f9aa84c241fcdc",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.464Z"
+    },
+    {
+      "id": "7e9d5d522490",
+      "path": "src/components/ui/resizable-sidebar.tsx",
+      "lines": [
+        1,
+        101
+      ],
+      "hash": "421238dc25c6007fbc646c97a3b74cfd2702e50250aa4e3a9d395a1f2dec3dd9",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.464Z"
+    },
+    {
+      "id": "99f50db6ea93",
+      "path": "src/components/ui/scroll-area.tsx",
+      "lines": [
+        1,
+        65
+      ],
+      "hash": "dfaef1a932f7fb314d638fc61b62e38f551bf72d688d6fa3b5d356e0620ab187",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.464Z"
+    },
+    {
+      "id": "90399857f782",
+      "path": "src/components/ui/select.tsx",
+      "lines": [
+        1,
+        186
+      ],
+      "hash": "b21245a179f8a32bc48ac7b32dfce7b1e57e2e5032356595a6fdc4ba05aa5216",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.465Z"
+    },
+    {
+      "id": "2cd32c1d2542",
+      "path": "src/components/ui/separator.tsx",
+      "lines": [
+        1,
+        26
+      ],
+      "hash": "02a39e4e2efbf3dd84eb79b5aaa2a583f0237a872e1e6f472676b962e35986fe",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.465Z"
+    },
+    {
+      "id": "71f934b2284c",
+      "path": "src/components/ui/sheet.tsx",
+      "lines": [
+        1,
+        137
+      ],
+      "hash": "2fa8a94ce453180103579b8937e2afee79da0dbb1d4e31243baa3410f8a6b736",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.465Z"
+    },
+    {
+      "id": "37d2ef19d1eb",
+      "path": "src/components/ui/sidebar.tsx",
+      "lines": [
+        1,
+        727
+      ],
+      "hash": "1941da028f29368a8e12c38e3d8e9f19c038268efd3571e3b5c928534b32b986",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.465Z"
+    },
+    {
+      "id": "49ac7a1fdb4e",
+      "path": "src/components/ui/skeleton.tsx",
+      "lines": [
+        1,
+        14
+      ],
+      "hash": "adcc975924dbcc75bc10f0dc6404eeee87872b1d1db0f0c1de4231e21d36bf4b",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.466Z"
+    },
+    {
+      "id": "e64b2f590b5d",
+      "path": "src/components/ui/table.tsx",
+      "lines": [
+        1,
+        114
+      ],
+      "hash": "f215ab41ab5c6f85fb1ad9d4e96f2fbbdf9f9caf16edbcb634f995f114c6edbe",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.466Z"
+    },
+    {
+      "id": "9f704e7ffcec",
+      "path": "src/components/ui/tabs.tsx",
+      "lines": [
+        1,
+        64
+      ],
+      "hash": "7e67a1fafff288cdb63c46a716ab3636ab222c5de055dcf2719ff648c6838820",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.466Z"
+    },
+    {
+      "id": "afb8cbcad1c0",
+      "path": "src/components/ui/textarea.tsx",
+      "lines": [
+        1,
+        18
+      ],
+      "hash": "022b9dd54e4e6f3c3fb526f903acb16275fe1245b6966fbec4922043a527f8bb",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.466Z"
+    },
+    {
+      "id": "2ec502367289",
+      "path": "src/components/ui/tooltip.tsx",
+      "lines": [
+        1,
+        61
+      ],
+      "hash": "0553e28d9a13bfab4ff587fbd267db9b35f5a65c9abd9dfd417488fd4e71008a",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.467Z"
+    },
+    {
+      "id": "2cbfd6d6d74d",
+      "path": "src/constants/stages.ts",
+      "lines": [
+        1,
+        28
+      ],
+      "hash": "c620a6d5ae9086181283a51003c8b08cece30e923db184a3b236e8ba6b88657a",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.467Z"
+    },
+    {
+      "id": "17333248d1e5",
+      "path": "src/context/theme-provider.tsx",
+      "lines": [
+        1,
+        64
+      ],
+      "hash": "0ad67a31e1b609340566fa0ffb4d8fcb839b513c5c15f1a4d47646695f651a82",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.467Z"
+    },
+    {
+      "id": "7e1cf0402f62",
+      "path": "src/hooks/use-mobile.tsx",
+      "lines": [
+        1,
+        20
+      ],
+      "hash": "1b43441b273aa21c1e74fefa774d5a7cb50068e5d4c192a8f63b9c95c5580431",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.467Z"
+    },
+    {
+      "id": "1674037f5b9d",
+      "path": "src/hooks/useArchivedTasks.ts",
+      "lines": [
+        1,
+        132
+      ],
+      "hash": "b2e255efab4d074cf74047a381efd3a408de0144cd636e5dc31bbc2f39e04956",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.468Z"
+    },
+    {
+      "id": "b11e0860347a",
+      "path": "src/hooks/useChangeGit.ts",
+      "lines": [
+        1,
+        727
+      ],
+      "hash": "b7828f2ebaa62d8f81faa8f4dce38738d095575096d35f4dbb23d9326870c457",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.468Z"
+    },
+    {
+      "id": "71e4cc8fbc9b",
+      "path": "src/hooks/useChanges.ts",
+      "lines": [
+        1,
+        21
+      ],
+      "hash": "34902c6b57852d308c67ee9a198859b3db9418fb0a271a2350fdbdde1f48fde2",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.469Z"
+    },
+    {
+      "id": "eb3ef01f92cb",
+      "path": "src/hooks/useClaude.ts",
+      "lines": [
+        1,
+        168
+      ],
+      "hash": "a2f4ec0eb654e201292183c9e099104d13316cc2c16e5ef86a3abd65bae67577",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.469Z"
+    },
+    {
+      "id": "5560f810f283",
+      "path": "src/hooks/useFlowChanges.ts",
+      "lines": [
+        1,
+        419
+      ],
+      "hash": "ca8a1502e77766d2dc2aacadc5252c542fecd03958b7ccfa26489b0505d19d23",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.469Z"
+    },
+    {
+      "id": "e8a3cf883cdb",
+      "path": "src/hooks/useGit.ts",
+      "lines": [
+        1,
+        341
+      ],
+      "hash": "aa1f196b07fe6e4893540f41372ef237f710808ecccc3fba91af8eec028fbc71",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.470Z"
+    },
+    {
+      "id": "d737e10d8123",
+      "path": "src/hooks/useIntegrations.ts",
+      "lines": [
+        1,
+        638
+      ],
+      "hash": "e2bf6665adb1647f451c907a8bfbde57319d6bec40fc4ac31628e345cb55cdf3",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.471Z"
+    },
+    {
+      "id": "7cc400ff1d6a",
+      "path": "src/hooks/useKanbanTasks.ts",
+      "lines": [
+        1,
+        182
+      ],
+      "hash": "eb241bb0f598530cb5e9e12bc2fc7958363b32a06404a926b1a08ae36ab979e4",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.473Z"
+    },
+    {
+      "id": "29a1a0fb657c",
+      "path": "src/hooks/useProjects.ts",
+      "lines": [
+        1,
+        206
+      ],
+      "hash": "b3cf0ffa633e0cc4991ce8b00757dfb8edc042fcd4dde080fce1988eef136089",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.474Z"
+    },
+    {
+      "id": "275f94a989ee",
+      "path": "src/hooks/useSpecs.ts",
+      "lines": [
+        1,
+        40
+      ],
+      "hash": "94b42d862b86160e001ee0fe1a55bd865b303f1dd28c08dd177ebb049ad01f26",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.474Z"
+    },
+    {
+      "id": "e98e2ab9e05f",
+      "path": "src/hooks/useTasks.ts",
+      "lines": [
+        1,
+        135
+      ],
+      "hash": "27600b6d885c1910d8859f08a6d424ea0362a01fd5322868ccf0ff90722a9327",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.474Z"
+    },
+    {
+      "id": "e04f5bc1ae11",
+      "path": "src/hooks/useWebSocket.ts",
+      "lines": [
+        1,
+        251
+      ],
+      "hash": "d9f72e9fd61a67ec891759ba170ce99288ba9e341aee216183c793076b52174d",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.475Z"
+    },
+    {
+      "id": "3d193d397d52",
+      "path": "src/lib/utils.ts",
+      "lines": [
+        1,
+        61
+      ],
+      "hash": "638c45d6416e1ceb19e56d4212d355f38c4cb000eee8d4a2fbecdf721e4c5004",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.476Z"
+    },
+    {
+      "id": "d19c146f895d",
+      "path": "src/main.tsx",
+      "lines": [
+        1,
+        23
+      ],
+      "hash": "6a3aba4bf68566b3e67cec9e48ad376928298494e09b70ba6a35183b7a6e7410",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.476Z"
+    },
+    {
+      "id": "eed095c80935",
+      "path": "src/test/setup.ts",
+      "lines": [
+        1,
+        25
+      ],
+      "hash": "3d23740d86477309b0db6730041325aeacf6de849f862019d354ae314e7926f8",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.477Z"
+    },
+    {
+      "id": "08ee37aecb4a",
+      "path": "src/test/test-utils.tsx",
+      "lines": [
+        1,
+        45
+      ],
+      "hash": "046a9184f8b1b1af386b9c72b3f2313e4ad23adf84fdb5fdf264ed833b4e2c40",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.477Z"
+    },
+    {
+      "id": "85b4088f0172",
+      "path": "src/types/index.d.ts",
+      "lines": [
+        1,
+        68
+      ],
+      "hash": "b96cc9af0b1168f0871ca9dd21ccc8046e7d7bd520acaba9decbbea76f957fbf",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.478Z"
+    },
+    {
+      "id": "9d742ba10ffa",
+      "path": "src/types/index.js",
+      "lines": [
+        1,
+        2
+      ],
+      "hash": "827c148a2159c5d098f9fe33185b555382ad63931193dda5f41f6af38a6a4445",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.478Z"
+    },
+    {
+      "id": "0c8482159453",
+      "path": "src/types/index.ts",
+      "lines": [
+        1,
+        213
+      ],
+      "hash": "d1f2473958ea1d24a02fb4b6842f70a3e6860659546639328d6ffc0fa30c5e15",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.479Z"
+    },
+    {
+      "id": "428afded4bc0",
+      "path": "src/types/sync-recovery.ts",
+      "lines": [
+        1,
+        248
+      ],
+      "hash": "984dcd201fbf79aaaa72c03b018defa7f9cb0accadd6133b6a8cedff63c41a6d",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.479Z"
+    },
+    {
+      "id": "23c8145cbbf3",
+      "path": "src/vite-env.d.ts",
+      "lines": [
+        1,
+        2
+      ],
+      "hash": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5",
+      "docs": [],
+      "updatedAt": "2025-12-04T06:27:11.479Z"
+    }
+  ],
+  "documents": [
+    {
+      "path": "zywiki/features/server.md",
+      "references": [
+        "server/app.ts",
+        "server/change-log.ts",
+        "server/config.d.ts",
+        "server/config.js",
+        "server/config.ts",
+        "server/index.ts",
+        "server/parser-debug.ts",
+        "server/parser-utils.ts",
+        "server/parser.d.ts",
+        "server/parser.js",
+        "server/parser.ts",
+        "server/replay-engine.ts",
+        "server/sync-failure-detector.ts",
+        "server/sync-recovery-strategies.ts",
+        "server/sync-recovery.ts",
+        "server/sync.ts",
+        "server/watcher.ts",
+        "server/websocket.ts"
+      ],
+      "updatedAt": "2025-12-04T06:27:52.991Z"
+    },
+    {
+      "path": "zywiki/features/server-git.md",
+      "references": [
+        "server/git/change-workflow.ts",
+        "server/git/commands.ts",
+        "server/git/github.ts",
+        "server/git/index.ts",
+        "server/git/status.ts"
+      ],
+      "updatedAt": "2025-12-04T06:28:25.150Z"
+    },
+    {
+      "path": "zywiki/features/server-integrations.md",
+      "references": [
+        "server/integrations/crypto.ts",
+        "server/integrations/env-parser.ts",
+        "server/integrations/index.ts",
+        "server/integrations/keychain.ts",
+        "server/integrations/routes.ts",
+        "server/integrations/service-patterns.ts"
+      ],
+      "updatedAt": "2025-12-04T06:28:48.487Z"
+    },
+    {
+      "path": "zywiki/features/server-integrations-db.md",
+      "references": [
+        "server/integrations/db/client.ts",
+        "server/integrations/db/schema.ts"
+      ],
+      "updatedAt": "2025-12-04T06:29:21.000Z"
+    },
+    {
+      "path": "zywiki/features/server-integrations-services.md",
+      "references": [
+        "server/integrations/services/accounts.ts",
+        "server/integrations/services/env-import.ts",
+        "server/integrations/services/projects.ts"
+      ],
+      "updatedAt": "2025-12-04T06:30:11.531Z"
+    },
+    {
+      "path": "zywiki/features/server-server.md",
+      "references": [
+        "server/server/parser.js"
+      ],
+      "updatedAt": "2025-12-04T06:30:41.122Z"
+    },
+    {
+      "path": "zywiki/features/server-src-types.md",
+      "references": [
+        "server/src/types/index.js"
+      ],
+      "updatedAt": "2025-12-04T06:31:03.431Z"
+    },
+    {
+      "path": "zywiki/features/server-tasks-cli.md",
+      "references": [
+        "server/tasks/cli/commands.ts",
+        "server/tasks/cli/index.ts"
+      ],
+      "updatedAt": "2025-12-04T06:31:39.130Z"
+    },
+    {
+      "path": "zywiki/features/server-tasks-core.md",
+      "references": [
+        "server/tasks/core/search.ts",
+        "server/tasks/core/task.ts"
+      ],
+      "updatedAt": "2025-12-04T06:32:11.141Z"
+    },
+    {
+      "path": "zywiki/features/server-tasks-db.md",
+      "references": [
+        "server/tasks/db/client.ts",
+        "server/tasks/db/schema.ts"
+      ],
+      "updatedAt": "2025-12-04T06:33:06.677Z"
+    },
+    {
+      "path": "zywiki/features/server-tasks.md",
+      "references": [
+        "server/tasks/index.ts"
+      ],
+      "updatedAt": "2025-12-04T06:33:41.799Z"
+    },
+    {
+      "path": "zywiki/features/server-types.md",
+      "references": [
+        "server/types/change-log.ts"
+      ],
+      "updatedAt": "2025-12-04T06:34:08.645Z"
+    },
+    {
+      "path": "zywiki/features/src.md",
+      "references": [
+        "src/App.tsx",
+        "src/main.tsx",
+        "src/vite-env.d.ts"
+      ],
+      "updatedAt": "2025-12-04T06:34:35.356Z"
+    },
+    {
+      "path": "zywiki/features/components-dashboard.md",
+      "references": [
+        "src/components/dashboard/ChangeList.tsx",
+        "src/components/dashboard/ExecutionModal.tsx",
+        "src/components/dashboard/Header.tsx",
+        "src/components/dashboard/Sidebar.tsx",
+        "src/components/dashboard/SortableTaskItem.tsx",
+        "src/components/dashboard/SpecContent.tsx",
+        "src/components/dashboard/SpecsViewer.tsx",
+        "src/components/dashboard/TaskBoard.tsx",
+        "src/components/dashboard/TaskGroup.tsx",
+        "src/components/dashboard/TasksPage.tsx",
+        "src/components/dashboard/ThemeToggle.tsx"
+      ],
+      "updatedAt": "2025-12-04T06:35:00.633Z"
+    },
+    {
+      "path": "zywiki/features/components-flow.md",
+      "references": [
+        "src/components/flow/ChangeDetail.tsx",
+        "src/components/flow/ChangeItem.tsx",
+        "src/components/flow/ChangeList.tsx",
+        "src/components/flow/FlowContent.tsx",
+        "src/components/flow/FlowPage.tsx",
+        "src/components/flow/PipelineBar.tsx",
+        "src/components/flow/ProjectDashboard.tsx",
+        "src/components/flow/StageContent.tsx",
+        "src/components/flow/StandaloneTasks.tsx",
+        "src/components/flow/index.ts"
+      ],
+      "updatedAt": "2025-12-04T06:35:26.643Z"
+    },
+    {
+      "path": "zywiki/features/components-git.md",
+      "references": [
+        "src/components/git/ChangeWorkflowDialog.tsx",
+        "src/components/git/ConflictResolutionDialog.tsx",
+        "src/components/git/GitBranchSelector.tsx",
+        "src/components/git/GitCommitDialog.tsx",
+        "src/components/git/GitStatusBadge.tsx",
+        "src/components/git/GitSyncButton.tsx",
+        "src/components/git/RemoteStatusBanner.tsx",
+        "src/components/git/index.ts"
+      ],
+      "updatedAt": "2025-12-04T06:36:16.443Z"
+    },
+    {
+      "path": "zywiki/features/components-integrations.md",
+      "references": [
+        "src/components/integrations/EnvImportDialog.tsx",
+        "src/components/integrations/EnvironmentDialog.tsx",
+        "src/components/integrations/IntegrationsSettings.tsx",
+        "src/components/integrations/ProjectIntegrations.tsx",
+        "src/components/integrations/ServiceAccountDialog.tsx",
+        "src/components/integrations/ServiceAccountList.tsx",
+        "src/components/integrations/TestAccountDialog.tsx",
+        "src/components/integrations/index.ts"
+      ],
+      "updatedAt": "2025-12-04T06:36:38.627Z"
+    },
+    {
+      "path": "zywiki/features/components-layout.md",
+      "references": [
+        "src/components/layout/AppSidebar.tsx",
+        "src/components/layout/FlowSidebar.tsx"
+      ],
+      "updatedAt": "2025-12-04T06:37:08.747Z"
+    },
+    {
+      "path": "zywiki/features/components-settings.md",
+      "references": [
+        "src/components/settings/IntegrationsSettings.tsx",
+        "src/components/settings/ProjectsSettings.tsx",
+        "src/components/settings/SettingsPage.tsx",
+        "src/components/settings/index.ts"
+      ],
+      "updatedAt": "2025-12-04T06:37:37.618Z"
+    },
+    {
+      "path": "zywiki/features/components-tasks.md",
+      "references": [
+        "src/components/tasks/ArchiveTable.tsx",
+        "src/components/tasks/KanbanBoard.tsx",
+        "src/components/tasks/TaskCard.tsx",
+        "src/components/tasks/TaskColumn.tsx",
+        "src/components/tasks/TaskDialog.tsx",
+        "src/components/tasks/index.ts",
+        "src/components/tasks/types.ts"
+      ],
+      "updatedAt": "2025-12-04T06:38:05.540Z"
+    },
+    {
+      "path": "zywiki/features/components-ui.md",
+      "references": [
+        "src/components/ui/alert-dialog.tsx",
+        "src/components/ui/alert.tsx",
+        "src/components/ui/badge.tsx",
+        "src/components/ui/button.tsx",
+        "src/components/ui/card.tsx",
+        "src/components/ui/checkbox.tsx",
+        "src/components/ui/collapsible.tsx",
+        "src/components/ui/confirm-dialog.tsx",
+        "src/components/ui/dialog.tsx",
+        "src/components/ui/dropdown-menu.tsx",
+        "src/components/ui/input.tsx",
+        "src/components/ui/label.tsx",
+        "src/components/ui/markdown.tsx",
+        "src/components/ui/progress.tsx",
+        "src/components/ui/resizable-sidebar.tsx",
+        "src/components/ui/scroll-area.tsx",
+        "src/components/ui/select.tsx",
+        "src/components/ui/separator.tsx",
+        "src/components/ui/sheet.tsx",
+        "src/components/ui/sidebar.tsx",
+        "src/components/ui/skeleton.tsx",
+        "src/components/ui/table.tsx",
+        "src/components/ui/tabs.tsx",
+        "src/components/ui/textarea.tsx",
+        "src/components/ui/tooltip.tsx"
+      ],
+      "updatedAt": "2025-12-04T06:38:34.302Z"
+    },
+    {
+      "path": "zywiki/features/src-constants.md",
+      "references": [
+        "src/constants/stages.ts"
+      ],
+      "updatedAt": "2025-12-04T06:39:05.129Z"
+    },
+    {
+      "path": "zywiki/features/src-context.md",
+      "references": [
+        "src/context/theme-provider.tsx"
+      ],
+      "updatedAt": "2025-12-04T06:39:30.285Z"
+    },
+    {
+      "path": "zywiki/features/src-hooks.md",
+      "references": [
+        "src/hooks/use-mobile.tsx"
+      ],
+      "updatedAt": "2025-12-04T06:39:54.349Z"
+    },
+    {
+      "path": "zywiki/features/hooks-useArchivedTasks.md",
+      "references": [
+        "src/hooks/useArchivedTasks.ts"
+      ],
+      "updatedAt": "2025-12-04T06:40:27.560Z"
+    },
+    {
+      "path": "zywiki/features/hooks-useChangeGit.md",
+      "references": [
+        "src/hooks/useChangeGit.ts"
+      ],
+      "updatedAt": "2025-12-04T06:40:57.397Z"
+    },
+    {
+      "path": "zywiki/features/hooks-useChanges.md",
+      "references": [
+        "src/hooks/useChanges.ts"
+      ],
+      "updatedAt": "2025-12-04T06:41:34.291Z"
+    },
+    {
+      "path": "zywiki/features/hooks-useClaude.md",
+      "references": [
+        "src/hooks/useClaude.ts"
+      ],
+      "updatedAt": "2025-12-04T06:42:03.026Z"
+    },
+    {
+      "path": "zywiki/features/hooks-useFlowChanges.md",
+      "references": [
+        "src/hooks/useFlowChanges.ts"
+      ],
+      "updatedAt": "2025-12-04T06:42:32.084Z"
+    },
+    {
+      "path": "zywiki/features/hooks-useGit.md",
+      "references": [
+        "src/hooks/useGit.ts"
+      ],
+      "updatedAt": "2025-12-04T06:43:02.228Z"
+    },
+    {
+      "path": "zywiki/features/hooks-useIntegrations.md",
+      "references": [
+        "src/hooks/useIntegrations.ts"
+      ],
+      "updatedAt": "2025-12-04T06:43:27.953Z"
+    },
+    {
+      "path": "zywiki/features/hooks-useKanbanTasks.md",
+      "references": [
+        "src/hooks/useKanbanTasks.ts"
+      ],
+      "updatedAt": "2025-12-04T06:44:07.719Z"
+    },
+    {
+      "path": "zywiki/features/hooks-useProjects.md",
+      "references": [
+        "src/hooks/useProjects.ts"
+      ],
+      "updatedAt": "2025-12-04T06:44:39.541Z"
+    },
+    {
+      "path": "zywiki/features/hooks-useSpecs.md",
+      "references": [
+        "src/hooks/useSpecs.ts"
+      ],
+      "updatedAt": "2025-12-04T06:45:18.247Z"
+    },
+    {
+      "path": "zywiki/features/hooks-useTasks.md",
+      "references": [
+        "src/hooks/useTasks.ts"
+      ],
+      "updatedAt": "2025-12-04T06:45:49.505Z"
+    },
+    {
+      "path": "zywiki/features/hooks-useWebSocket.md",
+      "references": [
+        "src/hooks/useWebSocket.ts"
+      ],
+      "updatedAt": "2025-12-04T06:46:26.658Z"
+    },
+    {
+      "path": "zywiki/features/lib-utils.md",
+      "references": [
+        "src/lib/utils.ts"
+      ],
+      "updatedAt": "2025-12-04T06:46:49.676Z"
+    },
+    {
+      "path": "zywiki/features/src-test.md",
+      "references": [
+        "src/test/setup.ts",
+        "src/test/test-utils.tsx"
+      ],
+      "updatedAt": "2025-12-04T06:47:23.252Z"
+    },
+    {
+      "path": "zywiki/features/types.md",
+      "references": [
+        "src/types/index.d.ts",
+        "src/types/index.js",
+        "src/types/index.ts",
+        "src/types/sync-recovery.ts"
+      ],
+      "updatedAt": "2025-12-04T06:48:04.728Z"
+    }
+  ]
+}

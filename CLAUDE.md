@@ -120,3 +120,76 @@ zy tasks search "검색어"
 - **명확한 제목**: 무엇을 해야 하는지 명확하게 작성
 - **적절한 태그**: `bug`, `refactor`, `feature`, `docs`, `test` 등 사용
 - **우선순위 설정**: 긴급한 버그는 `high`, 일반 작업은 `medium`
+
+<!-- ZYWIKI:START -->
+# zywiki - AI Code Wiki Integration
+
+## For AI Assistants: How to Use This Wiki
+
+### Reading Documentation
+When you need to understand code in this project:
+1. **First check** `zywiki/overview.md` for project structure and tech stack
+2. **Search by category**: `zywiki/features/`, `zywiki/api/`, `zywiki/database/`, etc.
+3. **Use file references**: Each doc has `<cite>file/path:line</cite>` pointing to source code
+
+### When User Asks About Code
+1. Read the relevant `zywiki/*.md` documentation first
+2. Then read the actual source code if needed for details
+3. Documentation provides context, architecture decisions, and usage patterns
+
+### Updating Documentation After Code Changes
+When you modify code files:
+1. Check if there's a corresponding doc in `zywiki/` folder
+2. Update the doc to reflect your changes
+3. Keep `<cite>` references accurate with correct line numbers
+
+## Auto Documentation Sync
+
+**At session start**, check for pending documentation updates:
+
+```bash
+cat .zywiki/pending.json 2>/dev/null
+```
+
+**If pending updates exist:**
+1. Read each changed file listed in `changedFiles`
+2. Read each affected document listed in `affectedDocs`
+3. Update the documents to reflect code changes
+4. Ensure `<cite>` blocks have correct file references and line numbers
+
+## Commands Reference
+
+| Command | Description |
+|---------|-------------|
+| `zywiki status` | Show tracking status and pending updates |
+| `zywiki build` | Generate documentation for tracked files |
+| `zywiki build --filter <keyword>` | Generate docs for specific groups |
+| `zywiki build --force` | Regenerate existing docs |
+| `zywiki add <path> -r` | Add files for tracking |
+| `zywiki detect` | Detect changed files |
+| `zywiki stack` | Show project tech stack |
+
+## Wiki Structure
+
+```
+zywiki/
+├── overview.md          # Project overview & tech stack
+├── architecture/        # Core architecture & design patterns
+├── features/            # Feature implementations
+├── api/                 # API endpoints & edge functions
+├── database/            # Database schema & migrations
+├── security/            # Auth & security patterns
+├── testing/             # Test strategies
+└── guides/              # Scripts & utilities
+```
+
+## Document Format
+
+Each document includes:
+- **Source reference**: `<cite>file/path:line</cite>`
+- **Overview**: 2-3 sentence summary
+- **Mermaid diagrams**: Architecture, data flow, dependencies
+- **Key components**: Functions, classes, exports
+- **Usage examples**: Code snippets
+- **Related docs**: Links to related documentation
+<!-- ZYWIKI:END -->
