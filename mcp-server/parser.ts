@@ -1,112 +1,179 @@
 import type { TaskGroup, Task, TasksFile } from './types.js'
 
 /**
+ * Extended TaskGroup with hierarchy info for 3-level structure
+ */
+interface ExtendedTaskGroup extends TaskGroup {
+  majorOrder?: number
+  majorTitle?: string
+  subOrder?: number
+  groupTitle?: string
+  groupOrder?: number
+}
+
+/**
  * Parse tasks.md content into structured data
- * Supports multiple formats:
- * - Group headers: "## 1. Section" or "## Phase 0: Section" or "## Section Name"
- * - Subsections: "### 0.1 Subsection" (creates new group)
- * - Tasks: "- [ ] 1.1 Task" or "- [ ] 1.1.1 Task" or "- [ ] Task" (no number)
+ * Uses the same flexible parser as the server for consistency
  */
 export function parseTasksFile(changeId: string, content: string): TasksFile {
   const lines = content.split('\n')
-  const groups: TaskGroup[] = []
-  let currentGroup: TaskGroup | null = null
+  const groups: ExtendedTaskGroup[] = []
+  let currentGroup: ExtendedTaskGroup | null = null
   let groupCounter = 0
   let taskCounter = 0
+
+  // 더 유연한 정규식 패턴 (server/parser-utils.ts와 동일)
+  const patterns = {
+    majorSections: [
+      /^##\s+(\d+)\.\s*(.+)$/,           // "## 1. Section"
+      /^##\s+Phase\s+(\d+):\s*(.+)$/i,   // "## Phase 1: Section"
+      /^##\s+(.+)$/                       // "## Section" (plain)
+    ],
+    subsections: [
+      /^#{3,4}\s+([\d.]+)\s+(.+)$/,     // "### 1.1 Subsection"
+      /^#{3,4}\s+(.+)$/                   // "### Subsection" (plain)
+    ],
+    // 태스크 패턴들 (들여쓰기된 하위 태스크도 지원)
+    tasks: [
+      /^(\s*)-\s+\[([ xX])\]\s*([\d.]+)\s*(.+)$/,  // "- [ ] 1.1 Task" 또는 "  - [ ] 1.1 Task"
+      /^(\s*)-\s+\[([ xX])\]\s*(.+)$/               // "- [ ] Task" 또는 "  - [ ] Task"
+    ]
+  }
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     const lineNumber = i + 1
+    let matched = false
 
-    // Match group headers - multiple formats:
-    // 1. "## 1. Section Name" - numbered format
-    // 2. "## Phase 0: Section Name" - phase format
-    // 3. "## Section Name" - plain format
-    const numberedGroupMatch = line.match(/^##\s+(\d+)\.\s+(.+)$/)
-    const phaseGroupMatch = line.match(/^##\s+Phase\s+(\d+):\s*(.+)$/i)
-    const plainGroupMatch = line.match(/^##\s+(.+)$/)
+    // 메인 섹션 확인
+    for (const pattern of patterns.majorSections) {
+      const match = line.match(pattern)
+      if (match) {
+        if (currentGroup) {
+          groups.push(currentGroup)
+        }
 
-    if (numberedGroupMatch) {
-      const groupId = `group-${numberedGroupMatch[1]}`
-      const groupTitle = numberedGroupMatch[2].trim()
-      currentGroup = { id: groupId, title: groupTitle, tasks: [] }
-      groups.push(currentGroup)
-      taskCounter = 0
-      continue
-    }
+        groupCounter++
+        let majorOrder: number | undefined
+        let majorTitle: string
 
-    if (phaseGroupMatch) {
-      const groupId = `group-phase-${phaseGroupMatch[1]}`
-      const groupTitle = `Phase ${phaseGroupMatch[1]}: ${phaseGroupMatch[2].trim()}`
-      currentGroup = { id: groupId, title: groupTitle, tasks: [] }
-      groups.push(currentGroup)
-      taskCounter = 0
-      continue
-    }
+        if (match[1] && /^\d+$/.test(match[1])) {
+          majorOrder = parseInt(match[1])
+          majorTitle = match[2]?.trim() || `Section ${majorOrder}`
+        } else if (match[0] && /Phase\s+(\d+)/i.test(match[0])) {
+          const phaseMatch = match[0].match(/Phase\s+(\d+)/i)
+          majorOrder = phaseMatch ? parseInt(phaseMatch[1]) : groupCounter
+          majorTitle = match[0].replace(/^##\s+/, '').trim()
+        } else {
+          majorOrder = groupCounter
+          majorTitle = match[1]?.trim() || `Section ${groupCounter}`
+        }
 
-    // Match subsection headers: "### 0.1 Subsection Name" - treat as new group
-    const subsectionMatch = line.match(/^###\s+([\d.]+)\s+(.+)$/)
-    if (subsectionMatch) {
-      const subsectionNumber = subsectionMatch[1]
-      const groupId = `group-${subsectionNumber.replace(/\./g, '-')}`
-      const groupTitle = `${subsectionNumber} ${subsectionMatch[2].trim()}`
-      currentGroup = { id: groupId, title: groupTitle, tasks: [] }
-      groups.push(currentGroup)
-      taskCounter = 0
-      continue
-    }
-
-    // Plain ## header (fallback, only if no group yet or explicit section)
-    if (plainGroupMatch && !numberedGroupMatch && !phaseGroupMatch) {
-      // Skip if it looks like a title (# Tasks: ...)
-      if (line.startsWith('# ')) continue
-      groupCounter++
-      const groupId = `group-${groupCounter}`
-      const groupTitle = plainGroupMatch[1].trim()
-      currentGroup = { id: groupId, title: groupTitle, tasks: [] }
-      groups.push(currentGroup)
-      taskCounter = 0
-      continue
-    }
-
-    // Match task items - two formats:
-    // 1. "- [ ] 1.1 Task" - numbered task
-    // 2. "- [ ] Task" - unnumbered task (auto-generate ID)
-    const numberedTaskMatch = line.match(/^-\s+\[([ xX])\]\s+([\d.]+)\s+(.+)$/)
-    const plainTaskMatch = line.match(/^-\s+\[([ xX])\]\s+(.+)$/)
-
-    if (numberedTaskMatch && currentGroup) {
-      const completed = numberedTaskMatch[1].toLowerCase() === 'x'
-      const taskNumber = numberedTaskMatch[2]
-      const taskTitle = numberedTaskMatch[3].trim()
-      const taskId = `task-${taskNumber.replace(/\./g, '-')}`
-
-      const task: Task = {
-        id: taskId,
-        title: taskTitle,
-        completed,
-        groupId: currentGroup.id,
-        lineNumber,
+        currentGroup = {
+          id: `group-${groupCounter}`,
+          title: majorTitle,
+          tasks: [],
+          majorOrder,
+          majorTitle,
+          subOrder: 1,
+          groupTitle: majorTitle,
+          groupOrder: groupCounter
+        }
+        taskCounter = 0
+        matched = true
+        break
       }
-
-      currentGroup.tasks.push(task)
-      taskCounter++
-    } else if (plainTaskMatch && currentGroup && !numberedTaskMatch) {
-      const completed = plainTaskMatch[1].toLowerCase() === 'x'
-      const taskTitle = plainTaskMatch[2].trim()
-      taskCounter++
-      const taskId = `task-${currentGroup.id}-${taskCounter}`
-
-      const task: Task = {
-        id: taskId,
-        title: taskTitle,
-        completed,
-        groupId: currentGroup.id,
-        lineNumber,
-      }
-
-      currentGroup.tasks.push(task)
     }
+
+    if (matched) continue
+
+    // 서브섹션 확인
+    if (line.startsWith('###') || line.startsWith('####')) {
+      for (const pattern of patterns.subsections) {
+        const match = line.match(pattern)
+        if (match) {
+          if (currentGroup) {
+            groups.push(currentGroup)
+          }
+
+          groupCounter++
+          let subOrder: number | undefined
+          let subTitle: string
+
+          if (match[1] && /^[\d.]+$/.test(match[1])) {
+            const parts = match[1].split('.')
+            subOrder = parts.length > 1 ? parseInt(parts[1]) : 1
+            subTitle = `${match[1]} ${match[2]?.trim() || ''}`.trim()
+          } else {
+            subOrder = groupCounter
+            subTitle = match[1]?.trim() || `Subsection ${groupCounter}`
+          }
+
+          const parentMajorOrder: number = currentGroup?.majorOrder ?? groupCounter
+          const parentMajorTitle: string = currentGroup?.majorTitle ?? subTitle
+          currentGroup = {
+            id: `group-${groupCounter}`,
+            title: subTitle,
+            tasks: [],
+            majorOrder: parentMajorOrder,
+            majorTitle: parentMajorTitle,
+            subOrder,
+            groupTitle: subTitle,
+            groupOrder: groupCounter
+          }
+          taskCounter = 0
+          matched = true
+          break
+        }
+      }
+    }
+
+    if (matched) continue
+
+    // 태스크 확인 (들여쓰기된 하위 태스크 포함)
+    if (currentGroup) {
+      for (const pattern of patterns.tasks) {
+        const match = line.match(pattern)
+        if (match) {
+          // match[1] = 들여쓰기, match[2] = 체크 상태
+          const indent = match[1] || ''
+          const completed = match[2]?.toLowerCase() === 'x'
+          let taskTitle: string
+          let taskId: string
+
+          // 첫 번째 패턴: 번호가 있는 태스크 (match[3]=번호, match[4]=타이틀)
+          if (match[3] && /^[\d.]+$/.test(match[3])) {
+            taskTitle = match[4]?.trim() || ''
+            taskId = `task-${match[3].replace(/\./g, '-')}`
+          } else {
+            // 두 번째 패턴: 일반 태스크 (match[3]=타이틀)
+            taskTitle = match[3]?.trim() || ''
+            taskCounter++
+            taskId = `task-${currentGroup.id}-${taskCounter}`
+          }
+
+          if (taskTitle) {
+            const task: Task = {
+              id: taskId,
+              title: taskTitle,
+              completed,
+              groupId: currentGroup.id,
+              lineNumber,
+              indent: indent.length  // 들여쓰기 레벨 저장
+            }
+
+            currentGroup.tasks.push(task)
+            matched = true
+            break
+          }
+        }
+      }
+    }
+  }
+
+  // 마지막 그룹 저장
+  if (currentGroup) {
+    groups.push(currentGroup)
   }
 
   return { changeId, groups }
@@ -114,6 +181,7 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
 
 /**
  * Set task completion status in file content
+ * Uses the same parsing logic as parseTasksFile for consistency
  */
 export function setTaskStatus(
   content: string,
@@ -133,68 +201,94 @@ export function setTaskStatus(
     ? taskId.replace('task-', '').replace(/-/g, '.')
     : null
 
+  // 동일한 패턴 사용 (parseTasksFile과 일치)
+  const patterns = {
+    majorSections: [
+      /^##\s+(\d+)\.\s*(.+)$/,
+      /^##\s+Phase\s+(\d+):\s*(.+)$/i,
+      /^##\s+(.+)$/
+    ],
+    subsections: [
+      /^#{3,4}\s+([\d.]+)\s+(.+)$/,
+      /^#{3,4}\s+(.+)$/
+    ]
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
+    let matchedSection = false
 
-    // Track current group - multiple formats
-    const numberedGroupMatch = line.match(/^##\s+(\d+)\.\s+(.+)$/)
-    const phaseGroupMatch = line.match(/^##\s+Phase\s+(\d+):\s*(.+)$/i)
-    const subsectionMatch = line.match(/^###\s+([\d.]+)\s+(.+)$/)
-    const plainGroupMatch = line.match(/^##\s+(.+)$/)
-
-    if (numberedGroupMatch) {
-      currentGroupId = `group-${numberedGroupMatch[1]}`
-      taskCounter = 0
-    } else if (phaseGroupMatch) {
-      currentGroupId = `group-phase-${phaseGroupMatch[1]}`
-      taskCounter = 0
-    } else if (subsectionMatch) {
-      currentGroupId = `group-${subsectionMatch[1].replace(/\./g, '-')}`
-      taskCounter = 0
-    } else if (plainGroupMatch && !numberedGroupMatch && !phaseGroupMatch && !line.startsWith('# ')) {
-      groupCounter++
-      currentGroupId = `group-${groupCounter}`
-      taskCounter = 0
+    // 메인 섹션 확인
+    for (const pattern of patterns.majorSections) {
+      const match = line.match(pattern)
+      if (match) {
+        groupCounter++
+        currentGroupId = `group-${groupCounter}`
+        taskCounter = 0
+        matchedSection = true
+        break
+      }
     }
 
-    // Try numbered task match first
-    const numberedTaskMatch = line.match(/^(-\s+\[)([ xX])(\]\s+)([\d.]+)(\s+.+)$/)
-    if (numberedTaskMatch) {
-      taskCounter++
-      if (isNumberedTask && numberedTaskMatch[4] === taskNumber) {
-        const newCheckmark = completed ? 'x' : ' '
+    if (matchedSection) continue
 
-        lines[i] = `${numberedTaskMatch[1]}${newCheckmark}${numberedTaskMatch[3]}${numberedTaskMatch[4]}${numberedTaskMatch[5]}`
+    // 서브섹션 확인
+    if (line.startsWith('###') || line.startsWith('####')) {
+      for (const pattern of patterns.subsections) {
+        const match = line.match(pattern)
+        if (match) {
+          groupCounter++
+          currentGroupId = `group-${groupCounter}`
+          taskCounter = 0
+          matchedSection = true
+          break
+        }
+      }
+    }
+
+    if (matchedSection) continue
+
+    // Try numbered task match first (들여쓰기 포함)
+    const numberedTaskMatch = line.match(/^(\s*)(-\s+\[)([ xX])(\]\s*)([\d.]+)(\s*.+)$/)
+    if (numberedTaskMatch) {
+      if (isNumberedTask && numberedTaskMatch[5] === taskNumber) {
+        const newCheckmark = completed ? 'x' : ' '
+        const indent = numberedTaskMatch[1] || ''
+
+        lines[i] = `${indent}${numberedTaskMatch[2]}${newCheckmark}${numberedTaskMatch[4]}${numberedTaskMatch[5]}${numberedTaskMatch[6]}`
 
         foundTask = {
           id: taskId,
-          title: numberedTaskMatch[5].trim(),
+          title: numberedTaskMatch[6].trim(),
           completed,
           groupId: currentGroupId,
           lineNumber: i + 1,
+          indent: indent.length,
         }
         break
       }
       continue
     }
 
-    // Try plain task match (unnumbered)
-    const plainTaskMatch = line.match(/^(-\s+\[)([ xX])(\]\s+)(.+)$/)
+    // Try plain task match (unnumbered, 들여쓰기 포함)
+    const plainTaskMatch = line.match(/^(\s*)(-\s+\[)([ xX])(\]\s*)(.+)$/)
     if (plainTaskMatch && currentGroupId) {
       taskCounter++
       const generatedTaskId = `task-${currentGroupId}-${taskCounter}`
 
       if (!isNumberedTask && generatedTaskId === taskId) {
         const newCheckmark = completed ? 'x' : ' '
+        const indent = plainTaskMatch[1] || ''
 
-        lines[i] = `${plainTaskMatch[1]}${newCheckmark}${plainTaskMatch[3]}${plainTaskMatch[4]}`
+        lines[i] = `${indent}${plainTaskMatch[2]}${newCheckmark}${plainTaskMatch[4]}${plainTaskMatch[5]}`
 
         foundTask = {
           id: taskId,
-          title: plainTaskMatch[4].trim(),
+          title: plainTaskMatch[5].trim(),
           completed,
           groupId: currentGroupId,
           lineNumber: i + 1,
+          indent: indent.length,
         }
         break
       }

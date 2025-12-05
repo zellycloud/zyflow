@@ -57,3 +57,45 @@ export {
 
 // Routes
 export { default as integrationsRouter } from './routes.js';
+
+// Local Settings
+export {
+  // Types
+  type LocalSettings,
+  type LocalTestAccountsFile,
+  type LocalTestAccount,
+  type LocalIntegrationMapping,
+  type SettingsSource,
+  type WithSource,
+  type HybridContext,
+  type ResolvedProjectContext,
+  type ResolvedEnvironment,
+  type ResolvedTestAccount,
+  type InitLocalResult,
+  type ExportToLocalOptions,
+  type ExportToLocalResult,
+  // Constants
+  LOCAL_SETTINGS_DIR,
+  LOCAL_SETTINGS_FILE,
+  LOCAL_ENVIRONMENTS_DIR,
+  LOCAL_TEST_ACCOUNTS_FILE,
+  // File utilities
+  getProjectZyflowPath,
+  hasZyflowDir,
+  ensureZyflowDir,
+  hasLocalSettings,
+  loadLocalSettings,
+  saveLocalSettings,
+  initLocalSettings,
+  listLocalEnvironments,
+  loadLocalEnvironment,
+  saveLocalEnvironment,
+  loadLocalTestAccounts,
+  saveLocalTestAccounts,
+  initLocalZyflow,
+  // Resolver
+  SettingsResolver,
+  resolveProjectContext,
+  resolveEnvironment,
+  resolveTestAccounts,
+} from './local/index.js';

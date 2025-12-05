@@ -1,9 +1,25 @@
 /**
  * Integration Hub MCP Tools
  * 프로젝트별 서비스 계정, 환경 설정, 테스트 계정 조회 도구
+ *
+ * 로컬 설정 우선 조회:
+ * 1. 프로젝트/.zyflow/ 확인
+ * 2. 없으면 전역 DB에서 조회 (HTTP API 호출)
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
+import {
+  SettingsResolver,
+  initLocalZyflow,
+  saveLocalSettings,
+  saveLocalEnvironment,
+  saveLocalTestAccounts,
+  encryptTestAccountPassword,
+  loadLocalSettings,
+  createDefaultLocalSettings,
+  type LocalTestAccount,
+  type SettingsSource,
+} from '../server/integrations/local/index.js'
 
 // Integration Hub 서버 API 기본 URL
 const API_BASE = 'http://localhost:3001/api/integrations'
@@ -148,6 +164,49 @@ export const integrationToolDefinitions: Tool[] = [
         },
       },
       required: ['projectPath', 'services'],
+    },
+  },
+  // 새로운 로컬 설정 도구
+  {
+    name: 'integration_init_local',
+    description:
+      '프로젝트에 .zyflow 디렉토리를 초기화합니다. settings.json과 environments/ 디렉토리가 생성됩니다. 이미 존재하면 기존 파일을 유지합니다.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        projectPath: {
+          type: 'string',
+          description: '프로젝트 경로 (절대 경로)',
+        },
+      },
+      required: ['projectPath'],
+    },
+  },
+  {
+    name: 'integration_export_to_local',
+    description:
+      '전역 DB의 설정을 프로젝트 로컬 .zyflow 폴더로 내보냅니다. 환경 변수는 개별 .env 파일로, 테스트 계정은 암호화되어 저장됩니다.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        projectPath: {
+          type: 'string',
+          description: '프로젝트 경로 (절대 경로)',
+        },
+        projectId: {
+          type: 'string',
+          description: '프로젝트 ID (전역 DB에서 조회할 때 사용)',
+        },
+        includeEnvironments: {
+          type: 'boolean',
+          description: '환경 변수 내보내기 여부 (기본: true)',
+        },
+        includeTestAccounts: {
+          type: 'boolean',
+          description: '테스트 계정 내보내기 여부 (기본: true)',
+        },
+      },
+      required: ['projectPath', 'projectId'],
     },
   },
 ]
@@ -583,4 +642,269 @@ export async function handleImportEnv(args: ImportEnvArgs) {
       error: error instanceof Error ? error.message : 'Failed to connect to Integration Hub',
     }
   }
+}
+
+// =============================================
+// 새로운 로컬 설정 도구 핸들러
+// =============================================
+
+interface InitLocalArgs {
+  projectPath: string
+}
+
+interface ExportToLocalArgs {
+  projectPath: string
+  projectId: string
+  includeEnvironments?: boolean
+  includeTestAccounts?: boolean
+}
+
+/**
+ * 프로젝트에 .zyflow 디렉토리 초기화
+ */
+export async function handleInitLocal(args: InitLocalArgs) {
+  try {
+    const result = await initLocalZyflow(args.projectPath)
+
+    return {
+      success: true,
+      zyflowPath: result.zyflowPath,
+      settingsCreated: result.settingsCreated,
+      environmentsDir: result.environmentsDir,
+      files: result.files,
+      message: result.settingsCreated
+        ? `Initialized .zyflow directory at ${result.zyflowPath}`
+        : `.zyflow directory already exists at ${result.zyflowPath}`,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to initialize .zyflow directory',
+    }
+  }
+}
+
+/**
+ * 전역 DB 설정을 로컬로 내보내기
+ */
+export async function handleExportToLocal(args: ExportToLocalArgs) {
+  try {
+    const includeEnvs = args.includeEnvironments !== false
+    const includeTestAccs = args.includeTestAccounts !== false
+
+    // 먼저 .zyflow 초기화
+    const initResult = await initLocalZyflow(args.projectPath)
+    const files: string[] = [...initResult.files]
+
+    // 전역 DB에서 프로젝트 연동 정보 조회
+    const contextRes = await fetch(`${API_BASE}/projects/${args.projectId}/context`)
+    if (!contextRes.ok) {
+      return {
+        success: false,
+        error: 'Failed to fetch project context from global DB',
+      }
+    }
+
+    // 로컬 settings.json 생성/업데이트
+    let localSettings = await loadLocalSettings(args.projectPath)
+    if (!localSettings) {
+      localSettings = createDefaultLocalSettings()
+    }
+
+    // 전역 DB의 integration 정보 가져오기
+    const integrationRes = await fetch(`${API_BASE}/projects/${args.projectId}`)
+    if (integrationRes.ok) {
+      const integrationData = await integrationRes.json() as {
+        integration?: {
+          integrations?: Record<string, string>
+          defaultEnvironment?: string
+        }
+      }
+      if (integrationData.integration) {
+        localSettings.integrations = integrationData.integration.integrations || {}
+        localSettings.defaultEnvironment = integrationData.integration.defaultEnvironment
+      }
+    }
+
+    await saveLocalSettings(args.projectPath, localSettings)
+    if (!files.includes('settings.json')) {
+      files.push('settings.json')
+    }
+
+    // 환경 변수 내보내기
+    const envFiles: string[] = []
+    if (includeEnvs) {
+      const envsRes = await fetch(`${API_BASE}/projects/${args.projectId}/environments`)
+      if (envsRes.ok) {
+        const envsData = await envsRes.json() as EnvironmentsResponse
+        for (const env of envsData.environments) {
+          // 각 환경의 변수 조회
+          const varsRes = await fetch(
+            `${API_BASE}/projects/${args.projectId}/environments/${env.id}/variables`
+          )
+          if (varsRes.ok) {
+            const varsData = await varsRes.json() as VariablesResponse
+            await saveLocalEnvironment(args.projectPath, env.name, varsData.variables)
+            envFiles.push(`environments/${env.name}.env`)
+          }
+        }
+      }
+    }
+
+    // 테스트 계정 내보내기
+    let testAccountsFile: string | null = null
+    if (includeTestAccs) {
+      const accountsRes = await fetch(`${API_BASE}/projects/${args.projectId}/test-accounts`)
+      if (accountsRes.ok) {
+        const accountsData = await accountsRes.json() as TestAccountsResponse
+
+        if (accountsData.accounts.length > 0) {
+          const localAccounts: LocalTestAccount[] = []
+
+          for (const account of accountsData.accounts) {
+            // 비밀번호 조회
+            const passRes = await fetch(
+              `${API_BASE}/projects/${args.projectId}/test-accounts/${account.id}/password`
+            )
+            let encryptedPassword = ''
+            if (passRes.ok) {
+              const passData = await passRes.json() as PasswordResponse
+              encryptedPassword = await encryptTestAccountPassword(passData.password)
+            }
+
+            localAccounts.push({
+              id: account.id,
+              role: account.role,
+              email: account.email,
+              password: encryptedPassword,
+              description: account.description,
+            })
+          }
+
+          await saveLocalTestAccounts(args.projectPath, localAccounts)
+          testAccountsFile = 'test-accounts.json'
+        }
+      }
+    }
+
+    return {
+      success: true,
+      settingsFile: 'settings.json',
+      environmentFiles: envFiles,
+      testAccountsFile,
+      totalFiles: files.length + envFiles.length + (testAccountsFile ? 1 : 0),
+      message: `Exported settings to ${args.projectPath}/.zyflow/`,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to export settings to local',
+    }
+  }
+}
+
+// =============================================
+// 로컬 우선 조회 버전의 핸들러
+// =============================================
+
+/**
+ * 프로젝트 컨텍스트 조회 (로컬 우선)
+ * projectPath가 제공되면 로컬 설정 우선 조회
+ */
+export async function handleIntegrationContextWithLocal(
+  args: IntegrationContextArgs & { projectPath?: string }
+) {
+  // projectPath가 있으면 로컬 우선 조회 시도
+  if (args.projectPath) {
+    try {
+      const resolver = new SettingsResolver(args.projectPath, args.projectId)
+      const context = await resolver.getContext()
+
+      return {
+        success: true,
+        context: {
+          projectId: context.projectId,
+          github: context.github,
+          supabase: context.supabase,
+          vercel: context.vercel,
+          sentry: context.sentry,
+          environments: context.environments,
+          currentEnvironment: context.currentEnvironment,
+          testAccounts: context.testAccounts,
+        },
+        source: context.source,
+        sources: context.sources,
+      }
+    } catch {
+      // 로컬 조회 실패 시 전역으로 fallback
+    }
+  }
+
+  // 기존 전역 조회 로직
+  return handleIntegrationContext(args)
+}
+
+/**
+ * 환경 변수 조회 (로컬 우선)
+ */
+export async function handleGetEnvWithLocal(
+  args: GetEnvArgs & { projectPath?: string; envName?: string }
+) {
+  // projectPath가 있으면 로컬 우선 조회 시도
+  if (args.projectPath) {
+    try {
+      const resolver = new SettingsResolver(args.projectPath, args.projectId)
+      const env = await resolver.getEnvironment(args.envName)
+
+      if (env) {
+        return {
+          success: true,
+          environment: {
+            name: env.name,
+            isActive: env.isActive,
+          },
+          variables: env.variables,
+          source: env.source,
+        }
+      }
+    } catch {
+      // 로컬 조회 실패 시 전역으로 fallback
+    }
+  }
+
+  // 기존 전역 조회 로직
+  return handleGetEnv(args)
+}
+
+/**
+ * 테스트 계정 조회 (로컬 우선)
+ */
+export async function handleGetTestAccountWithLocal(
+  args: GetTestAccountArgs & { projectPath?: string }
+) {
+  // projectPath가 있으면 로컬 우선 조회 시도
+  if (args.projectPath) {
+    try {
+      const resolver = new SettingsResolver(args.projectPath, args.projectId)
+      const accounts = await resolver.getTestAccounts(args.role)
+
+      if (accounts.length > 0) {
+        return {
+          success: true,
+          accounts: accounts.map((a) => ({
+            role: a.role,
+            email: a.email,
+            password: a.password,
+            description: a.description,
+          })),
+          source: accounts[0].source,
+        }
+      }
+    } catch {
+      // 로컬 조회 실패 시 전역으로 fallback
+    }
+  }
+
+  // 기존 전역 조회 로직
+  return handleGetTestAccount(args)
 }

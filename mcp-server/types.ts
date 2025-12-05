@@ -6,6 +6,7 @@ export interface Task {
   completed: boolean
   groupId: string
   lineNumber: number
+  indent?: number // 들여쓰기 레벨 (0=상위, 2+=하위 태스크)
 }
 
 export interface TaskGroup {
