@@ -204,6 +204,50 @@ If multiple capabilities are affected, create multiple delta files under `change
 - [ ] 1.4 Write tests
 ```
 
+### tasks.md 작성 규칙 (ZyFlow 파싱 호환)
+
+ZyFlow와 MCP 서버가 tasks.md를 정확하게 파싱할 수 있도록 다음 형식을 준수합니다:
+
+**Phase/섹션 형식:**
+```markdown
+## Phase 1: 제목           # 또는 ## 1. 제목
+### 1.1 서브섹션 제목       # 번호.번호 형식 권장
+```
+
+**태스크 형식:**
+```markdown
+- [ ] 태스크 제목           # 미완료
+- [x] 완료된 태스크         # 완료
+  - [ ] 하위 태스크         # 2칸 들여쓰기
+  - [x] 완료된 하위 태스크
+```
+
+**권장 구조:**
+```markdown
+# Tasks: Change 제목
+
+## Phase 1: 데이터베이스
+
+### 1.1 스키마 설계
+- [ ] 테이블 생성
+  - [ ] users 테이블
+  - [ ] orders 테이블
+- [ ] 인덱스 추가
+
+### 1.2 마이그레이션
+- [ ] 마이그레이션 파일 작성
+- [ ] 테스트 환경 적용
+
+## Phase 2: API 구현
+...
+```
+
+**주의사항:**
+- Phase는 `## Phase N:` 또는 `## N.` 형식 사용
+- 서브섹션은 `### N.N` 형식 사용 (예: `### 1.1`, `### 2.3`)
+- 하위 태스크는 정확히 **2칸** 들여쓰기
+- 태스크 번호 없이 `- [ ]` 사용 (ID는 파서가 자동 생성)
+
 5. **Create design.md when needed:**
 Create `design.md` if any of the following apply; otherwise omit it:
 - Cross-cutting change (multiple services/modules) or a new architectural pattern
