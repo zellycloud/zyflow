@@ -178,6 +178,7 @@ export async function createServiceAccount(
 
   return {
     ...account,
+    metadata: account.metadata ?? null,
     createdAt: now,
     updatedAt: now,
   };

@@ -32,6 +32,12 @@ import {
   type ImportRequest,
 } from './services/env-import.js';
 import type { ServiceType, Credentials } from './db/schema.js';
+// Local Settings imports
+import {
+  SettingsResolver,
+  initLocalZyflow,
+  hasLocalSettings,
+} from './local/index.js';
 
 const router = Router();
 
@@ -326,13 +332,36 @@ router.put('/projects/:projectId/services/:serviceType', async (req: Request, re
 /**
  * GET /api/integrations/projects/:projectId/context
  * 프로젝트 컨텍스트 조회 (AI용, 민감정보 제외)
+ * 로컬 설정(.zyflow/)이 있으면 우선 사용
+ * @query projectPath - 프로젝트 경로 (로컬 설정 조회용, 선택사항)
  */
 router.get('/projects/:projectId/context', async (req: Request, res: Response) => {
   try {
     const { projectId } = req.params;
-    const context = await getProjectContext(projectId);
+    const projectPath = req.query.projectPath as string | undefined;
 
-    res.json({ context });
+    // 로컬 설정 우선 조회
+    if (projectPath) {
+      try {
+        const resolver = new SettingsResolver(projectPath, projectId);
+        const context = await resolver.getContext();
+        res.json({
+          context,
+          source: context.source,
+          sources: context.sources,
+        });
+        return;
+      } catch {
+        // 로컬 조회 실패 시 전역으로 fallback
+      }
+    }
+
+    // 전역 DB에서 조회
+    const context = await getProjectContext(projectId);
+    res.json({
+      context,
+      source: 'global' as const,
+    });
   } catch (error) {
     console.error('Failed to get project context:', error);
     res.status(500).json({
@@ -746,6 +775,70 @@ router.post('/env/import', async (req: Request, res: Response) => {
     console.error('Failed to import services:', error);
     res.status(500).json({
       error: 'Failed to import services',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// =============================================
+// 로컬 설정 API
+// =============================================
+
+/**
+ * POST /api/integrations/local/init
+ * 프로젝트에 .zyflow 디렉토리 초기화
+ */
+router.post('/local/init', async (req: Request, res: Response) => {
+  try {
+    const { projectPath } = req.body;
+
+    if (!projectPath) {
+      res.status(400).json({
+        error: 'Missing required field',
+        message: 'projectPath is required',
+      });
+      return;
+    }
+
+    const result = await initLocalZyflow(projectPath);
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Failed to initialize local settings:', error);
+    res.status(500).json({
+      error: 'Failed to initialize local settings',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /api/integrations/local/status
+ * 프로젝트의 로컬 설정 상태 조회
+ */
+router.get('/local/status', async (req: Request, res: Response) => {
+  try {
+    const projectPath = req.query.projectPath as string;
+
+    if (!projectPath) {
+      res.status(400).json({
+        error: 'Missing required parameter',
+        message: 'projectPath query parameter is required',
+      });
+      return;
+    }
+
+    const hasLocal = await hasLocalSettings(projectPath);
+    res.json({
+      hasLocalSettings: hasLocal,
+      projectPath,
+    });
+  } catch (error) {
+    console.error('Failed to check local settings status:', error);
+    res.status(500).json({
+      error: 'Failed to check local settings status',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
