@@ -34,18 +34,18 @@
 - [x] `integration_get_test_account` - 로컬 파일 지원
 
 ### 3.2 새 도구 추가
-- [ ] `integration_init_local` - 프로젝트에 .zyflow 초기화
-- [ ] `integration_export_to_local` - 전역에서 로컬로 내보내기
+- [x] `integration_init_local` - 프로젝트에 .zyflow 초기화
+- [x] `integration_export_to_local` - 전역에서 로컬로 내보내기
 
 ## 4. API 라우트 수정
 
 ### 4.1 조회 API 수정
-- [ ] `GET /projects/:projectId/context` - 로컬 우선
+- [x] `GET /projects/:projectId/context` - 로컬 우선
 - [ ] `GET /projects/:projectId/environments` - 로컬 환경 파일 포함
 - [ ] `GET /projects/:projectId/test-accounts` - 로컬 파일 포함
 
 ### 4.2 설정 소스 표시
-- [ ] 응답에 `source: 'local' | 'global'` 필드 추가
+- [x] 응답에 `source: 'local' | 'global'` 필드 추가
 - [ ] 하이브리드 상태 표시 (일부 로컬, 일부 전역)
 
 ## 5. UI 업데이트
