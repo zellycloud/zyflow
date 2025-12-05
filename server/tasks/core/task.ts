@@ -42,14 +42,17 @@ export interface ListTasksOptions {
   includeArchived?: boolean; // 기본값 false - archived 제외
 }
 
-// 순차 번호로 Task ID 생성 (1, 2, 3, ...)
-function generateTaskId(): number {
+// Origin별 순차 번호로 Task ID 생성
+// inbox: task_inbox 시퀀스 사용 (1, 2, 3, ...)
+// openspec: task_openspec 시퀀스 사용 (1, 2, 3, ...)
+function generateTaskId(origin: TaskOrigin = 'inbox'): number {
   const sqlite = getSqlite();
+  const sequenceName = `task_${origin}`;
 
   // 트랜잭션으로 순차 번호 증가 및 반환
   const result = sqlite.prepare(`
-    UPDATE sequences SET value = value + 1 WHERE name = 'task' RETURNING value
-  `).get() as { value: number } | undefined;
+    UPDATE sequences SET value = value + 1 WHERE name = ? RETURNING value
+  `).get(sequenceName) as { value: number } | undefined;
 
   return result?.value ?? 1;
 }
@@ -57,7 +60,8 @@ function generateTaskId(): number {
 export function createTask(input: CreateTaskInput): Task {
   const db = getDb();
   const now = new Date();
-  const taskId = generateTaskId();
+  const origin = input.origin || 'inbox';
+  const taskId = generateTaskId(origin);
 
   const newTask: NewTask = {
     id: taskId,
@@ -68,7 +72,7 @@ export function createTask(input: CreateTaskInput): Task {
     priority: input.priority || 'medium',
     tags: input.tags ? JSON.stringify(input.tags) : null,
     assignee: input.assignee,
-    origin: input.origin || 'inbox', // 기본값: inbox (수동 생성)
+    origin: origin,
     order: 0,
     groupTitle: input.groupTitle,
     groupOrder: input.groupOrder || 0,
@@ -79,7 +83,16 @@ export function createTask(input: CreateTaskInput): Task {
 
   db.insert(tasks).values(newTask).run();
 
-  return getTask(taskId)!;
+  return getTaskByOriginAndId(origin, taskId)!;
+}
+
+// origin과 id로 태스크 조회 (복합키 지원)
+export function getTaskByOriginAndId(origin: TaskOrigin, id: number): Task | null {
+  const db = getDb();
+  const result = db.select().from(tasks)
+    .where(and(eq(tasks.origin, origin), eq(tasks.id, id)))
+    .get();
+  return result || null;
 }
 
 export function getTask(id: number | string): Task | null {
