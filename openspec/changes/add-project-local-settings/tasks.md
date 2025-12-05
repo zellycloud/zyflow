@@ -22,9 +22,9 @@
 - [x] 계정 UUID → 실제 credential 해석
 
 ### 2.2 기존 서비스 통합
-- [ ] `getProjectIntegration()` 수정 - 로컬 우선 조회
-- [ ] `getProjectEnvironments()` 수정 - 로컬 환경 파일 지원
-- [ ] `getProjectTestAccounts()` 수정 - 로컬 파일 지원
+- [x] `getProjectIntegration()` 수정 - 로컬 우선 조회
+- [x] `getProjectEnvironments()` 수정 - 로컬 환경 파일 지원
+- [x] `getProjectTestAccounts()` 수정 - 로컬 파일 지원
 
 ## 3. MCP 도구 업데이트
 
@@ -41,12 +41,12 @@
 
 ### 4.1 조회 API 수정
 - [x] `GET /projects/:projectId/context` - 로컬 우선
-- [ ] `GET /projects/:projectId/environments` - 로컬 환경 파일 포함
-- [ ] `GET /projects/:projectId/test-accounts` - 로컬 파일 포함
+- [x] `GET /projects/:projectId/environments` - 로컬 환경 파일 포함
+- [x] `GET /projects/:projectId/test-accounts` - 로컬 파일 포함
 
 ### 4.2 설정 소스 표시
 - [x] 응답에 `source: 'local' | 'global'` 필드 추가
-- [ ] 하이브리드 상태 표시 (일부 로컬, 일부 전역)
+- [x] 하이브리드 상태 표시 (일부 로컬, 일부 전역)
 
 ## 5. UI 업데이트
 
