@@ -14,6 +14,7 @@ export type WSEventType =
   | 'change:created'
   | 'change:updated'
   | 'change:synced'
+  | 'sync:completed'
   | 'inbox:updated'
 
 export interface WSEvent {

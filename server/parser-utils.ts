@@ -130,10 +130,10 @@ export function parseTasksFileFlexible(changeId: string, content: string): Tasks
       /^#{3,4}\s+([\d.]+)\s+(.+)$/,     // "### 1.1 Subsection"
       /^#{3,4}\s+(.+)$/                   // "### Subsection" (plain)
     ],
-    // 태스크 패턴들
+    // 태스크 패턴들 (들여쓰기된 하위 태스크도 지원)
     tasks: [
-      /^-\s+\[([ xX])\]\s*([\d.]+)\s*(.+)$/,  // "- [ ] 1.1 Task"
-      /^-\s+\[([ xX])\]\s*(.+)$/               // "- [ ] Task" (plain)
+      /^(\s*)-\s+\[([ xX])\]\s*([\d.]+)\s*(.+)$/,  // "- [ ] 1.1 Task" 또는 "  - [ ] 1.1 Task"
+      /^(\s*)-\s+\[([ xX])\]\s*(.+)$/               // "- [ ] Task" 또는 "  - [ ] Task"
     ]
   }
   
@@ -233,35 +233,38 @@ export function parseTasksFileFlexible(changeId: string, content: string): Tasks
     
     if (matched) continue
     
-    // 태스크 확인
+    // 태스크 확인 (들여쓰기된 하위 태스크 포함)
     if (currentGroup) {
       for (const pattern of patterns.tasks) {
         const match = line.match(pattern)
         if (match) {
-          const completed = match[1]?.toLowerCase() === 'x'
+          // match[1] = 들여쓰기, match[2] = 체크 상태
+          const indent = match[1] || ''
+          const completed = match[2]?.toLowerCase() === 'x'
           let taskTitle: string
           let taskId: string
-          
-          if (match[2] && /^[\d.]+$/.test(match[2])) {
-            // 번호가 있는 태스크
-            taskTitle = match[3]?.trim() || ''
-            taskId = `task-${match[2].replace(/\./g, '-')}`
+
+          // 첫 번째 패턴: 번호가 있는 태스크 (match[3]=번호, match[4]=타이틀)
+          if (match[3] && /^[\d.]+$/.test(match[3])) {
+            taskTitle = match[4]?.trim() || ''
+            taskId = `task-${match[3].replace(/\./g, '-')}`
           } else {
-            // 일반 태스크
-            taskTitle = match[2]?.trim() || ''
+            // 두 번째 패턴: 일반 태스크 (match[3]=타이틀)
+            taskTitle = match[3]?.trim() || ''
             taskCounter++
             taskId = `task-${currentGroup.id}-${taskCounter}`
           }
-          
+
           if (taskTitle) {
             const task: Task = {
               id: taskId,
               title: taskTitle,
               completed,
               groupId: currentGroup.id,
-              lineNumber
+              lineNumber,
+              indent: indent.length  // 들여쓰기 레벨 저장
             }
-            
+
             currentGroup.tasks.push(task)
             matched = true
             break
