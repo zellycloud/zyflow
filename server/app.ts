@@ -13,6 +13,7 @@ import {
   setActiveProject,
   getActiveProject,
   updateProjectPath,
+  updateProjectName,
   reorderProjects,
 } from './config.js'
 import {
@@ -33,6 +34,7 @@ import { gitRouter, gitPull } from './git/index.js'
 import { emit } from './websocket.js'
 import { getGlobalMultiWatcher } from './watcher.js'
 import { integrationsRouter, initIntegrationsDb } from './integrations/index.js'
+import { syncChangeTasksFromFile, syncChangeTasksForProject } from './sync.js'
 
 const execAsync = promisify(exec)
 
@@ -170,6 +172,27 @@ app.post('/api/projects', async (req, res) => {
   }
 })
 
+// PUT /api/projects/reorder - Reorder projects
+// NOTE: This must be defined BEFORE /api/projects/:id routes to avoid :id matching "reorder"
+app.put('/api/projects/reorder', async (req, res) => {
+  try {
+    const { projectIds } = req.body
+
+    if (!projectIds || !Array.isArray(projectIds)) {
+      return res.status(400).json({ success: false, error: 'projectIds array is required' })
+    }
+
+    const projects = await reorderProjects(projectIds)
+    res.json({ success: true, data: { projects } })
+  } catch (error) {
+    console.error('Error reordering projects:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to reorder projects',
+    })
+  }
+})
+
 // DELETE /api/projects/:id - Remove a project
 app.delete('/api/projects/:id', async (req, res) => {
   try {
@@ -275,7 +298,18 @@ app.put('/api/projects/:id/activate', async (req, res) => {
           `).run(now, project.id)
         }
 
-        console.log(`[Auto-sync] Project "${project.name}" synced on activation`)
+        // tasks.md 동기화 - 모든 Change에 대해 수행
+        let tasksSynced = 0
+        for (const changeId of activeChangeIds) {
+          try {
+            const result = await syncChangeTasksForProject(changeId, project.path)
+            tasksSynced += result.tasksCreated + result.tasksUpdated
+          } catch {
+            // tasks.md가 없거나 파싱 실패 시 무시
+          }
+        }
+
+        console.log(`[Auto-sync] Project "${project.name}" synced on activation (${activeChangeIds.length} changes, ${tasksSynced} tasks)`)
       } catch (syncError) {
         console.error('Error auto-syncing project:', syncError)
         // sync 실패해도 활성화는 성공으로 처리
@@ -340,22 +374,28 @@ app.put('/api/projects/:id/path', async (req, res) => {
   }
 })
 
-// PUT /api/projects/reorder - Reorder projects
-app.put('/api/projects/reorder', async (req, res) => {
+// PUT /api/projects/:id/name - Update project name
+app.put('/api/projects/:id/name', async (req, res) => {
   try {
-    const { projectIds } = req.body
+    const projectId = req.params.id
+    const { name: newName } = req.body
 
-    if (!projectIds || !Array.isArray(projectIds)) {
-      return res.status(400).json({ success: false, error: 'projectIds array is required' })
+    if (!newName || typeof newName !== 'string') {
+      return res.status(400).json({ success: false, error: 'Name is required' })
     }
 
-    const projects = await reorderProjects(projectIds)
-    res.json({ success: true, data: { projects } })
+    const trimmedName = newName.trim()
+    if (trimmedName.length === 0) {
+      return res.status(400).json({ success: false, error: 'Name cannot be empty' })
+    }
+
+    const project = await updateProjectName(projectId, trimmedName)
+    res.json({ success: true, data: { project } })
   } catch (error) {
-    console.error('Error reordering projects:', error)
+    console.error('Error updating project name:', error)
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to reorder projects',
+      error: error instanceof Error ? error.message : 'Failed to update project name',
     })
   }
 })
@@ -1511,15 +1551,13 @@ app.get('/api/flow/changes', async (_req, res) => {
 app.get('/api/flow/changes/:id', async (req, res) => {
   try {
     await initTaskDb()
-    const project = await getActiveProject()
-    if (!project) {
-      return res.status(400).json({ success: false, error: 'No active project' })
-    }
+    const config = await loadConfig()
 
     const sqlite = getSqlite()
+    // 모든 프로젝트에서 Change 조회 (active project 제한 없이)
     const change = sqlite.prepare(`
-      SELECT * FROM changes WHERE id = ? AND project_id = ?
-    `).get(req.params.id, project.id) as {
+      SELECT * FROM changes WHERE id = ?
+    `).get(req.params.id) as {
       id: string
       project_id: string
       title: string
@@ -1533,6 +1571,12 @@ app.get('/api/flow/changes/:id', async (req, res) => {
 
     if (!change) {
       return res.status(404).json({ success: false, error: 'Change not found' })
+    }
+
+    // Change가 속한 프로젝트 경로 찾기
+    const project = config.projects.find(p => p.id === change.project_id)
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Project not found for this change' })
     }
 
     const stages = getChangeStages(change.id, project.path)
@@ -1653,17 +1697,26 @@ app.post('/api/flow/sync', async (_req, res) => {
               const task = group.tasks[taskIdx]
               const taskOrder = taskIdx + 1
 
-              // Check if task with same title exists for this change
-              const existingTask = sqlite.prepare(`
-                SELECT id FROM tasks WHERE change_id = ? AND title = ?
-              `).get(changeId, task.title) as { id: number } | undefined
+              // 우선순위 1: title + group_title로 매칭
+              // 우선순위 2: group_title + task_order로 매칭 (title이 변경된 경우)
+              let existingTask = sqlite.prepare(`
+                SELECT id FROM tasks WHERE change_id = ? AND title = ? AND group_title = ?
+              `).get(changeId, task.title, groupTitle) as { id: number } | undefined
+
+              // title로 매칭되지 않으면 group_title + task_order로 시도
+              if (!existingTask) {
+                existingTask = sqlite.prepare(`
+                  SELECT id FROM tasks WHERE change_id = ? AND group_title = ? AND task_order = ?
+                `).get(changeId, groupTitle, taskOrder) as { id: number } | undefined
+              }
 
               if (existingTask) {
-                // Update existing task with status and 3-level hierarchy info
+                // Update existing task with title, status and 3-level hierarchy info
                 const newStatus = task.completed ? 'done' : 'todo'
                 sqlite.prepare(`
                   UPDATE tasks
-                  SET status = ?,
+                  SET title = ?,
+                      status = ?,
                       group_title = ?,
                       group_order = ?,
                       task_order = ?,
@@ -1671,16 +1724,22 @@ app.post('/api/flow/sync', async (_req, res) => {
                       sub_order = ?,
                       updated_at = ?
                   WHERE id = ?
-                `).run(newStatus, groupTitle, majorOrder, taskOrder, majorTitle, subOrder, now, existingTask.id)
+                `).run(task.title, newStatus, groupTitle, majorOrder, taskOrder, majorTitle, subOrder, now, existingTask.id)
               } else {
+                // sequences 테이블에서 다음 ID 가져오기
+                sqlite.prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_openspec'`).run()
+                const seqResult = sqlite.prepare(`SELECT value FROM sequences WHERE name = 'task_openspec'`).get() as { value: number }
+                const newId = seqResult.value
+
                 sqlite.prepare(`
                   INSERT INTO tasks (
-                    change_id, stage, title, status, priority, "order",
+                    id, change_id, stage, title, status, priority, "order",
                     group_title, group_order, task_order, major_title, sub_order,
-                    created_at, updated_at
+                    origin, created_at, updated_at
                   )
-                  VALUES (?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, ?)
+                  VALUES (?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
                 `).run(
+                  newId,
                   changeId,
                   task.title,
                   task.completed ? 'done' : 'todo',
@@ -2006,6 +2065,114 @@ app.patch('/api/flow/tasks/:id', async (req, res) => {
   } catch (error) {
     console.error('Error updating flow task:', error)
     res.status(500).json({ success: false, error: 'Failed to update flow task' })
+  }
+})
+
+// ==================== SYNC API ====================
+
+// POST /api/flow/changes/:id/sync - 특정 Change의 tasks.md를 DB에 수동 동기화
+app.post('/api/flow/changes/:id/sync', async (req, res) => {
+  try {
+    await initTaskDb()
+    const changeId = req.params.id
+    const project = await getActiveProject()
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    // tasks.md를 파싱하여 DB에 동기화
+    const result = await syncChangeTasksFromFile(changeId)
+
+    // WebSocket으로 클라이언트에 동기화 완료 알림
+    emit('change:synced', {
+      changeId,
+      projectPath: project.path,
+      tasksCreated: result.tasksCreated,
+      tasksUpdated: result.tasksUpdated,
+    })
+
+    res.json({
+      success: true,
+      data: {
+        changeId,
+        tasksCreated: result.tasksCreated,
+        tasksUpdated: result.tasksUpdated,
+      },
+    })
+  } catch (error) {
+    console.error('Error syncing change:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to sync change',
+    })
+  }
+})
+
+// POST /api/flow/sync/all - 모든 프로젝트의 모든 Changes 동기화
+app.post('/api/flow/sync/all', async (_req, res) => {
+  try {
+    await initTaskDb()
+    const config = await loadConfig()
+
+    if (config.projects.length === 0) {
+      return res.json({
+        success: true,
+        data: { synced: 0, created: 0, updated: 0, projects: 0 },
+      })
+    }
+
+    let totalCreated = 0
+    let totalUpdated = 0
+    let projectsSynced = 0
+
+    for (const project of config.projects) {
+      const openspecDir = join(project.path, 'openspec', 'changes')
+      let entries
+      try {
+        entries = await readdir(openspecDir, { withFileTypes: true })
+      } catch {
+        continue
+      }
+
+      projectsSynced++
+
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name === 'archive') continue
+
+        const changeId = entry.name
+        try {
+          const result = await syncChangeTasksForProject(changeId, project.path)
+          totalCreated += result.tasksCreated
+          totalUpdated += result.tasksUpdated
+        } catch (syncError) {
+          console.error(`Error syncing ${changeId}:`, syncError)
+        }
+      }
+    }
+
+    // WebSocket으로 전체 동기화 완료 알림
+    emit('sync:completed', {
+      totalCreated,
+      totalUpdated,
+      projectsSynced,
+    })
+
+    res.json({
+      success: true,
+      data: {
+        synced: totalCreated + totalUpdated,
+        created: totalCreated,
+        updated: totalUpdated,
+        projects: projectsSynced,
+      },
+    })
+  } catch (error) {
+    console.error('Error syncing all changes:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to sync all changes',
+    })
   }
 })
 

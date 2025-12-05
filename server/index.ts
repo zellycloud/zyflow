@@ -47,6 +47,7 @@ async function initMultiWatcher() {
     }
 
     // Multi-Watcher Manager 생성
+    // 참고: scanOnStart는 기본 false - syncAllChangesOnStartup이 이미 초기 동기화를 수행하므로 중복 방지
     const multiWatcher = createMultiWatcherManager(
       async (changeId, filePath, projectPath) => {
         console.log(`[Watcher] Syncing ${changeId} due to file change: ${filePath}`)

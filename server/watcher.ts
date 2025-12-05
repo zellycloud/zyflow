@@ -16,6 +16,8 @@ export interface WatcherOptions {
   onTasksChange: (changeId: string, filePath: string, projectPath: string) => void
   /** 디바운스 시간 (ms) - 기본 500ms */
   debounceMs?: number
+  /** 시작 시 기존 파일도 스캔할지 여부 - 기본 false */
+  scanOnStart?: boolean
 }
 
 export interface WatcherInstance {
@@ -35,7 +37,7 @@ export interface WatcherInstance {
  * 단일 프로젝트 tasks.md 파일 감시자 생성
  */
 export function createTasksWatcher(options: WatcherOptions): WatcherInstance {
-  const { projectPath, projectId, onTasksChange, debounceMs = 500 } = options
+  const { projectPath, projectId, onTasksChange, debounceMs = 500, scanOnStart = false } = options
 
   let watcher: FSWatcher | null = null
   const debounceTimers: Map<string, NodeJS.Timeout> = new Map()
@@ -108,7 +110,8 @@ export function createTasksWatcher(options: WatcherOptions): WatcherInstance {
     const watchDir = join(projectPath, 'openspec/changes')
 
     watcher = watch(watchDir, {
-      ignoreInitial: true,
+      // scanOnStart가 true이면 기존 파일도 스캔 (add 이벤트 발생)
+      ignoreInitial: !scanOnStart,
       awaitWriteFinish: {
         stabilityThreshold: 300,
         pollInterval: 100,
@@ -180,7 +183,8 @@ export interface MultiWatcherManager {
  */
 export function createMultiWatcherManager(
   onTasksChange: (changeId: string, filePath: string, projectPath: string) => void,
-  debounceMs = 500
+  debounceMs = 500,
+  scanOnStart = false
 ): MultiWatcherManager {
   const watchers = new Map<string, WatcherInstance>()
 
@@ -196,6 +200,7 @@ export function createMultiWatcherManager(
       projectId,
       onTasksChange,
       debounceMs,
+      scanOnStart,
     })
 
     watcher.start()

@@ -182,17 +182,21 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
   const showMajorHeaders = majorSections.length > 1
   const showSubHeaders = majorSections.some((m) => m.subSections.length > 1)
 
-  // 넘버링 형식 결정 함수
-  const getTaskNumber = (major: MajorSection, sub: SubSection, taskIdx: number) => {
+  // 넘버링 형식 결정 함수 - task의 실제 taskOrder 값 사용
+  const getTaskNumber = (major: MajorSection, sub: SubSection, task: FlowTask) => {
+    const taskNum = task.taskOrder ?? 1
     if (showMajorHeaders && showSubHeaders) {
-      // 3단계: 1.1.1, 1.1.2, ...
-      return `${major.majorOrder}.${sub.subOrder}.${taskIdx + 1}`
-    } else if (showMajorHeaders || showSubHeaders) {
-      // 2단계: 1.1, 1.2, ...
-      return `${major.majorOrder}.${taskIdx + 1}`
+      // 3단계: 1.1.1, 1.1.2, ... (major.sub.task)
+      return `${major.majorOrder}.${sub.subOrder}.${taskNum}`
+    } else if (showMajorHeaders) {
+      // 2단계: 1.1, 1.2, ... (major.task)
+      return `${major.majorOrder}.${taskNum}`
+    } else if (showSubHeaders) {
+      // 2단계: 1.1, 1.2, ... (sub.task)
+      return `${sub.subOrder}.${taskNum}`
     } else {
       // 1단계: 1, 2, 3, ...
-      return `${taskIdx + 1}`
+      return `${taskNum}`
     }
   }
 
@@ -263,7 +267,7 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {sub.tasks.map((task, taskIdx) => (
+                          {sub.tasks.map((task) => (
                             <TableRow
                               key={task.id}
                               className={cn(task.status === 'done' && 'bg-muted/30')}
@@ -275,7 +279,7 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
                                 />
                               </TableCell>
                               <TableCell className="text-xs text-muted-foreground font-mono">
-                                {getTaskNumber(major, sub, taskIdx)}
+                                {getTaskNumber(major, sub, task)}
                               </TableCell>
                               <TableCell className="whitespace-normal">
                                 <span

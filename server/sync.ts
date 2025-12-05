@@ -111,6 +111,14 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
     let processedGroups = resolveDuplicateGroupTitles(parsed.groups as any[])
     processedGroups = reorderGroups(processedGroups)
 
+    // tasks.md에 있는 모든 태스크 제목 수집 (삭제된 태스크 정리용)
+    const taskTitlesInFile = new Set<string>()
+    for (const group of processedGroups as ExtendedTaskGroup[]) {
+      for (const task of group.tasks) {
+        taskTitlesInFile.add(task.title)
+      }
+    }
+
     for (const group of processedGroups as ExtendedTaskGroup[]) {
       // 3단계 계층 정보 추출
       const majorOrder = group.majorOrder ?? 1
@@ -122,20 +130,30 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
         const task = group.tasks[taskIdx]
         const taskOrder = taskIdx + 1
 
-        // Check if task with same title exists for this change
-        const existingTask = sqlite.prepare(`
-          SELECT id, status FROM tasks WHERE change_id = ? AND title = ?
-        `).get(changeId, task.title) as { id: number; status: string } | undefined
+        // 우선순위 1: title + group_title로 매칭 (기존 로직)
+        // 우선순위 2: group_title + task_order로 매칭 (title이 변경된 경우)
+        let existingTask = sqlite.prepare(`
+          SELECT id, status, title FROM tasks WHERE change_id = ? AND title = ? AND group_title = ?
+        `).get(changeId, task.title, groupTitle) as { id: number; status: string; title: string } | undefined
+
+        // title로 매칭되지 않으면 group_title + task_order로 시도
+        if (!existingTask) {
+          existingTask = sqlite.prepare(`
+            SELECT id, status, title FROM tasks WHERE change_id = ? AND group_title = ? AND task_order = ?
+          `).get(changeId, groupTitle, taskOrder) as { id: number; status: string; title: string } | undefined
+        }
 
         const newStatus = task.completed ? 'done' : 'todo'
 
         if (existingTask) {
-          // 기존 태스크 업데이트 (상태 + 그룹 정보)
+          // 기존 태스크 업데이트 (상태 + 그룹 정보 + title)
           const oldStatus = existingTask.status
-          
+          const oldTitle = existingTask.title
+
           sqlite.prepare(`
             UPDATE tasks
-            SET status = ?,
+            SET title = ?,
+                status = ?,
                 group_title = ?,
                 group_order = ?,
                 task_order = ?,
@@ -144,6 +162,7 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
                 updated_at = ?
             WHERE id = ?
           `).run(
+            task.title,
             newStatus,
             groupTitle,
             majorOrder,
@@ -160,8 +179,9 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
             tableName: 'tasks',
             operation: 'UPDATE',
             recordId: existingTask.id.toString(),
-            oldValues: { status: oldStatus },
+            oldValues: { status: oldStatus, title: oldTitle },
             newValues: {
+              title: task.title,
               status: newStatus,
               groupTitle,
               groupOrder: majorOrder,
@@ -173,14 +193,20 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
           }, 'DEBUG')
         } else {
           // 새 태스크 생성 (3단계 계층 정보 포함, origin='openspec')
+          // sequences 테이블에서 다음 ID 가져오기
+          sqlite.prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_openspec'`).run()
+          const seqResult = sqlite.prepare(`SELECT value FROM sequences WHERE name = 'task_openspec'`).get() as { value: number }
+          const newId = seqResult.value
+
           const insertResult = sqlite.prepare(`
             INSERT INTO tasks (
-              change_id, stage, title, status, priority, "order",
+              id, change_id, stage, title, status, priority, "order",
               group_title, group_order, task_order, major_title, sub_order,
               origin, created_at, updated_at
             )
-            VALUES (?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
+            VALUES (?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
           `).run(
+            newId,
             changeId,
             task.title,
             newStatus,
@@ -199,7 +225,7 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
           await safeLogDBChange({
             tableName: 'tasks',
             operation: 'INSERT',
-            recordId: insertResult.lastInsertRowid?.toString(),
+            recordId: newId.toString(),
             newValues: {
               changeId,
               title: task.title,
@@ -217,7 +243,30 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
       }
     }
 
-    console.log(`[Sync] ${changeId}: ${tasksCreated} created, ${tasksUpdated} updated`)
+    // tasks.md에 없는 태스크 삭제 (origin='openspec'인 것만)
+    let tasksDeleted = 0
+    if (taskTitlesInFile.size > 0) {
+      const existingTasks = sqlite.prepare(`
+        SELECT id, title FROM tasks WHERE change_id = ? AND origin = 'openspec'
+      `).all(changeId) as Array<{ id: number; title: string }>
+
+      for (const task of existingTasks) {
+        if (!taskTitlesInFile.has(task.title)) {
+          sqlite.prepare('DELETE FROM tasks WHERE id = ?').run(task.id)
+          tasksDeleted++
+
+          await safeLogDBChange({
+            tableName: 'tasks',
+            operation: 'DELETE',
+            recordId: task.id.toString(),
+            oldValues: { title: task.title, changeId },
+            transactionId: changeId
+          }, 'DEBUG')
+        }
+      }
+    }
+
+    console.log(`[Sync] ${changeId}: ${tasksCreated} created, ${tasksUpdated} updated, ${tasksDeleted} deleted`)
 
     // 동기화 완료 이벤트 로깅 (초기화 안 됐으면 건너뛰기)
     await safeLogSyncOperation({
@@ -226,8 +275,8 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
       recordId: changeId,
       status: 'COMPLETED',
       result: {
-        recordsProcessed: tasksCreated + tasksUpdated,
-        recordsSucceeded: tasksCreated + tasksUpdated,
+        recordsProcessed: tasksCreated + tasksUpdated + tasksDeleted,
+        recordsSucceeded: tasksCreated + tasksUpdated + tasksDeleted,
         recordsFailed: 0,
         duration: Date.now() - now
       }
@@ -280,6 +329,14 @@ export async function syncChangeTasksForProject(
     const tasksContent = await readFile(tasksPath, 'utf-8')
     const parsed = parseTasksFile(changeId, tasksContent)
 
+    // tasks.md에 있는 모든 태스크 제목 수집 (삭제된 태스크 정리용)
+    const taskTitlesInFile = new Set<string>()
+    for (const group of parsed.groups as ExtendedTaskGroup[]) {
+      for (const task of group.tasks) {
+        taskTitlesInFile.add(task.title)
+      }
+    }
+
     for (const group of parsed.groups as ExtendedTaskGroup[]) {
       // 3단계 계층 정보 추출
       const majorOrder = group.majorOrder ?? 1
@@ -291,18 +348,27 @@ export async function syncChangeTasksForProject(
         const task = group.tasks[taskIdx]
         const taskOrder = taskIdx + 1
 
-        // Check if task with same title exists for this change
-        const existingTask = sqlite.prepare(`
-          SELECT id, status FROM tasks WHERE change_id = ? AND title = ?
-        `).get(changeId, task.title) as { id: number; status: string } | undefined
+        // 우선순위 1: title + group_title로 매칭 (기존 로직)
+        // 우선순위 2: group_title + task_order로 매칭 (title이 변경된 경우)
+        let existingTask = sqlite.prepare(`
+          SELECT id, status, title FROM tasks WHERE change_id = ? AND title = ? AND group_title = ?
+        `).get(changeId, task.title, groupTitle) as { id: number; status: string; title: string } | undefined
+
+        // title로 매칭되지 않으면 group_title + task_order로 시도
+        if (!existingTask) {
+          existingTask = sqlite.prepare(`
+            SELECT id, status, title FROM tasks WHERE change_id = ? AND group_title = ? AND task_order = ?
+          `).get(changeId, groupTitle, taskOrder) as { id: number; status: string; title: string } | undefined
+        }
 
         const newStatus = task.completed ? 'done' : 'todo'
 
         if (existingTask) {
-          // 기존 태스크 업데이트 (상태 + 그룹 정보)
+          // 기존 태스크 업데이트 (상태 + 그룹 정보 + title)
           sqlite.prepare(`
             UPDATE tasks
-            SET status = ?,
+            SET title = ?,
+                status = ?,
                 group_title = ?,
                 group_order = ?,
                 task_order = ?,
@@ -311,6 +377,7 @@ export async function syncChangeTasksForProject(
                 updated_at = ?
             WHERE id = ?
           `).run(
+            task.title,
             newStatus,
             groupTitle,
             majorOrder,
@@ -323,14 +390,20 @@ export async function syncChangeTasksForProject(
           tasksUpdated++
         } else {
           // 새 태스크 생성 (3단계 계층 정보 포함, origin='openspec')
+          // sequences 테이블에서 다음 ID 가져오기
+          sqlite.prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_openspec'`).run()
+          const seqResult = sqlite.prepare(`SELECT value FROM sequences WHERE name = 'task_openspec'`).get() as { value: number }
+          const newId = seqResult.value
+
           sqlite.prepare(`
             INSERT INTO tasks (
-              change_id, stage, title, status, priority, "order",
+              id, change_id, stage, title, status, priority, "order",
               group_title, group_order, task_order, major_title, sub_order,
               origin, created_at, updated_at
             )
-            VALUES (?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
+            VALUES (?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
           `).run(
+            newId,
             changeId,
             task.title,
             newStatus,
@@ -348,7 +421,22 @@ export async function syncChangeTasksForProject(
       }
     }
 
-    console.log(`[Sync] ${changeId} (${projectPath}): ${tasksCreated} created, ${tasksUpdated} updated`)
+    // tasks.md에 없는 태스크 삭제 (origin='openspec'인 것만)
+    let tasksDeleted = 0
+    if (taskTitlesInFile.size > 0) {
+      const existingTasks = sqlite.prepare(`
+        SELECT id, title FROM tasks WHERE change_id = ? AND origin = 'openspec'
+      `).all(changeId) as Array<{ id: number; title: string }>
+
+      for (const task of existingTasks) {
+        if (!taskTitlesInFile.has(task.title)) {
+          sqlite.prepare('DELETE FROM tasks WHERE id = ?').run(task.id)
+          tasksDeleted++
+        }
+      }
+    }
+
+    console.log(`[Sync] ${changeId} (${projectPath}): ${tasksCreated} created, ${tasksUpdated} updated, ${tasksDeleted} deleted`)
 
     // 동기화 완료 이벤트 로깅 (초기화 안 됐으면 건너뛰기)
     await safeLogSyncOperation({
@@ -357,8 +445,8 @@ export async function syncChangeTasksForProject(
       recordId: changeId,
       status: 'COMPLETED',
       result: {
-        recordsProcessed: tasksCreated + tasksUpdated,
-        recordsSucceeded: tasksCreated + tasksUpdated,
+        recordsProcessed: tasksCreated + tasksUpdated + tasksDeleted,
+        recordsSucceeded: tasksCreated + tasksUpdated + tasksDeleted,
         recordsFailed: 0,
         duration: Date.now() - now
       }
@@ -535,15 +623,25 @@ export async function syncAllChangesOnStartup(): Promise<{
             const task = group.tasks[taskIdx]
             const taskOrder = taskIdx + 1
 
-            const existingTask = sqlite.prepare(`
-              SELECT id FROM tasks WHERE change_id = ? AND title = ?
-            `).get(changeId, task.title) as { id: number } | undefined
+            // 우선순위 1: title + group_title로 매칭
+            // 우선순위 2: group_title + task_order로 매칭 (title이 변경된 경우)
+            let existingTask = sqlite.prepare(`
+              SELECT id, status, title FROM tasks WHERE change_id = ? AND title = ? AND group_title = ?
+            `).get(changeId, task.title, groupTitle) as { id: number; status: string; title: string } | undefined
+
+            if (!existingTask) {
+              existingTask = sqlite.prepare(`
+                SELECT id, status, title FROM tasks WHERE change_id = ? AND group_title = ? AND task_order = ?
+              `).get(changeId, groupTitle, taskOrder) as { id: number; status: string; title: string } | undefined
+            }
+
+            const newStatus = task.completed ? 'done' : 'todo'
 
             if (existingTask) {
-              const newStatus = task.completed ? 'done' : 'todo'
               sqlite.prepare(`
                 UPDATE tasks
-                SET status = ?,
+                SET title = ?,
+                    status = ?,
                     group_title = ?,
                     group_order = ?,
                     task_order = ?,
@@ -551,19 +649,25 @@ export async function syncAllChangesOnStartup(): Promise<{
                     sub_order = ?,
                     updated_at = ?
                 WHERE id = ?
-              `).run(newStatus, groupTitle, majorOrder, taskOrder, majorTitle, subOrder, now, existingTask.id)
+              `).run(task.title, newStatus, groupTitle, majorOrder, taskOrder, majorTitle, subOrder, now, existingTask.id)
             } else {
+              // sequences 테이블에서 다음 ID 가져오기
+              sqlite.prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_openspec'`).run()
+              const seqResult = sqlite.prepare(`SELECT value FROM sequences WHERE name = 'task_openspec'`).get() as { value: number }
+              const newId = seqResult.value
+
               sqlite.prepare(`
                 INSERT INTO tasks (
-                  change_id, stage, title, status, priority, "order",
+                  id, change_id, stage, title, status, priority, "order",
                   group_title, group_order, task_order, major_title, sub_order,
                   origin, created_at, updated_at
                 )
-                VALUES (?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
+                VALUES (?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
               `).run(
+                newId,
                 changeId,
                 task.title,
-                task.completed ? 'done' : 'todo',
+                newStatus,
                 task.lineNumber,
                 groupTitle,
                 majorOrder,
