@@ -16,6 +16,7 @@ import {
   useAddProject,
   useRemoveProject,
   useBrowseFolder,
+  useUpdateProjectName,
   useUpdateProjectPath,
   useReorderProjects,
 } from '@/hooks/useProjects'
@@ -23,6 +24,8 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
 export function ProjectsSettings() {
+  const [editingNameId, setEditingNameId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
   const [editingPathId, setEditingPathId] = useState<string | null>(null)
   const [editingPath, setEditingPath] = useState('')
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null)
@@ -32,6 +35,7 @@ export function ProjectsSettings() {
   const addProject = useAddProject()
   const removeProject = useRemoveProject()
   const browseFolder = useBrowseFolder()
+  const updateProjectName = useUpdateProjectName()
   const updateProjectPath = useUpdateProjectPath()
   const reorderProjects = useReorderProjects()
 
@@ -52,6 +56,27 @@ export function ProjectsSettings() {
       toast.success('프로젝트가 삭제되었습니다')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '프로젝트 삭제 실패')
+    }
+  }
+
+  const handleStartEditName = (projectId: string, currentName: string) => {
+    setEditingNameId(projectId)
+    setEditingName(currentName)
+  }
+
+  const handleCancelEditName = () => {
+    setEditingNameId(null)
+    setEditingName('')
+  }
+
+  const handleSaveName = async (projectId: string) => {
+    try {
+      await updateProjectName.mutateAsync({ projectId, name: editingName })
+      toast.success('프로젝트 이름이 변경되었습니다')
+      setEditingNameId(null)
+      setEditingName('')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '이름 변경 실패')
     }
   }
 
@@ -167,7 +192,8 @@ export function ProjectsSettings() {
           </div>
         ) : (
           projectsData?.projects.map((project) => {
-            const isEditing = editingPathId === project.id
+            const isEditingName = editingNameId === project.id
+            const isEditingPath = editingPathId === project.id
             const isDragging = draggedProjectId === project.id
             const isDragOver = dragOverProjectId === project.id
             const isActive = project.id === projectsData.activeProjectId
@@ -175,7 +201,7 @@ export function ProjectsSettings() {
             return (
               <div
                 key={project.id}
-                draggable
+                draggable={!isEditingName && !isEditingPath}
                 onDragStart={(e) => handleDragStart(e, project.id)}
                 onDragOver={(e) => handleDragOver(e, project.id)}
                 onDragLeave={handleDragLeave}
@@ -199,14 +225,57 @@ export function ProjectsSettings() {
                   )} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="font-medium">{project.name}</p>
-                      {isActive && (
+                      {isEditingName ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            className="h-7 text-sm font-medium w-48"
+                            placeholder="프로젝트 이름"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveName(project.id)
+                              if (e.key === 'Escape') handleCancelEditName()
+                            }}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-green-600 hover:text-green-600 hover:bg-green-600/10"
+                            onClick={() => handleSaveName(project.id)}
+                            disabled={updateProjectName.isPending || !editingName.trim()}
+                          >
+                            {updateProjectName.isPending ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Check className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={handleCancelEditName}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <p
+                          className="font-medium cursor-pointer hover:text-primary transition-colors"
+                          onDoubleClick={() => handleStartEditName(project.id, project.name)}
+                          title="더블클릭하여 이름 변경"
+                        >
+                          {project.name}
+                        </p>
+                      )}
+                      {isActive && !isEditingName && (
                         <span className="text-xs text-primary bg-primary/10 px-1.5 py-0.5 rounded">
                           활성
                         </span>
                       )}
                     </div>
-                    {isEditing ? (
+                    {isEditingPath ? (
                       <div className="flex items-center gap-2 mt-2">
                         <Input
                           value={editingPath}
@@ -231,7 +300,7 @@ export function ProjectsSettings() {
                     )}
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    {isEditing ? (
+                    {isEditingPath ? (
                       <>
                         <Button
                           variant="ghost"
@@ -255,7 +324,7 @@ export function ProjectsSettings() {
                           <X className="h-4 w-4" />
                         </Button>
                       </>
-                    ) : (
+                    ) : !isEditingName ? (
                       <>
                         <Button
                           variant="ghost"
@@ -281,7 +350,7 @@ export function ProjectsSettings() {
                           )}
                         </Button>
                       </>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>

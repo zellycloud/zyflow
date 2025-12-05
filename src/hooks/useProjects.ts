@@ -145,6 +145,36 @@ export function useBrowseFolder() {
   })
 }
 
+// ==================== 프로젝트 이름 변경 ====================
+
+async function updateProjectName(projectId: string, newName: string): Promise<Project> {
+  const response = await fetch(`/api/projects/${projectId}/name`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: newName }),
+  })
+  const json: ApiResponse<{ project: Project }> = await response.json()
+
+  if (!json.success || !json.data) {
+    throw new Error(json.error || 'Failed to update project name')
+  }
+
+  return json.data.project
+}
+
+export function useUpdateProjectName() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ projectId, name }: { projectId: string; name: string }) =>
+      updateProjectName(projectId, name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['projects-all-data'] })
+    },
+  })
+}
+
 // ==================== 프로젝트 경로 변경 ====================
 
 async function updateProjectPath(projectId: string, newPath: string): Promise<Project> {

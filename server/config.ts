@@ -165,6 +165,22 @@ export async function updateProjectPath(projectId: string, newPath: string): Pro
 }
 
 /**
+ * 프로젝트 이름 변경
+ */
+export async function updateProjectName(projectId: string, newName: string): Promise<Project> {
+  const config = await loadConfig()
+  const projectIndex = config.projects.findIndex((p) => p.id === projectId)
+
+  if (projectIndex === -1) {
+    throw new Error(`Project not found: ${projectId}`)
+  }
+
+  config.projects[projectIndex].name = newName
+  await saveConfig(config)
+  return config.projects[projectIndex]
+}
+
+/**
  * 프로젝트 순서 변경
  */
 export async function reorderProjects(projectIds: string[]): Promise<Project[]> {
