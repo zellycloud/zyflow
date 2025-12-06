@@ -11,6 +11,20 @@ import { initWebSocket, emit } from './websocket.js'
 
 const PORT = 3001
 
+// 처리되지 않은 예외 핸들러 - 서버 크래시 방지 및 로깅
+process.on('uncaughtException', (error) => {
+  console.error('[FATAL] Uncaught Exception:', error)
+  console.error('[FATAL] Stack:', error.stack)
+  // 심각한 오류이므로 graceful shutdown 시도
+  gracefulShutdown('uncaughtException')
+})
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[ERROR] Unhandled Promise Rejection:', reason)
+  console.error('[ERROR] Promise:', promise)
+  // Promise 거부는 로깅만 하고 서버는 계속 실행
+})
+
 // HTTP 서버 생성 (Express + WebSocket 공유)
 const httpServer = createServer(app)
 
@@ -87,18 +101,25 @@ async function initMultiWatcher() {
   }
 }
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('\nShutting down...')
+// Graceful shutdown 함수
+async function gracefulShutdown(reason: string) {
+  console.log(`\n[Shutdown] Initiating graceful shutdown (reason: ${reason})...`)
   const multiWatcher = getGlobalMultiWatcher()
   if (multiWatcher) {
     await multiWatcher.stopAll()
   }
   httpServer.close(() => {
-    console.log('Server closed')
-    process.exit(0)
+    console.log('[Shutdown] Server closed')
+    process.exit(reason === 'SIGINT' ? 0 : 1)
   })
-})
+  // 강제 종료 타임아웃 (10초)
+  setTimeout(() => {
+    console.error('[Shutdown] Forced exit after timeout')
+    process.exit(1)
+  }, 10000)
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'))
 
 // 프로젝트 추가 시 watcher 추가를 위한 함수 export
 export function addProjectToWatcher(projectId: string, projectPath: string) {
