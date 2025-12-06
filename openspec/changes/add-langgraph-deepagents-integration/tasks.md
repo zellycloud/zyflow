@@ -29,29 +29,29 @@
 ## Phase 2: LangGraph 기본 통합
 
 ### 2.1 OpenSpec 파서
-- [ ] openspec_parser.py 작성 - tasks.md 파싱
-- [ ] proposal.md, design.md, spec.md 읽기 함수
-- [ ] 태스크 구조체 정의 (TaskGroup, Task)
-- [ ] 파서 단위 테스트
+- [x] openspec_parser.py 작성 - tasks.md 파싱
+- [x] proposal.md, design.md, spec.md 읽기 함수
+- [x] 태스크 구조체 정의 (TaskGroup, Task)
+- [x] 파서 단위 테스트
 
 ### 2.2 LangGraph StateGraph 빌더
-- [ ] graph.py 작성 - OpenSpecState TypedDict 정의
-- [ ] create_openspec_graph() 함수 구현
-- [ ] 태스크별 노드 동적 생성
-- [ ] 순차 실행 엣지 연결
-- [ ] 그래프 컴파일 및 체크포인터 연결
+- [x] graph.py 작성 - OpenSpecState TypedDict 정의
+- [x] create_openspec_graph() 함수 구현
+- [x] 태스크별 노드 동적 생성
+- [x] 순차 실행 엣지 연결
+- [x] 그래프 컴파일 및 체크포인터 연결
 
 ### 2.3 체크포인트 시스템
-- [ ] SqliteSaver 설정 (zyflow-agents.db)
-- [ ] 세션 ID 생성 및 관리
-- [ ] 체크포인트 저장/로드 테스트
-- [ ] 중단 지점에서 재개 기능
+- [x] SqliteSaver 설정 (zyflow-agents.db)
+- [x] 세션 ID 생성 및 관리
+- [x] 체크포인트 저장/로드 테스트
+- [x] 중단 지점에서 재개 기능
 
 ### 2.4 ZyFlow 동기화
-- [ ] 태스크 완료 시 ZyFlow API 호출 로직
-- [ ] tasks.md 파일 직접 수정 (mark_complete 호출 또는 파일 수정)
-- [ ] 진행률 업데이트 WebSocket 이벤트 발행
-- [ ] 동기화 실패 시 재시도 로직
+- [x] 태스크 완료 시 ZyFlow API 호출 로직
+- [x] tasks.md 파일 직접 수정 (mark_complete 호출 또는 파일 수정)
+- [x] 진행률 업데이트 WebSocket 이벤트 발행
+- [x] 동기화 실패 시 재시도 로직
 
 ### 2.5 기본 실행 테스트
 - [ ] 샘플 OpenSpec change로 그래프 실행 테스트
