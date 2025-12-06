@@ -8,9 +8,20 @@ import {
   Pencil,
   Check,
   X,
+  Download,
+  Globe,
+  HardDrive,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   useProjectsAllData,
   useAddProject,
@@ -19,9 +30,44 @@ import {
   useUpdateProjectName,
   useUpdateProjectPath,
   useReorderProjects,
+  useLocalSettingsStatus,
+  useExportToLocal,
 } from '@/hooks/useProjects'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+
+// 프로젝트별 로컬 설정 배지 컴포넌트
+function LocalSettingsBadge({ projectPath }: { projectPath: string }) {
+  const { data: status, isLoading } = useLocalSettingsStatus(projectPath)
+
+  if (isLoading) {
+    return null
+  }
+
+  if (!status) {
+    return null
+  }
+
+  if (status.hasLocal) {
+    return (
+      <span className="text-xs bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+        <HardDrive className="h-3 w-3" />
+        로컬
+      </span>
+    )
+  }
+
+  if (status.hasGlobal) {
+    return (
+      <span className="text-xs bg-gray-500/10 text-gray-600 dark:text-gray-400 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+        <Globe className="h-3 w-3" />
+        전역
+      </span>
+    )
+  }
+
+  return null
+}
 
 export function ProjectsSettings() {
   const [editingNameId, setEditingNameId] = useState<string | null>(null)
@@ -30,6 +76,8 @@ export function ProjectsSettings() {
   const [editingPath, setEditingPath] = useState('')
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null)
   const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [exportTarget, setExportTarget] = useState<{ id: string; name: string; path: string } | null>(null)
 
   const { data: projectsData, isLoading } = useProjectsAllData()
   const addProject = useAddProject()
@@ -38,6 +86,7 @@ export function ProjectsSettings() {
   const updateProjectName = useUpdateProjectName()
   const updateProjectPath = useUpdateProjectPath()
   const reorderProjects = useReorderProjects()
+  const exportToLocal = useExportToLocal()
 
   const handleBrowseAndAdd = async () => {
     try {
@@ -108,6 +157,26 @@ export function ProjectsSettings() {
       setEditingPath(result.path)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '폴더 선택 실패')
+    }
+  }
+
+  const handleOpenExportDialog = (project: { id: string; name: string; path: string }) => {
+    setExportTarget(project)
+    setExportDialogOpen(true)
+  }
+
+  const handleExportToLocal = async () => {
+    if (!exportTarget) return
+    try {
+      const result = await exportToLocal.mutateAsync({
+        projectId: exportTarget.id,
+        projectPath: exportTarget.path,
+      })
+      toast.success(`로컬 설정으로 내보냈습니다 (${result.exported.length}개 파일)`)
+      setExportDialogOpen(false)
+      setExportTarget(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '내보내기 실패')
     }
   }
 
@@ -274,6 +343,9 @@ export function ProjectsSettings() {
                           활성
                         </span>
                       )}
+                      {!isEditingName && (
+                        <LocalSettingsBadge projectPath={project.path} />
+                      )}
                     </div>
                     {isEditingPath ? (
                       <div className="flex items-center gap-2 mt-2">
@@ -330,6 +402,15 @@ export function ProjectsSettings() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
+                          onClick={() => handleOpenExportDialog(project)}
+                          title="로컬 설정으로 내보내기"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
                           onClick={() => handleStartEditPath(project.id, project.path)}
                           title="경로 변경"
                         >
@@ -372,6 +453,54 @@ export function ProjectsSettings() {
         )}
         프로젝트 추가
       </Button>
+
+      {/* 내보내기 확인 다이얼로그 */}
+      <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>로컬 설정으로 내보내기</DialogTitle>
+            <DialogDescription>
+              전역 DB의 설정을 프로젝트 로컬 폴더로 내보냅니다.
+            </DialogDescription>
+          </DialogHeader>
+          {exportTarget && (
+            <div className="py-4 space-y-2">
+              <p className="text-sm">
+                <span className="font-medium">{exportTarget.name}</span> 프로젝트의 설정을
+                로컬로 내보냅니다.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                대상 경로: <code className="bg-muted px-1 rounded">{exportTarget.path}/.zyflow/</code>
+              </p>
+              <p className="text-xs text-muted-foreground">
+                내보내기 항목: 계정 매핑, 환경 변수, 테스트 계정
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setExportDialogOpen(false)}
+              disabled={exportToLocal.isPending}
+            >
+              취소
+            </Button>
+            <Button onClick={handleExportToLocal} disabled={exportToLocal.isPending}>
+              {exportToLocal.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  내보내는 중...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  내보내기
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

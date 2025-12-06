@@ -22,6 +22,7 @@ export type SelectedItem =
   | { type: 'project'; projectId: string }
   | { type: 'change'; projectId: string; changeId: string }
   | { type: 'standalone-tasks'; projectId: string }
+  | { type: 'project-settings'; projectId: string }
   | { type: 'settings' }
   | null
 

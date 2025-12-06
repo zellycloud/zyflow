@@ -36,7 +36,11 @@ import type { ServiceType, Credentials } from './db/schema.js';
 import {
   SettingsResolver,
   initLocalZyflow,
-  hasLocalSettings,
+  createDefaultLocalSettings,
+  saveLocalSettings,
+  saveLocalEnvironment,
+  saveLocalTestAccounts,
+  encryptTestAccountPassword,
 } from './local/index.js';
 
 const router = Router();
@@ -377,14 +381,44 @@ router.get('/projects/:projectId/context', async (req: Request, res: Response) =
 
 /**
  * GET /api/integrations/projects/:projectId/environments
- * 프로젝트 환경 목록 조회
+ * 프로젝트 환경 목록 조회 (로컬 우선, 전역 fallback)
+ * Query params:
+ *   - projectPath: 프로젝트 경로 (로컬 설정 조회 시 필요)
  */
 router.get('/projects/:projectId/environments', async (req: Request, res: Response) => {
   try {
     const { projectId } = req.params;
-    const environments = await listEnvironments(projectId);
+    const projectPath = req.query.projectPath as string | undefined;
 
-    res.json({ environments });
+    // 로컬 설정이 있으면 로컬 우선
+    if (projectPath) {
+      const resolver = new SettingsResolver(projectPath, projectId);
+      const envList = await resolver.listEnvironments();
+
+      // ResolvedEnvironment[] 형식으로 변환
+      const environments = await Promise.all(
+        envList.map(async (env) => {
+          const resolved = await resolver.getEnvironment(env.name);
+          return {
+            id: `local-${env.name}`,
+            name: env.name,
+            isActive: env.isActive,
+            source: env.source,
+            hasVariables: resolved ? Object.keys(resolved.variables).length > 0 : false,
+          };
+        })
+      );
+
+      res.json({ environments, source: 'hybrid' as const });
+      return;
+    }
+
+    // 전역 DB에서 조회
+    const environments = await listEnvironments(projectId);
+    res.json({
+      environments: environments.map((e) => ({ ...e, source: 'global' as const })),
+      source: 'global' as const,
+    });
   } catch (error) {
     console.error('Failed to list environments:', error);
     res.status(500).json({
@@ -542,14 +576,48 @@ router.get('/projects/:projectId/environments/:envId/variables', async (req: Req
 
 /**
  * GET /api/integrations/projects/:projectId/test-accounts
- * 프로젝트 테스트 계정 목록 조회
+ * 프로젝트 테스트 계정 목록 조회 (로컬 우선, 전역 fallback)
+ * Query params:
+ *   - projectPath: 프로젝트 경로 (로컬 설정 조회 시 필요)
+ *   - role: 역할 필터 (선택)
  */
 router.get('/projects/:projectId/test-accounts', async (req: Request, res: Response) => {
   try {
     const { projectId } = req.params;
-    const accounts = await listTestAccounts(projectId);
+    const projectPath = req.query.projectPath as string | undefined;
+    const role = req.query.role as string | undefined;
 
-    res.json({ accounts });
+    // 로컬 설정이 있으면 로컬 우선
+    if (projectPath) {
+      const resolver = new SettingsResolver(projectPath, projectId);
+      const resolvedAccounts = await resolver.getTestAccounts(role);
+
+      // 비밀번호 제외하고 반환 (보안)
+      const accounts = resolvedAccounts.map((a) => ({
+        id: a.id,
+        role: a.role,
+        email: a.email,
+        description: a.description,
+        source: a.source,
+      }));
+
+      res.json({
+        accounts,
+        source: accounts.length > 0 ? accounts[0].source : 'global',
+      });
+      return;
+    }
+
+    // 전역 DB에서 조회
+    let accounts = await listTestAccounts(projectId);
+    if (role) {
+      accounts = accounts.filter((a) => a.role.toLowerCase().includes(role.toLowerCase()));
+    }
+
+    res.json({
+      accounts: accounts.map((a) => ({ ...a, source: 'global' as const })),
+      source: 'global' as const,
+    });
   } catch (error) {
     console.error('Failed to list test accounts:', error);
     res.status(500).json({
@@ -803,7 +871,7 @@ router.post('/local/init', async (req: Request, res: Response) => {
     const result = await initLocalZyflow(projectPath);
     res.json({
       success: true,
-      ...result,
+      data: result,
     });
   } catch (error) {
     console.error('Failed to initialize local settings:', error);
@@ -830,15 +898,107 @@ router.get('/local/status', async (req: Request, res: Response) => {
       return;
     }
 
-    const hasLocal = await hasLocalSettings(projectPath);
+    const resolver = new SettingsResolver(projectPath);
+    const sources = await resolver.getSettingsSources();
+
     res.json({
-      hasLocalSettings: hasLocal,
-      projectPath,
+      success: true,
+      data: {
+        projectPath,
+        status: sources,
+      },
     });
   } catch (error) {
     console.error('Failed to check local settings status:', error);
     res.status(500).json({
       error: 'Failed to check local settings status',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/integrations/projects/:projectId/export-to-local
+ * 전역 DB 설정을 프로젝트 로컬(.zyflow/)로 내보내기
+ */
+router.post('/projects/:projectId/export-to-local', async (req: Request, res: Response) => {
+  try {
+    const { projectId } = req.params;
+    const { projectPath } = req.body;
+
+    if (!projectPath) {
+      res.status(400).json({
+        error: 'Missing required field',
+        message: 'projectPath is required in request body',
+      });
+      return;
+    }
+
+    // 1. 전역 DB에서 프로젝트 설정 조회
+    const integration = await getProjectIntegration(projectId);
+    const envList = await listEnvironments(projectId);
+    const testAccountList = await listTestAccounts(projectId);
+
+    // 2. .zyflow 디렉토리 초기화 (없으면 생성)
+    const initResult = await initLocalZyflow(projectPath);
+
+    // 3. settings.json 저장 (계정 매핑)
+    if (integration?.integrations) {
+      const localSettings = createDefaultLocalSettings();
+      localSettings.integrations = integration.integrations as {
+        github?: string;
+        supabase?: string;
+        vercel?: string;
+        sentry?: string;
+        custom?: Record<string, string>;
+      };
+      if (envList.length > 0) {
+        const activeEnv = envList.find((e) => e.isActive);
+        localSettings.defaultEnvironment = activeEnv?.name || envList[0].name;
+      }
+      await saveLocalSettings(projectPath, localSettings);
+    }
+
+    // 4. 환경 변수 파일 저장
+    const exportedFiles: string[] = [...initResult.created];
+    for (const env of envList) {
+      const variables = await getEnvironmentVariables(env.id);
+      if (variables && Object.keys(variables).length > 0) {
+        await saveLocalEnvironment(projectPath, env.name, variables);
+        exportedFiles.push(`environments/${env.name}.env`);
+      }
+    }
+
+    // 5. 테스트 계정 저장
+    if (testAccountList.length > 0) {
+      const localAccounts = await Promise.all(
+        testAccountList.map(async (account) => {
+          const password = await getTestAccountPassword(account.id);
+          return {
+            id: account.id,
+            role: account.role,
+            email: account.email,
+            password: await encryptTestAccountPassword(password || ''),
+            description: account.description ?? undefined,
+          };
+        })
+      );
+      await saveLocalTestAccounts(projectPath, localAccounts);
+      exportedFiles.push('test-accounts.json');
+    }
+
+    res.json({
+      success: true,
+      data: {
+        success: true,
+        zyflowPath: initResult.zyflowPath,
+        exported: exportedFiles,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to export to local:', error);
+    res.status(500).json({
+      error: 'Failed to export to local',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }

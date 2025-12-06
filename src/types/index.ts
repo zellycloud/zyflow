@@ -211,3 +211,32 @@ export interface ExtendedTaskGroup extends TaskGroup {
 export interface ExtendedTasksFile extends TasksFile {
   groups: ExtendedTaskGroup[]
 }
+
+// =============================================
+// Integration Local Settings 타입
+// =============================================
+
+export type SettingsSource = 'local' | 'global'
+
+export interface LocalSettingsStatus {
+  hasLocal: boolean
+  hasGlobal: boolean
+  primary: SettingsSource
+}
+
+export interface LocalSettingsStatusResponse {
+  projectPath: string
+  status: LocalSettingsStatus
+}
+
+export interface InitLocalSettingsResponse {
+  success: boolean
+  zyflowPath: string
+  created: string[]
+}
+
+export interface ExportToLocalResponse {
+  success: boolean
+  zyflowPath: string
+  exported: string[]
+}

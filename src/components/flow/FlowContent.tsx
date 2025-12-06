@@ -4,6 +4,7 @@ import { ProjectDashboard } from './ProjectDashboard'
 import { ChangeDetail } from './ChangeDetail'
 import { StandaloneTasks } from './StandaloneTasks'
 import { SettingsPage } from '@/components/settings'
+import { ProjectSettings } from '@/components/settings/ProjectSettings'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { useSelectedData } from '@/hooks/useFlowChanges'
 
@@ -54,6 +55,11 @@ export function FlowContent({ selectedItem }: FlowContentProps) {
     )
   }
 
+  // 프로젝트 찾기 (project-settings에서 사용)
+  const selectedProject = projectsData?.projects.find(
+    (p) => 'projectId' in selectedItem && p.id === selectedItem.projectId
+  )
+
   switch (selectedItem.type) {
     case 'project':
       return <ProjectDashboard projectId={selectedItem.projectId} />
@@ -66,6 +72,15 @@ export function FlowContent({ selectedItem }: FlowContentProps) {
       )
     case 'standalone-tasks':
       return <StandaloneTasks projectId={selectedItem.projectId} />
+    case 'project-settings':
+      if (!selectedProject) {
+        return (
+          <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+            <p>프로젝트를 찾을 수 없습니다</p>
+          </div>
+        )
+      }
+      return <ProjectSettings project={selectedProject} />
     default:
       return null
   }

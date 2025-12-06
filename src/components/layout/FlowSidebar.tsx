@@ -98,7 +98,20 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
 
   const handleSelectStandaloneTasks = (projectId: string) => {
     const selectedItem: SelectedItem = { type: 'standalone-tasks', projectId }
-    
+
+    // 먼저 UI 업데이트 (즉시 반응)
+    onSelect(selectedItem)
+    selectItem(selectedItem)
+
+    // 프로젝트 활성화는 비동기로
+    if (projectId !== projectsData?.activeProjectId) {
+      activateProject.mutate(projectId)
+    }
+  }
+
+  const handleSelectProjectSettings = (projectId: string) => {
+    const selectedItem: SelectedItem = { type: 'project-settings', projectId }
+
     // 먼저 UI 업데이트 (즉시 반응)
     onSelect(selectedItem)
     selectItem(selectedItem)
@@ -235,6 +248,21 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                             >
                               <ListTodo className="size-3" />
                               <span>Inbox</span>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          {/* Project Settings */}
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              onClick={() =>
+                                handleSelectProjectSettings(project.id)
+                              }
+                              isActive={
+                                selectedItem?.type === 'project-settings' &&
+                                selectedItem.projectId === project.id
+                              }
+                            >
+                              <Settings className="size-3" />
+                              <span>Settings</span>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>
                         </SidebarMenuSub>
