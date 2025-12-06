@@ -45,7 +45,8 @@ def test_parse_tasks_file_basic():
 
     assert result.change_id == "test-change"
     assert result.title == "Sample Feature Implementation"
-    assert len(result.groups) == 4
+    # Groups: 1.1 Project Structure, 1.2 Configuration, 2.1 Core Features
+    assert len(result.groups) == 3
 
 
 def test_parse_tasks_file_counts():

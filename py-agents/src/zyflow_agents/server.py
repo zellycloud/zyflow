@@ -1,6 +1,8 @@
 """FastAPI bridge server for ZyFlow agents."""
 
 import asyncio
+import json
+import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -14,8 +16,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from .openspec_parser import OpenSpecContext
-from .graph import OpenSpecGraphRunner, create_initial_state
+from .agent import ModelType
+from .execution import ExecutionEngine, ExecutionStatus, get_engine
+
+logger = logging.getLogger(__name__)
 
 
 class SessionStatus(str, Enum):
@@ -33,14 +37,14 @@ class ExecuteRequest(BaseModel):
 
     change_id: str = Field(..., description="OpenSpec change ID to execute")
     project_path: Optional[str] = Field(None, description="Project path (defaults to cwd)")
-    cli_profile: str = Field("claude", description="CLI profile to use")
+    model: str = Field("claude-sonnet", description="Model to use (claude-sonnet, claude-haiku, claude-opus)")
 
 
 class ExecuteResponse(BaseModel):
     """Response after starting execution."""
 
     session_id: str
-    status: SessionStatus
+    status: str
     message: str
 
 
@@ -49,7 +53,7 @@ class SessionInfo(BaseModel):
 
     session_id: str
     change_id: str
-    status: SessionStatus
+    status: str
     created_at: str
     updated_at: str
     project_path: str = ""
@@ -59,114 +63,21 @@ class SessionInfo(BaseModel):
     error: Optional[str] = None
 
 
-class SessionControlRequest(BaseModel):
-    """Request to control a session."""
-
-    action: str = Field(..., description="Action: stop, resume")
-
-
-# In-memory session store
-sessions: dict[str, SessionInfo] = {}
-session_events: dict[str, asyncio.Queue] = {}
-
-# Graph runner instance
-graph_runner: Optional[OpenSpecGraphRunner] = None
-
-
-def get_graph_runner() -> OpenSpecGraphRunner:
-    """Get or create the graph runner."""
-    global graph_runner
-    if graph_runner is None:
-        graph_runner = OpenSpecGraphRunner()
-    return graph_runner
-
-
-async def emit_event(session_id: str, event_type: str, data: Any):
-    """Emit an event to session stream."""
-    if session_id in session_events:
-        await session_events[session_id].put({
-            "event": event_type,
-            "data": data if isinstance(data, str) else str(data),
-        })
-
-
-async def run_graph_execution(session_id: str, change_id: str, project_path: str):
-    """Run graph execution in background."""
-    session = sessions.get(session_id)
-    if not session:
-        return
-
-    try:
-        # Update status to running
-        session.status = SessionStatus.RUNNING
-        session.updated_at = datetime.utcnow().isoformat()
-        await emit_event(session_id, "status", session.model_dump_json())
-
-        # Load OpenSpec context
-        change_dir = Path(project_path) / "openspec" / "changes" / change_id
-        if not change_dir.exists():
-            raise ValueError(f"Change directory not found: {change_dir}")
-
-        context = OpenSpecContext.load(change_dir)
-
-        # Update task counts
-        if context.tasks:
-            session.total_tasks = context.tasks.total_tasks
-            session.completed_tasks = context.tasks.completed_tasks
-
-        # Create initial state
-        runner = get_graph_runner()
-        state = runner.create_session(session_id, context, project_path)
-
-        # Run graph and stream events
-        async for event in runner.arun(state):
-            # Extract node name and state
-            for node_name, node_state in event.items():
-                if isinstance(node_state, dict):
-                    # Update session info
-                    if "status" in node_state:
-                        session.status = SessionStatus(node_state["status"])
-                    if "current_task_index" in node_state and "tasks" in node_state:
-                        idx = node_state["current_task_index"]
-                        if idx > 0 and idx <= len(node_state["tasks"]):
-                            task = node_state["tasks"][idx - 1]
-                            session.current_task = task.get("title")
-                    if "task_results" in node_state:
-                        completed = sum(
-                            1 for r in node_state["task_results"]
-                            if r.get("status") == "completed"
-                        )
-                        session.completed_tasks = completed
-
-                    session.updated_at = datetime.utcnow().isoformat()
-
-                    # Emit event
-                    await emit_event(
-                        session_id,
-                        f"node:{node_name}",
-                        session.model_dump_json(),
-                    )
-
-        # Final status
-        session.status = SessionStatus.COMPLETED
-        session.updated_at = datetime.utcnow().isoformat()
-        await emit_event(session_id, "completed", session.model_dump_json())
-
-    except Exception as e:
-        session.status = SessionStatus.FAILED
-        session.error = str(e)
-        session.updated_at = datetime.utcnow().isoformat()
-        await emit_event(session_id, "failed", session.model_dump_json())
+# Store for active execution tasks
+active_tasks: dict[str, asyncio.Task] = {}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
-    print("🚀 ZyFlow Agents server starting...")
+    logger.info("🚀 ZyFlow Agents server starting...")
     yield
     # Shutdown
-    print("👋 ZyFlow Agents server shutting down...")
+    logger.info("👋 ZyFlow Agents server shutting down...")
+    # Cancel active tasks
+    for task in active_tasks.values():
+        task.cancel()
 
 
 app = FastAPI(
@@ -184,6 +95,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def get_model_type(model: str) -> ModelType:
+    """Convert model string to ModelType enum."""
+    model_map = {
+        "claude-sonnet": ModelType.CLAUDE_SONNET,
+        "claude-haiku": ModelType.CLAUDE_HAIKU,
+        "claude-opus": ModelType.CLAUDE_OPUS,
+    }
+    return model_map.get(model, ModelType.CLAUDE_SONNET)
+
+
+def session_to_info(state) -> SessionInfo:
+    """Convert execution state to SessionInfo."""
+    return SessionInfo(
+        session_id=state.session_id,
+        change_id=state.change_id,
+        status=state.status.value,
+        created_at=state.created_at,
+        updated_at=state.updated_at,
+        project_path=state.project_path,
+        current_task=state.current_task,
+        completed_tasks=state.completed_tasks,
+        total_tasks=state.total_tasks,
+        error=state.error,
+    )
 
 
 @app.get("/health")
@@ -204,7 +141,6 @@ async def execute_change(
 ) -> ExecuteResponse:
     """Start executing an OpenSpec change."""
     session_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
 
     # Determine project path
     project_path = request.project_path or os.getcwd()
@@ -217,74 +153,71 @@ async def execute_change(
             detail=f"Change not found: {request.change_id}",
         )
 
-    # Load context to get task counts
-    context = OpenSpecContext.load(change_dir)
-    total_tasks = context.tasks.total_tasks if context.tasks else 0
-    completed_tasks = context.tasks.completed_tasks if context.tasks else 0
+    # Get engine
+    engine = get_engine()
 
     # Create session
-    session = SessionInfo(
+    state = engine.create_session(
         session_id=session_id,
         change_id=request.change_id,
-        status=SessionStatus.PENDING,
-        created_at=now,
-        updated_at=now,
         project_path=project_path,
-        total_tasks=total_tasks,
-        completed_tasks=completed_tasks,
     )
-    sessions[session_id] = session
-    session_events[session_id] = asyncio.Queue()
 
     # Start execution in background
-    background_tasks.add_task(
-        run_graph_execution,
-        session_id,
-        request.change_id,
-        project_path,
-    )
+    async def run_execution():
+        async for event in engine.execute(session_id):
+            # Events are yielded for streaming, background just runs through
+            pass
+
+    task = asyncio.create_task(run_execution())
+    active_tasks[session_id] = task
 
     return ExecuteResponse(
         session_id=session_id,
-        status=SessionStatus.PENDING,
-        message=f"Session created for change '{request.change_id}' ({total_tasks} tasks)",
+        status=state.status.value,
+        message=f"Session created for change '{request.change_id}' ({state.total_tasks} tasks)",
     )
 
 
 @app.get("/api/agents/sessions", response_model=list[SessionInfo])
 async def list_sessions() -> list[SessionInfo]:
     """List all agent sessions."""
-    return list(sessions.values())
+    engine = get_engine()
+    return [session_to_info(s) for s in engine.list_sessions()]
 
 
 @app.get("/api/agents/sessions/{session_id}", response_model=SessionInfo)
 async def get_session(session_id: str) -> SessionInfo:
     """Get information about a specific session."""
-    if session_id not in sessions:
+    engine = get_engine()
+    state = engine.get_session(session_id)
+    if not state:
         raise HTTPException(status_code=404, detail="Session not found")
-    return sessions[session_id]
+    return session_to_info(state)
 
 
 @app.post("/api/agents/sessions/{session_id}/stop")
 async def stop_session(session_id: str) -> dict[str, str]:
     """Stop a running session."""
-    if session_id not in sessions:
+    engine = get_engine()
+    state = engine.get_session(session_id)
+
+    if not state:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    session = sessions[session_id]
-    if session.status not in [SessionStatus.PENDING, SessionStatus.RUNNING]:
+    if state.status not in [ExecutionStatus.PENDING, ExecutionStatus.RUNNING]:
         raise HTTPException(
-            status_code=400, detail=f"Cannot stop session in {session.status} status"
+            status_code=400,
+            detail=f"Cannot stop session in {state.status.value} status",
         )
 
-    # Stop via graph runner
-    runner = get_graph_runner()
-    runner.stop(session_id)
+    # Send stop signal
+    engine.stop_session(session_id)
 
-    session.status = SessionStatus.STOPPED
-    session.updated_at = datetime.utcnow().isoformat()
-
-    await emit_event(session_id, "stopped", session.model_dump_json())
+    # Cancel background task
+    if session_id in active_tasks:
+        active_tasks[session_id].cancel()
+        del active_tasks[session_id]
 
     return {"message": "Session stopped", "session_id": session_id}
 
@@ -294,34 +227,26 @@ async def resume_session(
     session_id: str,
     background_tasks: BackgroundTasks,
 ) -> dict[str, str]:
-    """Resume a stopped session from checkpoint."""
-    if session_id not in sessions:
+    """Resume a stopped session."""
+    engine = get_engine()
+    state = engine.get_session(session_id)
+
+    if not state:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    session = sessions[session_id]
-    if session.status != SessionStatus.STOPPED:
+    if state.status != ExecutionStatus.STOPPED:
         raise HTTPException(
-            status_code=400, detail=f"Cannot resume session in {session.status} status"
+            status_code=400,
+            detail=f"Cannot resume session in {state.status.value} status",
         )
 
-    session.status = SessionStatus.RUNNING
-    session.updated_at = datetime.utcnow().isoformat()
+    # Resume execution
+    async def run_execution():
+        async for event in engine.execute(session_id):
+            pass
 
-    # Resume in background
-    async def resume_execution():
-        try:
-            runner = get_graph_runner()
-            state = runner.resume(session_id)
-            if state:
-                session.status = SessionStatus(state.get("status", "completed"))
-                session.updated_at = datetime.utcnow().isoformat()
-                await emit_event(session_id, "completed", session.model_dump_json())
-        except Exception as e:
-            session.status = SessionStatus.FAILED
-            session.error = str(e)
-            await emit_event(session_id, "failed", session.model_dump_json())
-
-    background_tasks.add_task(resume_execution)
+    task = asyncio.create_task(run_execution())
+    active_tasks[session_id] = task
 
     return {"message": "Session resumed", "session_id": session_id}
 
@@ -329,16 +254,18 @@ async def resume_session(
 @app.delete("/api/agents/sessions/{session_id}")
 async def delete_session(session_id: str) -> dict[str, str]:
     """Delete a session."""
-    if session_id not in sessions:
+    engine = get_engine()
+
+    if not engine.delete_session(session_id):
+        state = engine.get_session(session_id)
+        if state and state.status == ExecutionStatus.RUNNING:
+            raise HTTPException(status_code=400, detail="Cannot delete running session")
         raise HTTPException(status_code=404, detail="Session not found")
 
-    session = sessions[session_id]
-    if session.status == SessionStatus.RUNNING:
-        raise HTTPException(status_code=400, detail="Cannot delete running session")
-
-    del sessions[session_id]
-    if session_id in session_events:
-        del session_events[session_id]
+    # Clean up background task
+    if session_id in active_tasks:
+        active_tasks[session_id].cancel()
+        del active_tasks[session_id]
 
     return {"message": "Session deleted", "session_id": session_id}
 
@@ -346,41 +273,45 @@ async def delete_session(session_id: str) -> dict[str, str]:
 @app.get("/api/agents/sessions/{session_id}/stream")
 async def stream_session(session_id: str):
     """Stream session events via SSE."""
-    if session_id not in sessions:
+    engine = get_engine()
+    state = engine.get_session(session_id)
+
+    if not state:
         raise HTTPException(status_code=404, detail="Session not found")
 
     async def event_generator():
-        if session_id not in session_events:
-            session_events[session_id] = asyncio.Queue()
-
-        queue = session_events[session_id]
-
-        # Send initial status
-        session = sessions[session_id]
-        yield {
-            "event": "status",
-            "data": session.model_dump_json(),
-        }
-
-        # Stream events
-        while True:
-            try:
-                event = await asyncio.wait_for(queue.get(), timeout=30.0)
-                yield event
-
-                # Stop streaming if session ended
-                if event.get("event") in ["completed", "failed", "stopped"]:
-                    break
-            except asyncio.TimeoutError:
-                # Send keepalive
-                yield {"event": "ping", "data": ""}
+        async for event in engine.stream_events(session_id):
+            yield {
+                "event": event.type,
+                "data": json.dumps(event.to_dict()),
+            }
 
     return EventSourceResponse(event_generator())
+
+
+@app.get("/api/agents/sessions/{session_id}/logs")
+async def get_session_logs(session_id: str) -> dict[str, Any]:
+    """Get execution logs for a session."""
+    engine = get_engine()
+    state = engine.get_session(session_id)
+
+    if not state:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return {
+        "session_id": session_id,
+        "results": [r.to_dict() for r in state.results],
+        "total_tasks": state.total_tasks,
+        "completed_tasks": state.completed_tasks,
+        "status": state.status.value,
+    }
 
 
 def main():
     """Run the server."""
     import uvicorn
+
+    logging.basicConfig(level=logging.INFO)
 
     uvicorn.run(
         "zyflow_agents.server:app",

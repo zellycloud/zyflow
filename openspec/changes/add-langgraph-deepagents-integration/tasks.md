@@ -62,35 +62,35 @@
 ## Phase 3: DeepAgents 통합
 
 ### 3.1 OpenSpec 미들웨어
-- [ ] middleware/openspec.py 작성
-- [ ] get_system_prompt_addition() - proposal, design, spec 내용 주입
-- [ ] get_initial_todos() - tasks.md에서 초기 Todo 목록 생성
-- [ ] on_task_complete() - ZyFlow 동기화 콜백
-- [ ] 미들웨어 단위 테스트
+- [x] middleware/openspec.py 작성
+- [x] get_system_prompt_addition() - proposal, design, spec 내용 주입
+- [x] get_initial_todos() - tasks.md에서 초기 Todo 목록 생성
+- [x] on_task_complete() - ZyFlow 동기화 콜백
+- [x] 미들웨어 단위 테스트
 
 ### 3.2 DeepAgent 팩토리
-- [ ] agent.py 작성 - create_zyflow_agent() 함수
-- [ ] 모델 선택 로직 (기본: Claude Sonnet, 옵션: Haiku, GPT 등)
-- [ ] 미들웨어 스택 구성 (OpenSpec + 기본 미들웨어)
-- [ ] 도구 연결 (ZyFlow MCP 도구들)
+- [x] agent.py 작성 - create_zyflow_agent() 함수
+- [x] 모델 선택 로직 (기본: Claude Sonnet, 옵션: Haiku, GPT 등)
+- [x] 미들웨어 스택 구성 (OpenSpec + 기본 미들웨어)
+- [x] 도구 연결 (ZyFlow MCP 도구들)
 
 ### 3.3 실행 엔진
-- [ ] /api/agents/execute 완전 구현
-- [ ] 비동기 실행 (백그라운드 태스크)
-- [ ] 실행 상태 추적 (pending, running, completed, failed, stopped)
-- [ ] 에러 핸들링 및 로깅
+- [x] /api/agents/execute 완전 구현
+- [x] 비동기 실행 (백그라운드 태스크)
+- [x] 실행 상태 추적 (pending, running, completed, failed, stopped)
+- [x] 에러 핸들링 및 로깅
 
 ### 3.4 제어 API
-- [ ] /api/agents/sessions/{id}/stop 구현 (그래프 인터럽트)
-- [ ] /api/agents/sessions/{id}/resume 구현 (체크포인트에서 재개)
-- [ ] 세션 목록 조회 API
-- [ ] 세션 삭제 API
+- [x] /api/agents/sessions/{id}/stop 구현 (그래프 인터럽트)
+- [x] /api/agents/sessions/{id}/resume 구현 (체크포인트에서 재개)
+- [x] 세션 목록 조회 API
+- [x] 세션 삭제 API
 
 ### 3.5 스트리밍 출력
-- [ ] SSE 스트림 구현 (/api/agents/sessions/{id}/stream)
-- [ ] 실행 로그 이벤트 (task_start, task_complete, error, etc.)
-- [ ] LLM 응답 스트리밍
-- [ ] 연결 끊김 처리
+- [x] SSE 스트림 구현 (/api/agents/sessions/{id}/stream)
+- [x] 실행 로그 이벤트 (task_start, task_complete, error, etc.)
+- [x] LLM 응답 스트리밍
+- [x] 연결 끊김 처리
 
 ## Phase 4: MCP 도구 확장
 
