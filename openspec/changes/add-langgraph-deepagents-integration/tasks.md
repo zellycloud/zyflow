@@ -95,22 +95,22 @@
 ## Phase 4: MCP 도구 확장
 
 ### 4.1 새 MCP 도구 정의
-- [ ] zyflow_execute_change 도구 스키마 정의
-- [ ] zyflow_get_agent_status 도구 스키마 정의
-- [ ] zyflow_stop_agent 도구 스키마 정의
-- [ ] zyflow_resume_agent 도구 스키마 정의
+- [x] zyflow_execute_change 도구 스키마 정의
+- [x] zyflow_get_agent_status 도구 스키마 정의
+- [x] zyflow_stop_agent 도구 스키마 정의
+- [x] zyflow_resume_agent 도구 스키마 정의
 
 ### 4.2 MCP 핸들러 구현
-- [ ] Python FastAPI 호출 브릿지 (fetch 또는 axios)
-- [ ] execute_change 핸들러 - 세션 생성 및 실행 시작
-- [ ] get_agent_status 핸들러 - 상태 조회
-- [ ] stop_agent 핸들러 - 실행 중단
-- [ ] resume_agent 핸들러 - 체크포인트에서 재개
+- [x] Python FastAPI 호출 브릿지 (fetch 또는 axios)
+- [x] execute_change 핸들러 - 세션 생성 및 실행 시작
+- [x] get_agent_status 핸들러 - 상태 조회
+- [x] stop_agent 핸들러 - 실행 중단
+- [x] resume_agent 핸들러 - 체크포인트에서 재개
 
 ### 4.3 도구 테스트
-- [ ] Claude Code에서 새 MCP 도구 테스트
-- [ ] 에러 케이스 처리 확인
-- [ ] 타임아웃 처리
+- [x] Claude Code에서 새 MCP 도구 테스트
+- [x] 에러 케이스 처리 확인
+- [x] 타임아웃 처리
 
 ## Phase 5: Multi-CLI 지원
 

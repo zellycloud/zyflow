@@ -45,6 +45,18 @@ import {
   handleGetTestAccountWithLocal,
 } from './integration-tools.js'
 
+// Agent Tools imports
+import {
+  agentToolDefinitions,
+  handleExecuteChange,
+  handleGetAgentStatus,
+  handleStopAgent,
+  handleResumeAgent,
+  handleListAgentSessions,
+  handleGetAgentLogs,
+  handleDeleteAgentSession,
+} from './agent-tools.js'
+
 // Change Log & Replay imports
 import { getChangeLogManager } from '../server/change-log.js'
 import { getReplayEngine } from '../server/replay-engine.js'
@@ -416,6 +428,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
       // Integration Hub Tools
       ...integrationToolDefinitions,
+
+      // Agent Tools
+      ...agentToolDefinitions,
 
       // Change Log Tools
       {
@@ -883,6 +898,66 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
 
+      // Agent Tools
+      case 'zyflow_execute_change': {
+        const result = await handleExecuteChange(
+          args as { changeId: string; projectPath?: string; model?: 'claude-sonnet' | 'claude-haiku' | 'claude-opus' },
+          PROJECT_PATH
+        )
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_get_agent_status': {
+        const result = await handleGetAgentStatus(args as { sessionId: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_stop_agent': {
+        const result = await handleStopAgent(args as { sessionId: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_resume_agent': {
+        const result = await handleResumeAgent(args as { sessionId: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_list_agent_sessions': {
+        const result = await handleListAgentSessions(args as { status?: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_get_agent_logs': {
+        const result = await handleGetAgentLogs(args as { sessionId: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_delete_agent_session': {
+        const result = await handleDeleteAgentSession(args as { sessionId: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
       // Change Log Tools
       case 'get_events':
         return await handleGetEvents((args || {}) as GetEventsArgs);
@@ -900,7 +975,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleStartReplay(args as unknown as StartReplayArgs);
       case 'get_replay_progress':
         return await handleGetReplayProgress(args as unknown as GetReplayProgressArgs);
-      
+
       default:
         throw new Error(`Unknown tool: ${name}`)
     }
