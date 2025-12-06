@@ -42,7 +42,7 @@ export function CLISelector({
   async function fetchProfiles() {
     try {
       setLoading(true)
-      const res = await fetch('/api/cli/profiles/available')
+      const res = await fetch('http://localhost:3001/api/cli/profiles/available')
       const data = await res.json()
       if (data.success) {
         setProfiles(data.profiles)

@@ -378,6 +378,30 @@ app.put('/api/projects/:id/path', async (req, res) => {
   }
 })
 
+// GET /api/projects/:id/changes - Get changes for a project
+app.get('/api/projects/:id/changes', async (req, res) => {
+  try {
+    const projectId = req.params.id
+    const { getSqlite } = await import('./tasks/db/client.js')
+    const sqlite = getSqlite()
+
+    const changes = sqlite.prepare(`
+      SELECT id, title, status, current_stage, progress, spec_path, created_at, updated_at
+      FROM changes
+      WHERE project_id = ?
+      ORDER BY updated_at DESC
+    `).all(projectId)
+
+    res.json({ success: true, changes })
+  } catch (error) {
+    console.error('Error fetching project changes:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch changes',
+    })
+  }
+})
+
 // PUT /api/projects/:id/name - Update project name
 app.put('/api/projects/:id/name', async (req, res) => {
   try {

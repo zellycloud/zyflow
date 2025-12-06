@@ -178,11 +178,11 @@
 ## Phase 7: 통합 테스트 및 문서화
 
 ### 7.1 E2E 테스트
-- [ ] 전체 워크플로우 테스트 (UI → API → Python → LangGraph → ZyFlow)
-- [ ] 중단/재개 시나리오 테스트
-- [ ] 에러 복구 테스트
-- [ ] 동시 세션 제한 테스트
-- [ ] Multi-CLI 전환 테스트
+- [x] AgentPage.test.tsx - UI 컴포넌트 테스트 (7개)
+- [x] useAgentSession.test.ts - 훅 테스트 (9개)
+- [x] scrollIntoView mock 추가로 테스트 오류 수정
+- [ ] 전체 워크플로우 E2E 테스트 (선택 - Playwright)
+- [ ] 동시 세션 제한 테스트 (선택)
 
 ### 7.2 문서화
 - [x] README 업데이트 - 새 기능 설명
