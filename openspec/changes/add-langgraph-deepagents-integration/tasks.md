@@ -141,39 +141,39 @@
 ## Phase 6: UI 통합
 
 ### 6.1 Agent 페이지 라우팅
-- [ ] /agent 라우트 추가 (App.tsx)
-- [ ] FlowSidebar에 Agent 메뉴 추가
-- [ ] 네비게이션 상태 관리
+- [x] /agent 라우트 추가 (App.tsx)
+- [x] FlowSidebar에 Agent 메뉴 추가
+- [x] 네비게이션 상태 관리
 
 ### 6.2 Agent 채팅 컴포넌트
-- [ ] AgentChat.tsx 작성 - 메시지 입력/표시
-- [ ] useAgentChat 훅 - SSE 스트림 연결
-- [ ] 메시지 타입별 렌더링 (user, agent, system, error)
-- [ ] 마크다운 렌더링 지원
+- [x] AgentChat.tsx 작성 - 메시지 입력/표시
+- [x] useAgentChat 훅 - SSE 스트림 연결
+- [x] 메시지 타입별 렌더링 (user, agent, system, error)
+- [x] 마크다운 렌더링 지원
 
 ### 6.3 Agent 사이드바
-- [ ] AgentSidebar.tsx 작성
-- [ ] Todo 리스트 뷰 (상태별 그룹화)
-- [ ] 파일 리스트 뷰 (에이전트가 생성/수정한 파일)
-- [ ] OpenSpec 컨텍스트 요약 표시
+- [x] AgentSidebar.tsx 작성
+- [x] Todo 리스트 뷰 (상태별 그룹화)
+- [x] 파일 리스트 뷰 (에이전트가 생성/수정한 파일)
+- [x] OpenSpec 컨텍스트 요약 표시
 
 ### 6.4 파일 뷰어
-- [ ] FileViewer.tsx 작성 (또는 기존 SpecContent 확장)
-- [ ] 구문 강조 (react-syntax-highlighter 또는 기존 라이브러리)
-- [ ] 파일 복사/다운로드 기능
-- [ ] 마크다운 파일 렌더링
+- [x] FileViewer.tsx 작성 (또는 기존 SpecContent 확장)
+- [x] 구문 강조 (react-syntax-highlighter 또는 기존 라이브러리)
+- [x] 파일 복사/다운로드 기능
+- [x] 마크다운 파일 렌더링
 
 ### 6.5 실행 제어 UI
-- [ ] 실행 시작 버튼 (변경 선택 후)
-- [ ] 중단/재개 버튼
-- [ ] 진행률 표시 (PipelineBar 연동 또는 별도)
-- [ ] 실행 로그 뷰어
+- [x] 실행 시작 버튼 (변경 선택 후)
+- [x] 중단/재개 버튼
+- [x] 진행률 표시 (PipelineBar 연동 또는 별도)
+- [x] 실행 로그 뷰어
 
 ### 6.6 상태 연동
-- [ ] useAgentSession 훅 - 세션 상태 관리
-- [ ] WebSocket 실시간 업데이트 연동
-- [ ] 에러 상태 토스트 알림
-- [ ] 완료 상태 알림
+- [x] useAgentSession 훅 - 세션 상태 관리
+- [x] WebSocket 실시간 업데이트 연동
+- [x] 에러 상태 토스트 알림
+- [x] 완료 상태 알림
 
 ## Phase 7: 통합 테스트 및 문서화
 

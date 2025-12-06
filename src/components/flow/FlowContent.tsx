@@ -5,6 +5,7 @@ import { ChangeDetail } from './ChangeDetail'
 import { StandaloneTasks } from './StandaloneTasks'
 import { SettingsPage } from '@/components/settings'
 import { ProjectSettings } from '@/components/settings/ProjectSettings'
+import { AgentPage } from '@/components/agent'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { useSelectedData } from '@/hooks/useFlowChanges'
 
@@ -86,6 +87,14 @@ export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
         )
       }
       return <ProjectSettings project={selectedProject} />
+    case 'agent':
+      return (
+        <AgentPage
+          projectId={selectedItem.projectId}
+          changeId={selectedItem.changeId}
+          projectPath={selectedProject?.path}
+        />
+      )
     default:
       return null
   }

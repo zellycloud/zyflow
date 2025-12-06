@@ -304,6 +304,8 @@ export type SelectedItem =
   | { type: 'project'; projectId: string }
   | { type: 'change'; projectId: string; changeId: string }
   | { type: 'standalone-tasks'; projectId: string }
+  | { type: 'project-settings'; projectId: string }
+  | { type: 'agent'; projectId: string; changeId?: string }
   | { type: 'settings' }
 
 export function useSelectedItem() {
@@ -348,6 +350,20 @@ export function useSelectedItem() {
           queryKey: ['flow', 'tasks', { standalone: true }],
           refetchType: 'active'
         })
+        break
+
+      case 'project-settings':
+        // Project Settings 페이지는 별도 데이터 refetch 불필요
+        break
+
+      case 'agent':
+        // Agent 페이지는 관련 Change 데이터 refetch
+        if (item.changeId) {
+          queryClient.invalidateQueries({
+            queryKey: ['flow', 'changes', item.changeId],
+            refetchType: 'active'
+          })
+        }
         break
 
       case 'settings':

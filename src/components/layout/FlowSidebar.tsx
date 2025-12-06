@@ -8,6 +8,7 @@ import {
   ChevronDown,
   GitBranch,
   ListTodo,
+  Bot,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -111,6 +112,19 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
 
   const handleSelectProjectSettings = (projectId: string) => {
     const selectedItem: SelectedItem = { type: 'project-settings', projectId }
+
+    // 먼저 UI 업데이트 (즉시 반응)
+    onSelect(selectedItem)
+    selectItem(selectedItem)
+
+    // 프로젝트 활성화는 비동기로
+    if (projectId !== projectsData?.activeProjectId) {
+      activateProject.mutate(projectId)
+    }
+  }
+
+  const handleSelectAgent = (projectId: string) => {
+    const selectedItem: SelectedItem = { type: 'agent', projectId }
 
     // 먼저 UI 업데이트 (즉시 반응)
     onSelect(selectedItem)
@@ -235,6 +249,21 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                               </SidebarMenuSubItem>
                             )
                           })}
+                          {/* Agent */}
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              onClick={() =>
+                                handleSelectAgent(project.id)
+                              }
+                              isActive={
+                                selectedItem?.type === 'agent' &&
+                                selectedItem.projectId === project.id
+                              }
+                            >
+                              <Bot className="size-3" />
+                              <span>Agent</span>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
                           {/* Inbox */}
                           <SidebarMenuSubItem>
                             <SidebarMenuSubButton
