@@ -35,6 +35,7 @@ import { emit } from './websocket.js'
 import { getGlobalMultiWatcher } from './watcher.js'
 import { integrationsRouter, initIntegrationsDb } from './integrations/index.js'
 import { syncChangeTasksFromFile, syncChangeTasksForProject } from './sync.js'
+import { cliRoutes } from './cli-adapter/index.js'
 
 const execAsync = promisify(exec)
 
@@ -60,6 +61,9 @@ app.use('/api/git', gitRouter)
 // Integration Hub API 라우터 등록
 initIntegrationsDb()
 app.use('/api/integrations', integrationsRouter)
+
+// CLI Adapter API 라우터 등록
+app.use('/api/cli', cliRoutes)
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {

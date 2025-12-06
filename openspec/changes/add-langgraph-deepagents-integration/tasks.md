@@ -115,28 +115,28 @@
 ## Phase 5: Multi-CLI 지원
 
 ### 5.1 CLI 어댑터 아키텍처
-- [ ] CLI 설정 스키마 정의 (name, command, args, mcp_flag)
-- [ ] CLIAdapter 인터페이스 설계
-- [ ] 기본 CLI 프로필 추가 (claude, gemini, qwen, kilo, opencode)
-- [ ] CLI 프로필 저장/로드 로직
+- [x] CLI 설정 스키마 정의 (name, command, args, mcp_flag)
+- [x] CLIAdapter 인터페이스 설계
+- [x] 기본 CLI 프로필 추가 (claude, gemini, qwen, kilo, opencode)
+- [x] CLI 프로필 저장/로드 로직
 
 ### 5.2 CLI 프로세스 관리
-- [ ] CLI 프로세스 스폰 (child_process)
-- [ ] stdin/stdout/stderr 스트리밍
-- [ ] MCP 서버 연결 전달 (--mcp-config 또는 환경변수)
-- [ ] 프로세스 종료 및 정리
+- [x] CLI 프로세스 스폰 (child_process)
+- [x] stdin/stdout/stderr 스트리밍
+- [x] MCP 서버 연결 전달 (--mcp-config 또는 환경변수)
+- [x] 프로세스 종료 및 정리
 
 ### 5.3 CLI 선택 UI
-- [ ] CLI 선택 드롭다운 컴포넌트
-- [ ] 커스텀 CLI 등록 다이얼로그
-- [ ] CLI별 설정 (모델 선택, 추가 옵션)
-- [ ] 기본 CLI 설정 저장 (localStorage)
+- [x] CLI 선택 드롭다운 컴포넌트
+- [x] 커스텀 CLI 등록 다이얼로그
+- [x] CLI별 설정 (모델 선택, 추가 옵션)
+- [x] 기본 CLI 설정 저장 (localStorage)
 
 ### 5.4 CLI별 통합 테스트
-- [ ] Claude Code 통합 테스트
-- [ ] Gemini CLI 통합 테스트 (설치된 경우)
-- [ ] Qwen Code CLI 통합 테스트 (설치된 경우)
-- [ ] Kilo Code CLI 통합 테스트 (설치된 경우)
+- [x] Claude Code 통합 테스트
+- [x] Gemini CLI 통합 테스트 (설치된 경우)
+- [x] Qwen Code CLI 통합 테스트 (설치된 경우)
+- [x] Kilo Code CLI 통합 테스트 (설치된 경우)
 
 ## Phase 6: UI 통합
 
