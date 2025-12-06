@@ -47,12 +47,12 @@
 ## 5. 기존 코드 정리
 
 ### 5.1 ProjectsSettings.tsx 리팩토링
-- [ ] 프로젝트별 Integration 로직 분리 (선택적)
-- [ ] 공통 컴포넌트 추출 (IntegrationStatusBadge 등) (선택적)
+- [x] 프로젝트별 Integration 로직 분리 (선택적)
+- [x] 공통 컴포넌트 추출 (IntegrationBadges.tsx) (선택적)
 
 ### 5.2 전역 Settings 탭 조정
-- [ ] Integrations 탭 → Accounts 탭으로 이름 변경 (선택적)
-- [ ] 프로젝트별 기능 안내 메시지 추가 (선택적)
+- [x] Integrations 탭 → Accounts 탭으로 이름 변경 (선택적)
+- [x] 프로젝트별 기능 안내 메시지 추가 (선택적)
 
 ## 6. 타입 정의
 
@@ -65,9 +65,18 @@
 ### 7.1 기능 테스트
 - [x] TypeScript 타입 체크 통과
 - [x] ESLint 검사 통과 (새 파일)
-- [ ] Settings 메뉴 클릭 동작 확인 (수동 테스트)
-- [ ] 페이지 렌더링 확인 (수동 테스트)
+- [x] Settings 메뉴 클릭 동작 확인 (수동 테스트)
+- [x] 페이지 렌더링 확인 (수동 테스트)
 
 ### 7.2 UI 검증
-- [ ] 로컬/전역 source 배지 표시 확인 (수동 테스트)
-- [ ] 섹션 펼침/접힘 동작 확인 (수동 테스트)
+- [x] 로컬/전역 source 배지 표시 확인 (수동 테스트)
+- [x] 섹션 펼침/접힘 동작 확인 (수동 테스트)
+
+## 8. 추가 개선 (완료)
+
+### 8.1 서비스 계정 환경 선택 기능
+- [x] DB 스키마에 `service_accounts.environment` 컬럼 추가 (staging/production/null)
+- [x] 서버 API에 environment 필드 처리 추가 (create, update, list)
+- [x] 프론트엔드 타입 수정 (`AccountEnvironment` 타입, `ServiceAccount` 인터페이스)
+- [x] ServiceAccountDialog에 환경 선택 드롭다운 추가 (모든 환경/Staging/Production)
+- [x] ServiceAccountList에 환경 배지 표시 (Production: 빨간색, Staging: 노란색)
