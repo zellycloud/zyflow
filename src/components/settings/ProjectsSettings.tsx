@@ -9,8 +9,6 @@ import {
   Check,
   X,
   Download,
-  Globe,
-  HardDrive,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,38 +33,22 @@ import {
 } from '@/hooks/useProjects'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { LocalSettingsStatusBadge } from '@/components/integrations/IntegrationBadges'
 
 // 프로젝트별 로컬 설정 배지 컴포넌트
 function LocalSettingsBadge({ projectPath }: { projectPath: string }) {
   const { data: status, isLoading } = useLocalSettingsStatus(projectPath)
 
-  if (isLoading) {
+  if (isLoading || !status) {
     return null
   }
 
-  if (!status) {
-    return null
-  }
-
-  if (status.hasLocal) {
-    return (
-      <span className="text-xs bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
-        <HardDrive className="h-3 w-3" />
-        로컬
-      </span>
-    )
-  }
-
-  if (status.hasGlobal) {
-    return (
-      <span className="text-xs bg-gray-500/10 text-gray-600 dark:text-gray-400 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
-        <Globe className="h-3 w-3" />
-        전역
-      </span>
-    )
-  }
-
-  return null
+  return (
+    <LocalSettingsStatusBadge
+      hasLocal={status.hasLocal}
+      hasGlobal={status.hasGlobal}
+    />
+  )
 }
 
 export function ProjectsSettings() {

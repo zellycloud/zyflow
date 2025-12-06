@@ -7,10 +7,6 @@ import {
   HardDrive,
   ChevronDown,
   ChevronRight,
-  Github,
-  Database,
-  Cloud,
-  AlertCircle,
   FileCode,
   Users,
   Download,
@@ -34,45 +30,16 @@ import {
 import { useLocalSettingsStatus, useExportToLocal } from '@/hooks/useProjects'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import type { Project, ApiResponse, SettingsSource } from '@/types'
+import type { Project, SettingsSource } from '@/types'
 import { EnvImportDialog } from '@/components/integrations/EnvImportDialog'
+import {
+  SourceBadge,
+  ServiceIcon,
+  ConnectionStatusBadge,
+} from '@/components/integrations/IntegrationBadges'
 
 interface ProjectSettingsProps {
   project: Project
-}
-
-// Source 배지 컴포넌트
-function SourceBadge({ source }: { source: SettingsSource }) {
-  if (source === 'local') {
-    return (
-      <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20">
-        <HardDrive className="h-3 w-3 mr-1" />
-        Local
-      </Badge>
-    )
-  }
-  return (
-    <Badge variant="outline" className="text-xs bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20">
-      <Globe className="h-3 w-3 mr-1" />
-      Global
-    </Badge>
-  )
-}
-
-// 서비스 아이콘 컴포넌트
-function ServiceIcon({ type }: { type: string }) {
-  switch (type) {
-    case 'github':
-      return <Github className="h-4 w-4" />
-    case 'supabase':
-      return <Database className="h-4 w-4" />
-    case 'vercel':
-      return <Cloud className="h-4 w-4" />
-    case 'sentry':
-      return <AlertCircle className="h-4 w-4" />
-    default:
-      return <Settings className="h-4 w-4" />
-  }
 }
 
 // 프로젝트 컨텍스트 조회 훅
@@ -162,6 +129,7 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
   const [environmentsOpen, setEnvironmentsOpen] = useState(true)
   const [testAccountsOpen, setTestAccountsOpen] = useState(true)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
 
   const { data: localStatus, isLoading: statusLoading } = useLocalSettingsStatus(project.path)
   const { data: contextData, isLoading: contextLoading } = useProjectContext(project.id, project.path)
@@ -233,21 +201,31 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
 
       {/* Integrations Section */}
       <Collapsible open={integrationsOpen} onOpenChange={setIntegrationsOpen}>
-        <CollapsibleTrigger asChild>
-          <Button variant="ghost" className="w-full justify-start px-0 hover:bg-transparent">
-            {integrationsOpen ? (
-              <ChevronDown className="h-4 w-4 mr-2" />
-            ) : (
-              <ChevronRight className="h-4 w-4 mr-2" />
-            )}
-            <span className="font-medium">Integrations</span>
-            {contextData?.source && (
-              <span className="ml-auto">
-                <SourceBadge source={contextData.source} />
-              </span>
-            )}
+        <div className="flex items-center justify-between">
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="flex-1 justify-start px-0 hover:bg-transparent">
+              {integrationsOpen ? (
+                <ChevronDown className="h-4 w-4 mr-2" />
+              ) : (
+                <ChevronRight className="h-4 w-4 mr-2" />
+              )}
+              <span className="font-medium">Integrations</span>
+              {contextData?.source && (
+                <span className="ml-auto mr-2">
+                  <SourceBadge source={contextData.source} />
+                </span>
+              )}
+            </Button>
+          </CollapsibleTrigger>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setImportDialogOpen(true)}
+          >
+            <Upload className="h-4 w-4 mr-1" />
+            Import
           </Button>
-        </CollapsibleTrigger>
+        </div>
         <CollapsibleContent className="mt-2">
           <div className="border rounded-lg divide-y">
             {serviceTypes.map((type) => {
@@ -275,14 +253,7 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
                       )}
                     </div>
                   </div>
-                  <Badge
-                    variant={isConnected ? 'default' : 'secondary'}
-                    className={cn(
-                      isConnected && 'bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/20'
-                    )}
-                  >
-                    {isConnected ? 'Connected' : 'Not Connected'}
-                  </Badge>
+                  <ConnectionStatusBadge connected={isConnected} />
                 </div>
               )
             })}
@@ -457,6 +428,14 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Import from .env Dialog */}
+      <EnvImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        defaultProjectId={project.id}
+        defaultProjectPath={project.path}
+      />
     </div>
   )
 }
