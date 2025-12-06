@@ -39,10 +39,6 @@ import {
   // 새로운 로컬 설정 도구
   handleInitLocal,
   handleExportToLocal,
-  // 로컬 우선 조회 핸들러
-  handleIntegrationContextWithLocal,
-  handleGetEnvWithLocal,
-  handleGetTestAccountWithLocal,
 } from './integration-tools.js'
 
 // Agent Tools imports

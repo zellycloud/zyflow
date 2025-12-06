@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { CLIProcessManager } from './process-manager'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync, existsSync } from 'fs'
 
 let testDir: string
 

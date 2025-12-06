@@ -121,6 +121,58 @@ zy tasks search "검색어"
 - **적절한 태그**: `bug`, `refactor`, `feature`, `docs`, `test` 등 사용
 - **우선순위 설정**: 긴급한 버그는 `high`, 일반 작업은 `medium`
 
+## AI Agent 실행 (OpenSpec 자동화)
+
+ZyFlow는 LangGraph 기반 AI Agent를 통해 OpenSpec 변경 제안을 자동으로 실행할 수 있습니다.
+
+### Agent MCP 도구
+
+```
+zyflow_execute_change  - OpenSpec Change 실행 시작
+zyflow_get_agent_status - Agent 세션 상태 조회
+zyflow_stop_agent      - 실행 중인 Agent 중단
+zyflow_resume_agent    - 체크포인트에서 Agent 재개
+```
+
+### 사용 예시
+
+```
+# Change 실행 시작
+zyflow_execute_change(changeId: "add-feature-x", projectPath: "/path/to/project")
+# → session_id 반환
+
+# 상태 확인
+zyflow_get_agent_status(sessionId: "session-123")
+
+# 중단
+zyflow_stop_agent(sessionId: "session-123")
+
+# 재개
+zyflow_resume_agent(sessionId: "session-123")
+```
+
+### Python Agent 서버
+
+AI Agent는 별도의 Python FastAPI 서버에서 실행됩니다:
+
+```bash
+# Python Agent 서버 포함 전체 실행
+npm run dev:full
+
+# 개별 실행
+npm run py:server  # Python Agent 서버 (localhost:3002)
+```
+
+### 지원 CLI
+
+Agent UI에서 다양한 AI CLI를 선택하여 사용할 수 있습니다:
+- Claude Code (기본)
+- Gemini CLI
+- Qwen Code CLI
+- Kilo Code CLI
+
+각 CLI는 ZyFlow MCP 서버와 연동되어 OpenSpec 태스크를 실행합니다.
+
 <!-- ZYWIKI:START -->
 # zywiki - AI Code Wiki Integration
 

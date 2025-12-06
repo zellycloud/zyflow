@@ -10,7 +10,6 @@ import { getProcessManager, initProcessManager } from './process-manager.js'
 import type {
   CLIProfile,
   StartCLIRequest,
-  StopCLIRequest,
   SendInputRequest,
 } from './types.js'
 

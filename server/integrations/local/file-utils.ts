@@ -4,7 +4,7 @@
  */
 
 import { readFile, writeFile, mkdir, access, readdir } from 'fs/promises';
-import { join, dirname } from 'path';
+import { join } from 'path';
 import {
   type LocalSettings,
   type LocalTestAccountsFile,
@@ -15,7 +15,6 @@ import {
   LOCAL_ENVIRONMENTS_DIR,
   LOCAL_TEST_ACCOUNTS_FILE,
   createDefaultLocalSettings,
-  createDefaultTestAccountsFile,
 } from './types.js';
 import { parseEnvContent } from '../env-parser.js';
 import { encryptObject, decryptObject } from '../crypto.js';
@@ -344,7 +343,6 @@ export interface InitLocalResult {
  */
 export async function initLocalZyflow(projectPath: string): Promise<InitLocalResult> {
   const zyflowPath = await ensureZyflowDir(projectPath);
-  const settingsPath = getSettingsPath(projectPath);
   const envsPath = getProjectEnvironmentsPath(projectPath);
 
   const files: string[] = [];

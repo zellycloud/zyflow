@@ -4,9 +4,9 @@
  * 로컬 설정 파일 읽기, fallback 로직, 마이그레이션 시나리오 테스트
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { join } from 'path'
-import { mkdtemp, rm, mkdir, writeFile, readFile } from 'fs/promises'
+import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 
 import {
@@ -31,7 +31,7 @@ import {
 import {
   createDefaultLocalSettings,
 } from './types.js'
-import type { LocalSettings, LocalTestAccount } from './types.js'
+import type { LocalTestAccount } from './types.js'
 
 describe('Local Settings - File Utils', () => {
   let tempDir: string

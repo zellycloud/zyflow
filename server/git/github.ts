@@ -46,7 +46,7 @@ export async function checkGhCliAuth(cwd: string): Promise<{ authenticated: bool
       authenticated: true,
       user: match?.[1] || 'unknown',
     }
-  } catch (error) {
+  } catch {
     return {
       authenticated: false,
       error: 'gh CLI가 설치되지 않았거나 인증되지 않았습니다. `gh auth login`을 실행하세요.',

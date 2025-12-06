@@ -2,11 +2,11 @@
  * Tests for CLIProfileManager
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { DEFAULT_CLI_PROFILES, CLIProfile, CLIType } from './types'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { mkdirSync, rmSync, existsSync, writeFileSync, readFileSync } from 'fs'
+import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs'
 
 // Create a test directory for each test
 let testDir: string

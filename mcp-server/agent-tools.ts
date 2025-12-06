@@ -28,9 +28,7 @@ interface ResumeAgentArgs {
   sessionId: string
 }
 
-interface ListAgentSessionsArgs {
-  // No args, lists all sessions
-}
+// ListAgentSessionsArgs intentionally empty - lists all sessions without filters
 
 interface AgentSession {
   session_id: string

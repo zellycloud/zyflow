@@ -216,7 +216,7 @@ export class CLIProfileManager {
         stderr += data.toString()
       })
 
-      proc.on('error', error => {
+      proc.on('error', _error => {
         resolve({
           available: false,
           error: `Command not found: ${profile.command}`,

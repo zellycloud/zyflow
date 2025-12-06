@@ -8,7 +8,6 @@ import type {
   LocalIntegrationMapping,
   EnvironmentVariables,
   SettingsSource,
-  WithSource,
   LocalTestAccount,
 } from './types.js';
 import type {
