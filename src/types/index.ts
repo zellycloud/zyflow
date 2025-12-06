@@ -216,7 +216,7 @@ export interface ExtendedTasksFile extends TasksFile {
 // Integration Local Settings 타입
 // =============================================
 
-export type SettingsSource = 'local' | 'global'
+export type SettingsSource = 'local' | 'global' | 'hybrid'
 
 export interface LocalSettingsStatus {
   hasLocal: boolean
