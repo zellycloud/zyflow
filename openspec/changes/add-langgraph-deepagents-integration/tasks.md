@@ -3,27 +3,27 @@
 ## Phase 1: Python 환경 구축
 
 ### 1.1 프로젝트 구조 설정
-- [ ] py-agents/ 디렉토리 생성
-- [ ] pyproject.toml 작성 (dependencies: langgraph, deepagents, fastapi, uvicorn, langchain-anthropic)
-- [ ] src/zyflow_agents/ 패키지 구조 생성
-- [ ] .gitignore에 Python 관련 항목 추가 (__pycache__, .venv, etc.)
+- [x] py-agents/ 디렉토리 생성
+- [x] pyproject.toml 작성 (dependencies: langgraph, deepagents, fastapi, uvicorn, langchain-anthropic)
+- [x] src/zyflow_agents/ 패키지 구조 생성
+- [x] .gitignore에 Python 관련 항목 추가 (__pycache__, .venv, etc.)
 
 ### 1.2 FastAPI 브릿지 서버
-- [ ] server.py 기본 구조 작성 (FastAPI app, CORS 설정)
-- [ ] /health 엔드포인트 구현
-- [ ] /api/agents/execute 엔드포인트 스텁 작성
-- [ ] /api/agents/sessions/{id} 엔드포인트 스텁 작성
-- [ ] /api/agents/sessions/{id}/stream SSE 엔드포인트 스텁 작성
+- [x] server.py 기본 구조 작성 (FastAPI app, CORS 설정)
+- [x] /health 엔드포인트 구현
+- [x] /api/agents/execute 엔드포인트 스텁 작성
+- [x] /api/agents/sessions/{id} 엔드포인트 스텁 작성
+- [x] /api/agents/sessions/{id}/stream SSE 엔드포인트 스텁 작성
 
 ### 1.3 개발 환경 통합
-- [ ] package.json에 py:server 스크립트 추가 (uvicorn 실행)
-- [ ] package.json에 dev:full 스크립트 추가 (Node + Python 동시 실행)
-- [ ] Express 서버에 /api/agents 프록시 라우트 추가
-- [ ] Python 서버 연결 상태 확인 API 추가
+- [x] package.json에 py:server 스크립트 추가 (uvicorn 실행)
+- [x] package.json에 dev:full 스크립트 추가 (Node + Python 동시 실행)
+- [x] Express 서버에 /api/agents 프록시 라우트 추가
+- [x] Python 서버 연결 상태 확인 API 추가
 
 ### 1.4 테스트 환경
-- [ ] pytest 설정 (pyproject.toml)
-- [ ] 기본 테스트 파일 생성 (test_server.py)
+- [x] pytest 설정 (pyproject.toml)
+- [x] 기본 테스트 파일 생성 (test_server.py)
 - [ ] CI에 Python 테스트 추가 (선택)
 
 ## Phase 2: LangGraph 기본 통합

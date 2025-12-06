@@ -2178,6 +2178,84 @@ app.post('/api/flow/sync/all', async (_req, res) => {
 
 // ==================== OPENSPEC ARCHIVE ====================
 
+// ==================== PYTHON AGENTS API PROXY ====================
+
+// Health check for Python agents server
+app.get('/api/agents/health', async (_req, res) => {
+  try {
+    const response = await fetch('http://localhost:3002/health')
+    if (!response.ok) {
+      return res.status(503).json({
+        success: false,
+        error: 'Python agents server unavailable',
+        pythonStatus: 'offline'
+      })
+    }
+    const data = await response.json()
+    res.json({ success: true, data: { ...data, pythonStatus: 'online' } })
+  } catch {
+    res.json({
+      success: true,
+      data: {
+        status: 'unavailable',
+        pythonStatus: 'offline',
+        message: 'Python agents server is not running. Start with: npm run py:server'
+      }
+    })
+  }
+})
+
+// Proxy all /api/agents/* requests to Python server
+app.use('/api/agents', async (req, res) => {
+  try {
+    const targetUrl = `http://localhost:3002${req.originalUrl}`
+
+    const fetchOptions: RequestInit = {
+      method: req.method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    }
+
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      fetchOptions.body = JSON.stringify(req.body)
+    }
+
+    const response = await fetch(targetUrl, fetchOptions)
+
+    // Handle SSE streams
+    if (response.headers.get('content-type')?.includes('text/event-stream')) {
+      res.setHeader('Content-Type', 'text/event-stream')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.setHeader('Connection', 'keep-alive')
+
+      const reader = response.body?.getReader()
+      if (reader) {
+        const decoder = new TextDecoder()
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          res.write(decoder.decode(value))
+        }
+        res.end()
+      }
+      return
+    }
+
+    const data = await response.json()
+    res.status(response.status).json(data)
+  } catch (error) {
+    console.error('Error proxying to Python agents server:', error)
+    res.status(503).json({
+      success: false,
+      error: 'Failed to connect to Python agents server',
+      hint: 'Start with: npm run py:server'
+    })
+  }
+})
+
+// ==================== OPENSPEC ARCHIVE ====================
+
 // POST /api/flow/changes/:id/archive - Change를 아카이브로 이동
 app.post('/api/flow/changes/:id/archive', async (req, res) => {
   try {
