@@ -13,12 +13,19 @@ export type EnvironmentName = 'local' | 'staging' | 'production' | string;
 // =============================================
 // Service Accounts 테이블
 // =============================================
+
+// 계정에 지정 가능한 환경 타입
+export type AccountEnvironment = 'staging' | 'production' | null;
+
 export const serviceAccounts = sqliteTable('service_accounts', {
   id: text('id').primaryKey(), // UUID
   type: text('type', {
     enum: ['github', 'supabase', 'vercel', 'sentry', 'custom'],
   }).notNull(),
   name: text('name').notNull(), // 사용자 지정 이름 (예: "hansooha", "zellycloud")
+  environment: text('environment', {
+    enum: ['staging', 'production'],
+  }), // 환경 (nullable = 모든 환경)
   credentials: text('credentials').notNull(), // 암호화된 JSON (서비스별 credential 구조)
   metadata: text('metadata'), // JSON (org, team 등 추가 정보)
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
@@ -26,6 +33,7 @@ export const serviceAccounts = sqliteTable('service_accounts', {
 }, (table) => ({
   typeIdx: index('idx_service_accounts_type').on(table.type),
   nameIdx: index('idx_service_accounts_name').on(table.name),
+  envIdx: index('idx_service_accounts_environment').on(table.environment),
 }));
 
 export type ServiceAccount = typeof serviceAccounts.$inferSelect;

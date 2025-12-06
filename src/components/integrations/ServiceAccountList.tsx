@@ -183,7 +183,21 @@ export function ServiceAccountList({ onEdit }: ServiceAccountListProps) {
                       className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
                     >
                       <div className="space-y-1">
-                        <div className="font-medium">{account.name}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{account.name}</span>
+                          {account.environment && (
+                            <Badge
+                              variant="outline"
+                              className={
+                                account.environment === 'production'
+                                  ? 'text-xs bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'
+                                  : 'text-xs bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20'
+                              }
+                            >
+                              {account.environment === 'production' ? 'Production' : 'Staging'}
+                            </Badge>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           {Object.entries(account.credentials)
                             .slice(0, 2)

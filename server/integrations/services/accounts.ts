@@ -5,6 +5,7 @@ import {
   serviceAccounts,
   type ServiceAccount,
   type ServiceType,
+  type AccountEnvironment,
   type Credentials,
   type GitHubCredentials,
   type SupabaseCredentials,
@@ -86,6 +87,7 @@ interface MaskedServiceAccount {
   id: string;
   type: ServiceType;
   name: string;
+  environment: AccountEnvironment;
   credentials: Record<string, string>; // 마스킹된 값
   metadata: Record<string, string> | null;
   createdAt: Date;
@@ -154,7 +156,10 @@ export async function createServiceAccount(
   type: ServiceType,
   name: string,
   credentials: Credentials,
-  metadata?: Record<string, string>
+  options?: {
+    environment?: AccountEnvironment;
+    metadata?: Record<string, string>;
+  }
 ): Promise<ServiceAccount> {
   validateCredentials(type, credentials);
 
@@ -168,8 +173,9 @@ export async function createServiceAccount(
     id: nanoid(),
     type,
     name: name.trim(),
+    environment: options?.environment ?? null,
     credentials: encryptedCredentials,
-    metadata: metadata ? JSON.stringify(metadata) : null,
+    metadata: options?.metadata ? JSON.stringify(options.metadata) : null,
     createdAt: now,
     updatedAt: now,
   };
@@ -178,6 +184,7 @@ export async function createServiceAccount(
 
   return {
     ...account,
+    environment: account.environment ?? null,
     metadata: account.metadata ?? null,
     createdAt: now,
     updatedAt: now,
@@ -205,6 +212,7 @@ export async function listServiceAccounts(type?: ServiceType): Promise<MaskedSer
       id: account.id,
       type: account.type as ServiceType,
       name: account.name,
+      environment: (account.environment as AccountEnvironment) ?? null,
       credentials: maskCredentials(account.type as ServiceType, decryptedCreds),
       metadata: account.metadata ? JSON.parse(account.metadata) : null,
       createdAt: account.createdAt,
@@ -235,6 +243,7 @@ export async function getServiceAccount(id: string): Promise<MaskedServiceAccoun
     id: account.id,
     type: account.type as ServiceType,
     name: account.name,
+    environment: (account.environment as AccountEnvironment) ?? null,
     credentials: maskCredentials(account.type as ServiceType, decryptedCreds),
     metadata: account.metadata ? JSON.parse(account.metadata) : null,
     createdAt: account.createdAt,
@@ -266,6 +275,7 @@ export async function updateServiceAccount(
   id: string,
   updates: {
     name?: string;
+    environment?: AccountEnvironment;
     credentials?: Credentials;
     metadata?: Record<string, string>;
   }
@@ -289,6 +299,10 @@ export async function updateServiceAccount(
 
   if (updates.name !== undefined) {
     updateData.name = updates.name.trim();
+  }
+
+  if (updates.environment !== undefined) {
+    updateData.environment = updates.environment;
   }
 
   if (updates.credentials !== undefined) {
@@ -323,16 +337,20 @@ export async function deleteServiceAccount(id: string): Promise<boolean> {
 /**
  * 서비스 타입별 계정 목록 (드롭다운용)
  */
-export async function getAccountsByType(type: ServiceType): Promise<Array<{ id: string; name: string }>> {
+export async function getAccountsByType(type: ServiceType): Promise<Array<{ id: string; name: string; environment: AccountEnvironment }>> {
   const db = getIntegrationsDb();
 
   const accounts = await db
     .select({
       id: serviceAccounts.id,
       name: serviceAccounts.name,
+      environment: serviceAccounts.environment,
     })
     .from(serviceAccounts)
     .where(eq(serviceAccounts.type, type));
 
-  return accounts;
+  return accounts.map(a => ({
+    ...a,
+    environment: (a.environment as AccountEnvironment) ?? null,
+  }));
 }

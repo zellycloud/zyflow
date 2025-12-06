@@ -73,7 +73,7 @@ router.get('/accounts', async (req: Request, res: Response) => {
  */
 router.post('/accounts', async (req: Request, res: Response) => {
   try {
-    const { type, name, credentials, metadata } = req.body;
+    const { type, name, credentials, environment, metadata } = req.body;
 
     if (!type || !name || !credentials) {
       res.status(400).json({
@@ -92,11 +92,24 @@ router.post('/accounts', async (req: Request, res: Response) => {
       return;
     }
 
+    // environment 검증 (null, 'staging', 'production' 만 허용)
+    const validEnvironments = [null, undefined, 'staging', 'production'];
+    if (environment !== undefined && !validEnvironments.includes(environment)) {
+      res.status(400).json({
+        error: 'Invalid environment',
+        message: 'environment must be null, "staging", or "production"',
+      });
+      return;
+    }
+
     const account = await createServiceAccount(
       type as ServiceType,
       name,
       credentials as Credentials,
-      metadata
+      {
+        environment: environment ?? null,
+        metadata,
+      }
     );
 
     res.status(201).json({ account });
@@ -170,10 +183,23 @@ router.get('/accounts/:id/credentials', async (req: Request, res: Response) => {
 router.put('/accounts/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, credentials, metadata } = req.body;
+    const { name, environment, credentials, metadata } = req.body;
+
+    // environment 검증 (null, 'staging', 'production' 만 허용)
+    if (environment !== undefined) {
+      const validEnvironments = [null, 'staging', 'production'];
+      if (!validEnvironments.includes(environment)) {
+        res.status(400).json({
+          error: 'Invalid environment',
+          message: 'environment must be null, "staging", or "production"',
+        });
+        return;
+      }
+    }
 
     const account = await updateServiceAccount(id, {
       name,
+      environment,
       credentials,
       metadata,
     });

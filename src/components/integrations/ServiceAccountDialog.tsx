@@ -11,6 +11,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Github, Database, Triangle, Bug, Key, Loader2, Plus, Trash2 } from 'lucide-react';
 import {
   useCreateServiceAccount,
@@ -18,6 +25,7 @@ import {
   useServiceAccountCredentials,
   type ServiceAccount,
   type ServiceType,
+  type AccountEnvironment,
   type Credentials,
 } from '@/hooks/useIntegrations';
 import { toast } from 'sonner';
@@ -40,6 +48,7 @@ export function ServiceAccountDialog({ open, onOpenChange, account }: ServiceAcc
   const isEditing = !!account;
   const [selectedType, setSelectedType] = useState<ServiceType>('github');
   const [name, setName] = useState('');
+  const [environment, setEnvironment] = useState<AccountEnvironment>(null);
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [customFields, setCustomFields] = useState<Array<{ key: string; value: string }>>([]);
 
@@ -57,6 +66,7 @@ export function ServiceAccountDialog({ open, onOpenChange, account }: ServiceAcc
     if (account && open) {
       setSelectedType(account.type);
       setName(account.name);
+      setEnvironment(account.environment);
       // 실제 credentials가 로드되면 설정
       if (realCredentials) {
         const creds = realCredentials as Record<string, string>;
@@ -71,6 +81,7 @@ export function ServiceAccountDialog({ open, onOpenChange, account }: ServiceAcc
       // 다이얼로그 닫힐 때 초기화
       setSelectedType('github');
       setName('');
+      setEnvironment(null);
       setCredentials({});
       setCustomFields([{ key: '', value: '' }]);
     }
@@ -117,6 +128,7 @@ export function ServiceAccountDialog({ open, onOpenChange, account }: ServiceAcc
         await updateAccount.mutateAsync({
           id: account.id,
           name: name.trim() || undefined,
+          environment,
           credentials: Object.keys(creds).length > 0 ? creds : undefined,
         });
         toast.success('계정이 수정되었습니다');
@@ -124,6 +136,7 @@ export function ServiceAccountDialog({ open, onOpenChange, account }: ServiceAcc
         await createAccount.mutateAsync({
           type: selectedType,
           name: name.trim(),
+          environment,
           credentials: creds,
         });
         toast.success('계정이 생성되었습니다');
@@ -360,6 +373,26 @@ export function ServiceAccountDialog({ open, onOpenChange, account }: ServiceAcc
               onChange={(e) => setName(e.target.value)}
               placeholder="예: Personal, Work, zellycloud"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="environment">환경 (선택)</Label>
+            <Select
+              value={environment ?? 'all'}
+              onValueChange={(v) => setEnvironment(v === 'all' ? null : (v as AccountEnvironment))}
+            >
+              <SelectTrigger id="environment">
+                <SelectValue placeholder="모든 환경" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">모든 환경</SelectItem>
+                <SelectItem value="staging">Staging</SelectItem>
+                <SelectItem value="production">Production</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              특정 환경에서만 사용할 계정이면 선택하세요.
+            </p>
           </div>
 
           <div className="space-y-4 pt-2">

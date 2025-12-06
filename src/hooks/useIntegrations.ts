@@ -7,11 +7,13 @@ const API_BASE = 'http://localhost:3001/api/integrations';
 // =============================================
 
 export type ServiceType = 'github' | 'supabase' | 'vercel' | 'sentry' | 'custom';
+export type AccountEnvironment = 'staging' | 'production' | null;
 
 export interface ServiceAccount {
   id: string;
   type: ServiceType;
   name: string;
+  environment: AccountEnvironment;
   credentials: Record<string, string>;
   metadata: Record<string, string> | null;
   createdAt: string;
@@ -136,6 +138,7 @@ export function useCreateServiceAccount() {
       type: ServiceType;
       name: string;
       credentials: Credentials;
+      environment?: AccountEnvironment;
       metadata?: Record<string, string>;
     }) => {
       const res = await fetch(`${API_BASE}/accounts`, {
@@ -162,6 +165,7 @@ export function useUpdateServiceAccount() {
     mutationFn: async (params: {
       id: string;
       name?: string;
+      environment?: AccountEnvironment;
       credentials?: Credentials;
       metadata?: Record<string, string>;
     }) => {
