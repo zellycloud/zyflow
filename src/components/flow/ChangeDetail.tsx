@@ -41,9 +41,10 @@ import type { Stage } from '@/types'
 interface ChangeDetailProps {
   projectId: string
   changeId: string
+  onArchived?: () => void
 }
 
-export function ChangeDetail({ projectId, changeId }: ChangeDetailProps) {
+export function ChangeDetail({ projectId, changeId, onArchived }: ChangeDetailProps) {
   const [activeTab, setActiveTab] = useState<Stage>('task')
   const [copied, setCopied] = useState(false)
   const { data, isLoading, error } = useFlowChangeDetail(changeId)
@@ -280,6 +281,8 @@ export function ChangeDetail({ projectId, changeId }: ChangeDetailProps) {
                         try {
                           await archiveChange.mutateAsync({ changeId, skipSpecs })
                           toast.success('Change가 아카이브되었습니다')
+                          // 아카이브 성공 시 부모에게 알림 (선택 해제)
+                          onArchived?.()
                         } catch (error) {
                           toast.error(error instanceof Error ? error.message : '아카이브 실패')
                         }

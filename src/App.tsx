@@ -135,7 +135,7 @@ function AppContent() {
 
           {/* Content Area - 선택에 따라 다른 뷰 */}
           <main className="flex-1 overflow-y-auto p-6">
-            <FlowContent selectedItem={selectedItem} />
+            <FlowContent selectedItem={selectedItem} onSelectItem={setSelectedItem} />
           </main>
         </div>
       </div>

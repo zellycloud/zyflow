@@ -10,9 +10,10 @@ import { useSelectedData } from '@/hooks/useFlowChanges'
 
 interface FlowContentProps {
   selectedItem: SelectedItem
+  onSelectItem?: (item: SelectedItem) => void
 }
 
-export function FlowContent({ selectedItem }: FlowContentProps) {
+export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
   const { data: projectsData, isLoading } = useProjectsAllData()
   // 선택된 항목에 따라 관련 데이터 미리 가져오기 (성능 최적화)
   useSelectedData(selectedItem)
@@ -68,6 +69,10 @@ export function FlowContent({ selectedItem }: FlowContentProps) {
         <ChangeDetail
           projectId={selectedItem.projectId}
           changeId={selectedItem.changeId}
+          onArchived={() => {
+            // 아카이브 후 프로젝트 대시보드로 이동
+            onSelectItem?.({ type: 'project', projectId: selectedItem.projectId })
+          }}
         />
       )
     case 'standalone-tasks':
