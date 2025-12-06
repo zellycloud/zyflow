@@ -416,3 +416,41 @@ export function useUpdateFlowTask() {
     },
   })
 }
+
+// =============================================
+// Archive Change API
+// =============================================
+
+interface ArchiveChangeInput {
+  changeId: string
+  skipSpecs?: boolean
+}
+
+interface ArchiveChangeResult {
+  changeId: string
+  archived: boolean
+  stdout: string
+  stderr: string
+}
+
+export function useArchiveChange() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ changeId, skipSpecs }: ArchiveChangeInput): Promise<ArchiveChangeResult> => {
+      const res = await fetch(`${API_BASE}/flow/changes/${changeId}/archive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skipSpecs }),
+      })
+      const json: ApiResponse<ArchiveChangeResult> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flow', 'changes'] })
+      queryClient.invalidateQueries({ queryKey: ['flow', 'changes', 'counts'] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+}

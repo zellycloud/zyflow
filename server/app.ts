@@ -2176,3 +2176,56 @@ app.post('/api/flow/sync/all', async (_req, res) => {
   }
 })
 
+// ==================== OPENSPEC ARCHIVE ====================
+
+// POST /api/flow/changes/:id/archive - Change를 아카이브로 이동
+app.post('/api/flow/changes/:id/archive', async (req, res) => {
+  try {
+    const changeId = req.params.id
+    const { skipSpecs } = req.body
+    const project = await getActiveProject()
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    // openspec archive 명령어 실행
+    const args = ['archive', changeId, '-y']
+    if (skipSpecs) {
+      args.push('--skip-specs')
+    }
+
+    const { stdout, stderr } = await execAsync(`openspec ${args.join(' ')}`, {
+      cwd: project.path,
+    })
+
+    // DB에서 Change 상태 업데이트
+    await initTaskDb()
+    const sqlite = getSqlite()
+    const now = Date.now()
+
+    sqlite.prepare(`
+      UPDATE changes SET status = 'archived', updated_at = ? WHERE id = ? AND project_id = ?
+    `).run(now, changeId, project.id)
+
+    // WebSocket으로 아카이브 완료 알림
+    emit('change:archived', { changeId, projectId: project.id })
+
+    res.json({
+      success: true,
+      data: {
+        changeId,
+        archived: true,
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+      },
+    })
+  } catch (error) {
+    console.error('Error archiving change:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to archive change',
+    })
+  }
+})
+

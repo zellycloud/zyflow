@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Loader2, FileText, Copy, Check, GitBranch, GitCommit, Upload, Settings, GitPullRequest } from 'lucide-react'
-import { useFlowChangeDetail } from '@/hooks/useFlowChanges'
+import { Loader2, FileText, Copy, Check, GitBranch, GitCommit, Upload, Settings, GitPullRequest, Archive } from 'lucide-react'
+import { useFlowChangeDetail, useArchiveChange } from '@/hooks/useFlowChanges'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
@@ -20,6 +20,19 @@ import {
   CreatePRDialog,
   type PushTiming,
 } from '@/components/git/ChangeWorkflowDialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import { useCurrentChangeBranch, useChangePush, useConflicts } from '@/hooks/useChangeGit'
 import { RemoteStatusBanner } from '@/components/git/RemoteStatusBanner'
 import { ConflictResolutionDialog, ConflictBanner } from '@/components/git/ConflictResolutionDialog'
@@ -54,6 +67,10 @@ export function ChangeDetail({ projectId, changeId }: ChangeDetailProps) {
 
   // 충돌 상태 조회 (Change 브랜치에 있을 때만)
   const { data: conflictsData } = useConflicts({ enabled: !!isOnChangeBranch })
+
+  // Archive 관련 상태
+  const [skipSpecs, setSkipSpecs] = useState(false)
+  const archiveChange = useArchiveChange()
 
   // 푸시 핸들러
   const handlePush = async () => {
@@ -208,6 +225,72 @@ export function ChangeDetail({ projectId, changeId }: ChangeDetailProps) {
                   <TooltipContent>GitHub Pull Request 생성</TooltipContent>
                 </Tooltip>
               )}
+
+              {/* Archive 버튼 - 100% 완료 시에만 활성화 */}
+              <AlertDialog>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant={change.progress === 100 ? 'default' : 'outline'}
+                        size="sm"
+                        className="gap-2 ml-2"
+                        disabled={change.progress !== 100 || archiveChange.isPending}
+                      >
+                        <Archive className={`h-4 w-4 ${archiveChange.isPending ? 'animate-pulse' : ''}`} />
+                        Archive
+                      </Button>
+                    </AlertDialogTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {change.progress === 100
+                      ? '완료된 Change를 아카이브로 이동'
+                      : `모든 태스크 완료 필요 (${change.progress}%)`}
+                  </TooltipContent>
+                </Tooltip>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Change 아카이브</AlertDialogTitle>
+                    <AlertDialogDescription asChild>
+                      <div className="space-y-3 text-sm text-muted-foreground">
+                        <p>
+                          <strong className="text-foreground">"{change.title}"</strong>를 아카이브하시겠습니까?
+                        </p>
+                        <p>
+                          아카이브하면 Change 폴더가 <code className="bg-muted px-1 rounded">archive/</code>로 이동되고,
+                          관련 Spec이 메인 <code className="bg-muted px-1 rounded">specs/</code> 폴더로 업데이트됩니다.
+                        </p>
+                        <div className="flex items-center space-x-2 pt-2">
+                          <Checkbox
+                            id="skipSpecs"
+                            checked={skipSpecs}
+                            onCheckedChange={(checked) => setSkipSpecs(checked === true)}
+                          />
+                          <Label htmlFor="skipSpecs" className="text-sm font-normal cursor-pointer">
+                            Spec 업데이트 건너뛰기 (인프라/도구 변경용)
+                          </Label>
+                        </div>
+                      </div>
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>취소</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={async () => {
+                        try {
+                          await archiveChange.mutateAsync({ changeId, skipSpecs })
+                          toast.success('Change가 아카이브되었습니다')
+                        } catch (error) {
+                          toast.error(error instanceof Error ? error.message : '아카이브 실패')
+                        }
+                      }}
+                      disabled={archiveChange.isPending}
+                    >
+                      {archiveChange.isPending ? '처리 중...' : '아카이브'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </TooltipProvider>
         </div>
