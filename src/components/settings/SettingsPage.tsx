@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { FolderOpen, Link2 } from 'lucide-react'
+import { FolderOpen, Key } from 'lucide-react'
 import { ProjectsSettings } from './ProjectsSettings'
 import { IntegrationsSettings } from './IntegrationsSettings'
 
@@ -12,7 +12,7 @@ export function SettingsPage() {
       <div>
         <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
         <p className="text-muted-foreground">
-          프로젝트 및 연동 서비스를 관리합니다.
+          프로젝트 및 서비스 계정을 관리합니다.
         </p>
       </div>
 
@@ -22,9 +22,9 @@ export function SettingsPage() {
             <FolderOpen className="h-4 w-4" />
             Projects
           </TabsTrigger>
-          <TabsTrigger value="integrations" className="flex items-center gap-2">
-            <Link2 className="h-4 w-4" />
-            Integrations
+          <TabsTrigger value="accounts" className="flex items-center gap-2">
+            <Key className="h-4 w-4" />
+            Accounts
           </TabsTrigger>
         </TabsList>
 
@@ -32,7 +32,7 @@ export function SettingsPage() {
           <ProjectsSettings />
         </TabsContent>
 
-        <TabsContent value="integrations" className="space-y-4">
+        <TabsContent value="accounts" className="space-y-4">
           <IntegrationsSettings />
         </TabsContent>
       </Tabs>

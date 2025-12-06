@@ -43,7 +43,8 @@ function ProjectMappingList() {
         각 프로젝트에 연결된 서비스 계정을 확인하고 변경합니다.
       </p>
       <div className="text-center py-8 text-muted-foreground border rounded-lg bg-muted/30">
-        프로젝트를 선택하면 해당 프로젝트의 Integrations 탭에서 서비스를 연결할 수 있습니다.
+        <p>사이드바에서 프로젝트를 선택하고 Settings 메뉴를 클릭하면</p>
+        <p className="mt-1">프로젝트별 Integration 설정을 관리할 수 있습니다.</p>
       </div>
     </div>
   )
