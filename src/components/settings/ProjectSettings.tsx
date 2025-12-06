@@ -14,6 +14,7 @@ import {
   FileCode,
   Users,
   Download,
+  Upload,
 } from 'lucide-react'
 import {
   Collapsible,
@@ -34,6 +35,7 @@ import { useLocalSettingsStatus, useExportToLocal } from '@/hooks/useProjects'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import type { Project, ApiResponse, SettingsSource } from '@/types'
+import { EnvImportDialog } from '@/components/integrations/EnvImportDialog'
 
 interface ProjectSettingsProps {
   project: Project
