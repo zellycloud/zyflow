@@ -44,6 +44,7 @@ interface EnvImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultProjectPath?: string;
+  defaultProjectId?: string;
 }
 
 interface SelectedService {
@@ -55,13 +56,14 @@ export function EnvImportDialog({
   open,
   onOpenChange,
   defaultProjectPath = '',
+  defaultProjectId = '',
 }: EnvImportDialogProps) {
   // 프로젝트 목록 조회
   const { data: projectsData } = useProjects();
   const projects = projectsData?.projects || [];
 
   // 선택된 프로젝트
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(defaultProjectId);
   const selectedProject = projects.find(p => p.id === selectedProjectId);
   const projectPath = selectedProject?.path || defaultProjectPath;
 
@@ -102,15 +104,15 @@ export function EnvImportDialog({
   // Reset state when dialog opens
   const handleOpenChange = useCallback((newOpen: boolean) => {
     if (newOpen) {
-      // Opening dialog - reset state
-      setSelectedProjectId('');
+      // Opening dialog - reset state (preserve defaultProjectId if provided)
+      setSelectedProjectId(defaultProjectId);
       setSelectedEnvFiles(new Set());
       setScanning(false);
       setScanResult(null);
       setSelectedServices(new Map());
     }
     onOpenChange(newOpen);
-  }, [onOpenChange]);
+  }, [onOpenChange, defaultProjectId]);
 
   // .env 파일 선택/해제
   const handleToggleEnvFile = (fileName: string) => {
