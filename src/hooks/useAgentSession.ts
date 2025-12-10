@@ -43,11 +43,19 @@ export function useAgentSession(initialSessionId?: string) {
     queryFn: async () => {
       if (!sessionId) return null
       const res = await fetch(`${API_BASE}/sessions/${sessionId}`)
+      if (res.status === 404) {
+        setSessionId(undefined)
+        return null
+      }
       if (!res.ok) throw new Error('Failed to fetch session')
       return res.json() as Promise<AgentSessionState>
     },
     enabled: !!sessionId,
-    refetchInterval: isStreaming ? 2000 : false,
+    refetchInterval: (query) => {
+      // Stop refetching if we got a 404 or error
+      if (!query.state.data && query.state.error) return false
+      return isStreaming ? 2000 : false
+    },
   })
 
   // Connect to SSE stream
@@ -181,6 +189,7 @@ export function useAgentSession(initialSessionId?: string) {
           change_id: changeId,
           project_path: projectPath,
           initial_prompt: initialPrompt,
+          use_cli: true, 
         }),
       })
 
@@ -258,7 +267,7 @@ export function useAgentSession(initialSessionId?: string) {
 
   // Send message (for user input during session)
   const sendMessage = useCallback(async (content: string) => {
-    // Add user message to chat
+    // Optimistic UI update
     setMessages((prev) => [
       ...prev,
       {
@@ -268,9 +277,22 @@ export function useAgentSession(initialSessionId?: string) {
       },
     ])
 
-    // If no session, this should start one
-    // If session exists, this would send input to stdin (not yet implemented)
-  }, [])
+    if (sessionId) {
+      try {
+        const res = await fetch(`${API_BASE}/sessions/${sessionId}/input`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input: content }),
+        })
+        if (!res.ok) {
+           const err = await res.json()
+           setError(err.error || 'Failed to send input')
+        }
+      } catch (e: any) {
+        setError(e.message)
+      }
+    }
+  }, [sessionId])
 
   // Start session helper
   const startSession = useCallback(

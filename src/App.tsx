@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Toaster } from 'sonner'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { ThemeProvider } from '@/context/theme-provider'
@@ -105,8 +105,26 @@ function WebSocketIndicator({ isConnected }: { isConnected: boolean }) {
 }
 
 function AppContent() {
-  const [selectedItem, setSelectedItem] = useState<SelectedItem>(null)
+  // 초기 상태를 로컬 스토리지에서 불러오기
+  const [selectedItem, setSelectedItem] = useState<SelectedItem>(() => {
+    try {
+      const saved = localStorage.getItem('zyflow-selected-item')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
+  
   const { isConnected } = useWebSocket()
+
+  // 상태 변경 시 로컬 스토리지에 저장
+  useEffect(() => {
+    if (selectedItem) {
+      localStorage.setItem('zyflow-selected-item', JSON.stringify(selectedItem))
+    } else {
+      localStorage.removeItem('zyflow-selected-item')
+    }
+  }, [selectedItem])
 
   return (
     <SidebarProvider>

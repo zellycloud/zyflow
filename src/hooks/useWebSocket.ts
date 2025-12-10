@@ -126,9 +126,15 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         reconnectTimeoutRef.current = null
       }
 
-      reconnectAttemptsRef.current = MAX_RECONNECT_ATTEMPTS // 재연결 방지
-
+      // StrictMode나 빠른 unmount/remount 시 연결 중인 소켓을 닫으면 에러 발생
+      // 연결이 확립된 후에만 정상 종료하도록 하거나, 에러를 무시
       if (wsRef.current) {
+        // 리스너 제거하여 불필요한 이벤트 방지
+        wsRef.current.onclose = null
+        wsRef.current.onerror = null
+        wsRef.current.onmessage = null
+        wsRef.current.onopen = null
+        
         wsRef.current.close()
         wsRef.current = null
       }

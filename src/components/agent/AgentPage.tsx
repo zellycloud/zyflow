@@ -39,7 +39,18 @@ interface Change {
 }
 
 export function AgentPage({ projectId, changeId: initialChangeId, projectPath }: AgentPageProps) {
-  const [selectedChangeId, setSelectedChangeId] = useState<string | undefined>(initialChangeId)
+  const [selectedChangeId, setSelectedChangeId] = useState<string | undefined>(() => {
+    if (initialChangeId) return initialChangeId
+    try {
+      if (projectId) {
+        return localStorage.getItem(`zyflow-agent-change-${projectId}`) || undefined
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+    return undefined
+  })
+  
   const [selectedCLI, setSelectedCLI] = useState<string>('claude')
   const [sessionId, setSessionId] = useState<string | undefined>()
   const [showSidebar, setShowSidebar] = useState(true)
@@ -63,6 +74,13 @@ export function AgentPage({ projectId, changeId: initialChangeId, projectPath }:
       setSelectedChangeId(initialChangeId)
     }
   }, [initialChangeId])
+
+  // Persist selected change to localStorage
+  useEffect(() => {
+    if (projectId && selectedChangeId) {
+      localStorage.setItem(`zyflow-agent-change-${projectId}`, selectedChangeId)
+    }
+  }, [projectId, selectedChangeId])
 
   const selectedChange = changes?.find((c) => c.id === selectedChangeId)
 
