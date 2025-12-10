@@ -4,6 +4,12 @@ import asyncio
 import json
 import logging
 import os
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime

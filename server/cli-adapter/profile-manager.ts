@@ -201,7 +201,7 @@ export class CLIProfileManager {
 
     return new Promise(resolve => {
       const proc = spawn(profile.command, ['--version'], {
-        shell: true,
+        shell: false,
         timeout: 5000,
       })
 

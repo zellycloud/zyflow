@@ -125,8 +125,11 @@ export class CLIProcessManager extends EventEmitter {
     // Spawn process
     const proc = spawn(profile.command, args, {
       cwd: profile.cwd || projectPath,
-      env,
-      shell: true,
+      env: {
+        ...env,
+        FORCE_COLOR: '1',
+      },
+      shell: false,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
 
@@ -364,19 +367,35 @@ export class CLIProcessManager extends EventEmitter {
 }
 
 // Singleton instance
-let processManager: CLIProcessManager | null = null
+// Use global to ensure singleton persists across module reloads or dual-package hazards
+const GLOBAL_KEY = '__ZYFLOW_CLI_PROCESS_MANAGER__'
+const globalScope = global as any
+
+if (!globalScope[GLOBAL_KEY]) {
+  globalScope[GLOBAL_KEY] = null
+}
 
 export function getProcessManager(projectPath?: string): CLIProcessManager {
-  if (!processManager && projectPath) {
-    processManager = new CLIProcessManager(projectPath)
+  let instance = globalScope[GLOBAL_KEY] as CLIProcessManager | null
+
+  if (!instance && projectPath) {
+    instance = new CLIProcessManager(projectPath)
+    globalScope[GLOBAL_KEY] = instance
+    console.log('[ProcessManager] Initialized global instance with path:', projectPath)
   }
-  if (!processManager) {
-    throw new Error('Process manager not initialized. Provide projectPath.')
+
+  if (!instance) {
+    // Try to recover if we have a default path or active sessions in a "lost" instance? 
+    // No, just throw but with better message
+    throw new Error('Process manager not initialized. Provide projectPath first.')
   }
-  return processManager
+  
+  return instance
 }
 
 export function initProcessManager(projectPath: string): CLIProcessManager {
-  processManager = new CLIProcessManager(projectPath)
-  return processManager
+  const instance = new CLIProcessManager(projectPath)
+  globalScope[GLOBAL_KEY] = instance
+  console.log('[ProcessManager] Re-initialized global instance with path:', projectPath)
+  return instance
 }

@@ -2236,6 +2236,154 @@ app.get('/api/agents/health', async (_req, res) => {
 // Proxy all /api/agents/* requests to Python server
 app.use('/api/agents', async (req, res) => {
   try {
+    // 1. Check for CLI mode request or Stream request for CLI session
+    const isExecuteRequest = req.path === '/execute' && req.method === 'POST'
+    const isStreamRequest = req.path.match(/\/sessions\/[^/]+\/stream/) && req.method === 'GET'
+    
+    // Check if it's a CLI session stream or input request
+    // Fix: regex was slightly wrong or path handling needs to be robust for query params? req.path does not include query.
+    // session input path example: /sessions/UUID/input
+    const isInputRequest = req.path.match(/\/sessions\/[^/]+\/input/) && req.method === 'POST'
+    // session logs path example: /sessions/UUID/logs
+    const isLogsRequest = req.path.match(/\/sessions\/[^/]+\/logs/) && req.method === 'GET'
+    
+    let isCliSession = false
+    let targetSessionId: string | undefined
+
+    if (isStreamRequest || isInputRequest || isLogsRequest) {
+      targetSessionId = req.path.split('/')[2]
+      
+      console.log(`[Proxy] Checking CLI session for path: ${req.path}, ID: ${targetSessionId}`)
+
+      const { getProcessManager } = await import('./cli-adapter/process-manager.js')
+      try {
+        const pm = getProcessManager()
+        const session = pm.getSession(targetSessionId)
+        
+        // Debug Log
+        if (session) {
+            console.log(`[Proxy] Found Active CLI Session: ${session.id} (Status: ${session.status})`)
+            isCliSession = true
+        } else {
+            console.log(`[Proxy] No CLI Session found for ID: ${targetSessionId}. Active Sessions: ${pm.getActiveSessions().length}`)
+            // Also log active IDs to see if there's a mismatch
+            console.log(`[Proxy] Active IDs: ${pm.getActiveSessions().map(s => s.id).join(', ')}`)
+        }
+      } catch (e: any) {
+        console.log(`[Proxy] ProcessManager check failed: ${e.message}`)
+      }
+    }
+
+    // 2. Handle CLI Execution
+    // 2. Handle CLI Execution
+    if (isExecuteRequest && req.body.use_cli === true) {
+      console.log('[Proxy] Routing to CLI Adapter (Execute)')
+      const { initProcessManager, getProcessManager } = await import('./cli-adapter/process-manager.js')
+      const projectPath = req.body.project_path || process.cwd()
+      
+      let processManager
+      try {
+        processManager = getProcessManager(projectPath)
+      } catch {
+        processManager = initProcessManager(projectPath)
+      }
+      
+      const result = await processManager.start({
+        profileId: 'claude', // Default to claude
+        changeId: req.body.change_id,
+        projectPath,
+        initialPrompt: req.body.initial_prompt
+      })
+      
+      if (!result.success) {
+        return res.status(500).json({ success: false, error: result.error })
+      }
+      
+      return res.json({
+        session_id: result.sessionId,
+        status: 'running',
+        message: 'CLI Session started via Adapter',
+        change_id: req.body.change_id || 'unknown',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        project_path: projectPath
+      })
+    }
+    
+    // 3. Handle CLI Input
+    if (isInputRequest && isCliSession && targetSessionId) {
+      const { getProcessManager } = await import('./cli-adapter/process-manager.js')
+      const processManager = getProcessManager()
+      
+      const result = await processManager.sendInput(targetSessionId, req.body.input || '')
+      if (!result.success) {
+        return res.status(500).json({ success: false, error: result.error })
+      }
+      return res.json({ success: true })
+    }
+
+    // 4. Handle CLI Stream
+    if (isCliSession) {
+      const sessionId = targetSessionId || req.path.split('/')[2]
+      const { getProcessManager } = await import('./cli-adapter/process-manager.js')
+      const processManager = getProcessManager()
+      
+      res.setHeader('Content-Type', 'text/event-stream')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.setHeader('Connection', 'keep-alive')
+
+      const sendEvent = (type: string, data: any) => {
+        if (res.writableEnded || !res.writable) return
+        try {
+          res.write(`event: message\ndata: ${JSON.stringify({ type, ...data })}\n\n`)
+        } catch (e) {
+          console.error('[SSE] Error sending event:', e)
+        }
+      }
+
+      // Convert CLI output to Agent events
+      const onOutput = (output: any) => {
+        if (output.sessionId === sessionId) {
+          // Map stdout to agent_response or task_complete based on content?
+          // For now just stream raw output as agent_response
+          sendEvent('agent_response', {
+             content: output.content,
+             timestamp: output.timestamp
+          })
+        }
+      }
+      
+      const onEnd = (session: any) => {
+        if (session.id === sessionId) {
+          sendEvent('session_end', { timestamp: new Date().toISOString() })
+          if (!res.writableEnded) {
+            res.end()
+          }
+          processManager.off('output', onOutput)
+          processManager.off('session:end', onEnd)
+        }
+      }
+
+      // 만약 이미 종료된 세션이라면?
+      const session = processManager.getSession(sessionId)
+      if (session && (session.status === 'completed' || session.status === 'failed')) {
+         // 이미 종료된 세션의 로그를 한꺼번에 보내주거나 종료 처리
+         onEnd(session)
+         return
+      }
+
+      processManager.on('output', onOutput)
+      processManager.on('session:end', onEnd)
+      
+      req.on('close', () => {
+        processManager.off('output', onOutput)
+        processManager.off('session:end', onEnd)
+      })
+      
+      return
+    }
+
+    // 4. Fallback to Python Server (Normal Flow)
     const targetUrl = `http://localhost:3002${req.originalUrl}`
 
     const fetchOptions: RequestInit = {
@@ -2274,6 +2422,9 @@ app.use('/api/agents', async (req, res) => {
     res.status(response.status).json(data)
   } catch (error) {
     console.error('Error proxying to Python agents server:', error)
+    
+    // Auto-fallback to CLI if Python server is down for execute requests?
+    // For now, just return error with hint
     res.status(503).json({
       success: false,
       error: 'Failed to connect to Python agents server',
