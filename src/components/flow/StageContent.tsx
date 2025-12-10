@@ -182,8 +182,14 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
   const showMajorHeaders = majorSections.length > 1
   const showSubHeaders = majorSections.some((m) => m.subSections.length > 1)
 
-  // 넘버링 형식 결정 함수 - task의 실제 taskOrder 값 사용
+  // 넘버링 형식 결정 함수 - displayId 우선, 없으면 기존 로직 폴백
   const getTaskNumber = (major: MajorSection, sub: SubSection, task: FlowTask) => {
+    // displayId가 있으면 그것을 사용 (파서에서 자동 생성된 순서 기반 ID)
+    if (task.displayId) {
+      return task.displayId
+    }
+
+    // 폴백: 기존 로직 (taskOrder 기반)
     const taskNum = task.taskOrder ?? 1
     if (showMajorHeaders && showSubHeaders) {
       // 3단계: 1.1.1, 1.1.2, ... (major.sub.task)

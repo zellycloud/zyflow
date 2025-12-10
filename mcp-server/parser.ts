@@ -2,6 +2,7 @@ import type { TaskGroup, Task, TasksFile } from './types.js'
 
 /**
  * Extended TaskGroup with hierarchy info for 3-level structure
+ * 순서 기반 displayId를 사용하여 안정적인 넘버링 제공
  */
 interface ExtendedTaskGroup extends TaskGroup {
   majorOrder?: number
@@ -12,74 +13,78 @@ interface ExtendedTaskGroup extends TaskGroup {
 }
 
 /**
+ * Phase 정보를 추적하기 위한 인터페이스
+ */
+interface PhaseInfo {
+  index: number        // 0-based Phase 순서
+  title: string
+  groupCount: number   // Phase 내 그룹 수 (태스크가 있는 그룹만)
+}
+
+/**
  * Parse tasks.md content into structured data
- * Uses the same flexible parser as the server for consistency
+ *
+ * 핵심 원칙:
+ * 1. tasks.md의 명시적 넘버링(task-1-1 등)은 무시
+ * 2. 순서 기반으로 displayId 자동 생성 (1.1.1, 1.1.2, ...)
+ * 3. lineNumber는 파일 참조용으로만 사용
  */
 export function parseTasksFile(changeId: string, content: string): TasksFile {
   const lines = content.split('\n')
-  const groups: ExtendedTaskGroup[] = []
+  const rawGroups: ExtendedTaskGroup[] = []
   let currentGroup: ExtendedTaskGroup | null = null
-  let groupCounter = 0
-  let taskCounter = 0
 
-  // 더 유연한 정규식 패턴 (server/parser-utils.ts와 동일)
+  // 정규식 패턴
   const patterns = {
+    // Phase/Major 섹션: ## Phase 1: Title 또는 ## 1. Title 또는 ## Title
     majorSections: [
-      /^##\s+(\d+)\.\s*(.+)$/,           // "## 1. Section"
-      /^##\s+Phase\s+(\d+):\s*(.+)$/i,   // "## Phase 1: Section"
-      /^##\s+(.+)$/                       // "## Section" (plain)
+      /^##\s+Phase\s+(\d+)[:.]?\s*(.*)$/i,   // "## Phase 1: Section"
+      /^##\s+(\d+)\.\s*(.+)$/,                // "## 1. Section"
+      /^##\s+(.+)$/                            // "## Section" (plain)
     ],
+    // 서브섹션: ### 1.1 Title 또는 ### Group: Title 또는 ### Title
     subsections: [
-      /^#{3,4}\s+([\d.]+)\s+(.+)$/,     // "### 1.1 Subsection"
-      /^#{3,4}\s+(.+)$/                   // "### Subsection" (plain)
+      /^#{3,4}\s+[\d.]+\s+(.+)$/,              // "### 1.1 Subsection" - 숫자 무시하고 제목만
+      /^#{3,4}\s+(.+)$/                         // "### Subsection" (plain)
     ],
-    // 태스크 패턴들 (들여쓰기된 하위 태스크도 지원)
+    // 태스크: - [x] task-1-1: Title 또는 - [ ] Title
     tasks: [
-      /^(\s*)-\s+\[([ xX])\]\s*([\d.]+)\s*(.+)$/,  // "- [ ] 1.1 Task" 또는 "  - [ ] 1.1 Task"
-      /^(\s*)-\s+\[([ xX])\]\s*(.+)$/               // "- [ ] Task" 또는 "  - [ ] Task"
+      /^(\s*)-\s+\[([ xX])\]\s*(?:task-[\d-]+:\s*)?(.+)$/,  // task-X-X: 프리픽스 무시
+      /^(\s*)-\s+\[([ xX])\]\s*[\d.]+\s+(.+)$/,              // 숫자 프리픽스 무시
+      /^(\s*)-\s+\[([ xX])\]\s*(.+)$/                        // 일반 태스크
     ]
   }
 
+  // 1단계: 원시 파싱 (그룹과 태스크 수집)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     const lineNumber = i + 1
     let matched = false
 
-    // 메인 섹션 확인
+    // 메인 섹션(Phase) 확인
     for (const pattern of patterns.majorSections) {
       const match = line.match(pattern)
       if (match) {
         if (currentGroup) {
-          groups.push(currentGroup)
+          rawGroups.push(currentGroup)
         }
 
-        groupCounter++
-        let majorOrder: number | undefined
-        let majorTitle: string
-
-        if (match[1] && /^\d+$/.test(match[1])) {
-          majorOrder = parseInt(match[1])
-          majorTitle = match[2]?.trim() || `Section ${majorOrder}`
-        } else if (match[0] && /Phase\s+(\d+)/i.test(match[0])) {
-          const phaseMatch = match[0].match(/Phase\s+(\d+)/i)
-          majorOrder = phaseMatch ? parseInt(phaseMatch[1]) : groupCounter
-          majorTitle = match[0].replace(/^##\s+/, '').trim()
+        // Phase 제목 추출 (숫자는 무시)
+        let title: string
+        if (match[2] !== undefined) {
+          // Phase N: Title 또는 N. Title 형식
+          title = match[2]?.trim() || match[0].replace(/^##\s+/, '').trim()
         } else {
-          majorOrder = groupCounter
-          majorTitle = match[1]?.trim() || `Section ${groupCounter}`
+          // ## Title 형식
+          title = match[1]?.trim() || ''
         }
 
         currentGroup = {
-          id: `group-${groupCounter}`,
-          title: majorTitle,
+          id: '',  // 나중에 설정
+          title,
           tasks: [],
-          majorOrder,
-          majorTitle,
-          subOrder: 1,
-          groupTitle: majorTitle,
-          groupOrder: groupCounter
+          majorTitle: title,
         }
-        taskCounter = 0
         matched = true
         break
       }
@@ -93,35 +98,19 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
         const match = line.match(pattern)
         if (match) {
           if (currentGroup) {
-            groups.push(currentGroup)
+            rawGroups.push(currentGroup)
           }
 
-          groupCounter++
-          let subOrder: number | undefined
-          let subTitle: string
+          const title = match[1]?.trim() || ''
+          const parentMajorTitle: string = currentGroup?.majorTitle || title
 
-          if (match[1] && /^[\d.]+$/.test(match[1])) {
-            const parts = match[1].split('.')
-            subOrder = parts.length > 1 ? parseInt(parts[1]) : 1
-            subTitle = `${match[1]} ${match[2]?.trim() || ''}`.trim()
-          } else {
-            subOrder = groupCounter
-            subTitle = match[1]?.trim() || `Subsection ${groupCounter}`
-          }
-
-          const parentMajorOrder: number = currentGroup?.majorOrder ?? groupCounter
-          const parentMajorTitle: string = currentGroup?.majorTitle ?? subTitle
           currentGroup = {
-            id: `group-${groupCounter}`,
-            title: subTitle,
+            id: '',  // 나중에 설정
+            title,
             tasks: [],
-            majorOrder: parentMajorOrder,
             majorTitle: parentMajorTitle,
-            subOrder,
-            groupTitle: subTitle,
-            groupOrder: groupCounter
+            groupTitle: title,
           }
-          taskCounter = 0
           matched = true
           break
         }
@@ -130,36 +119,23 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
 
     if (matched) continue
 
-    // 태스크 확인 (들여쓰기된 하위 태스크 포함)
+    // 태스크 확인
     if (currentGroup) {
       for (const pattern of patterns.tasks) {
         const match = line.match(pattern)
         if (match) {
-          // match[1] = 들여쓰기, match[2] = 체크 상태
           const indent = match[1] || ''
           const completed = match[2]?.toLowerCase() === 'x'
-          let taskTitle: string
-          let taskId: string
-
-          // 첫 번째 패턴: 번호가 있는 태스크 (match[3]=번호, match[4]=타이틀)
-          if (match[3] && /^[\d.]+$/.test(match[3])) {
-            taskTitle = match[4]?.trim() || ''
-            taskId = `task-${match[3].replace(/\./g, '-')}`
-          } else {
-            // 두 번째 패턴: 일반 태스크 (match[3]=타이틀)
-            taskTitle = match[3]?.trim() || ''
-            taskCounter++
-            taskId = `task-${currentGroup.id}-${taskCounter}`
-          }
+          const taskTitle = match[3]?.trim() || ''
 
           if (taskTitle) {
             const task: Task = {
-              id: taskId,
+              id: '',  // 나중에 설정
               title: taskTitle,
               completed,
-              groupId: currentGroup.id,
+              groupId: '',  // 나중에 설정
               lineNumber,
-              indent: indent.length  // 들여쓰기 레벨 저장
+              indent: indent.length
             }
 
             currentGroup.tasks.push(task)
@@ -173,15 +149,73 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
 
   // 마지막 그룹 저장
   if (currentGroup) {
-    groups.push(currentGroup)
+    rawGroups.push(currentGroup)
   }
 
-  return { changeId, groups }
+  // 2단계: 태스크가 있는 그룹만 필터링하고 순서 기반 ID 부여
+  const groupsWithTasks = rawGroups.filter(g => g.tasks.length > 0)
+
+  // Phase 그룹화 (majorTitle 기준)
+  const phaseMap = new Map<string, { groups: ExtendedTaskGroup[], index: number }>()
+  let phaseIndex = 0
+
+  for (const group of groupsWithTasks) {
+    const phaseName = group.majorTitle || 'Default'
+    if (!phaseMap.has(phaseName)) {
+      phaseMap.set(phaseName, { groups: [], index: phaseIndex++ })
+    }
+    phaseMap.get(phaseName)!.groups.push(group)
+  }
+
+  // 3단계: displayId 할당
+  const finalGroups: ExtendedTaskGroup[] = []
+  let globalGroupIndex = 0
+
+  for (const [phaseName, phaseData] of phaseMap) {
+    const { groups: phaseGroups, index: pIndex } = phaseData
+
+    for (let gIndex = 0; gIndex < phaseGroups.length; gIndex++) {
+      const group = phaseGroups[gIndex]
+      globalGroupIndex++
+
+      // 그룹 displayId: Phase.Group (1.1, 1.2, 2.1, ...)
+      const groupDisplayId = `${pIndex + 1}.${gIndex + 1}`
+
+      group.id = `group-${globalGroupIndex}`
+      group.displayId = groupDisplayId
+      group.phaseIndex = pIndex
+      group.groupIndex = gIndex
+      group.majorOrder = pIndex + 1
+      group.subOrder = gIndex + 1
+      group.groupOrder = globalGroupIndex
+      group.groupTitle = group.title
+
+      // 태스크 displayId 할당
+      for (let tIndex = 0; tIndex < group.tasks.length; tIndex++) {
+        const task = group.tasks[tIndex]
+
+        // 태스크 displayId: Phase.Group.Task (1.1.1, 1.1.2, ...)
+        const taskDisplayId = `${groupDisplayId}.${tIndex + 1}`
+
+        task.id = `task-${globalGroupIndex}-${tIndex + 1}`
+        task.displayId = taskDisplayId
+        task.groupId = group.id
+      }
+
+      finalGroups.push(group)
+    }
+  }
+
+  return { changeId, groups: finalGroups }
 }
 
 /**
  * Set task completion status in file content
- * Uses the same parsing logic as parseTasksFile for consistency
+ *
+ * 태스크 찾기 전략:
+ * 1. displayId로 찾기 (권장)
+ * 2. 제목 패턴 매칭으로 찾기 (폴백)
+ * 3. lineNumber는 현재 파일에서 실시간으로 찾음
  */
 export function setTaskStatus(
   content: string,
@@ -190,117 +224,115 @@ export function setTaskStatus(
 ): { newContent: string; task: Task } {
   const lines = content.split('\n')
 
-  let foundTask: Task | null = null
-  let currentGroupId = ''
-  let groupCounter = 0
-  let taskCounter = 0
+  // 먼저 파일을 파싱해서 태스크 찾기
+  const parsed = parseTasksFile('temp', content)
 
-  // Check if taskId is numbered (task-1-1) or auto-generated (task-group-xxx-n)
-  const isNumberedTask = /^task-[\d-]+$/.test(taskId) && !taskId.includes('group')
-  const taskNumber = isNumberedTask
-    ? taskId.replace('task-', '').replace(/-/g, '.')
-    : null
+  // taskId로 태스크 찾기 (id 또는 displayId)
+  let targetTask: Task | null = null
+  let targetGroup: TaskGroup | null = null
 
-  // 동일한 패턴 사용 (parseTasksFile과 일치)
-  const patterns = {
-    majorSections: [
-      /^##\s+(\d+)\.\s*(.+)$/,
-      /^##\s+Phase\s+(\d+):\s*(.+)$/i,
-      /^##\s+(.+)$/
-    ],
-    subsections: [
-      /^#{3,4}\s+([\d.]+)\s+(.+)$/,
-      /^#{3,4}\s+(.+)$/
-    ]
-  }
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    let matchedSection = false
-
-    // 메인 섹션 확인
-    for (const pattern of patterns.majorSections) {
-      const match = line.match(pattern)
-      if (match) {
-        groupCounter++
-        currentGroupId = `group-${groupCounter}`
-        taskCounter = 0
-        matchedSection = true
+  for (const group of parsed.groups) {
+    for (const task of group.tasks) {
+      if (task.id === taskId || task.displayId === taskId) {
+        targetTask = task
+        targetGroup = group
         break
       }
     }
+    if (targetTask) break
+  }
 
-    if (matchedSection) continue
+  // 레거시 ID 형식 지원 (task-group-N-M 또는 task-N-N)
+  if (!targetTask) {
+    // task-group-2-1 형식 파싱
+    const legacyGroupMatch = taskId.match(/^task-group-(\d+)-(\d+)$/)
+    if (legacyGroupMatch) {
+      const groupNum = parseInt(legacyGroupMatch[1])
+      const taskNum = parseInt(legacyGroupMatch[2])
 
-    // 서브섹션 확인
-    if (line.startsWith('###') || line.startsWith('####')) {
-      for (const pattern of patterns.subsections) {
-        const match = line.match(pattern)
-        if (match) {
-          groupCounter++
-          currentGroupId = `group-${groupCounter}`
-          taskCounter = 0
-          matchedSection = true
+      // 그룹 순서로 찾기
+      let groupIndex = 0
+      for (const group of parsed.groups) {
+        groupIndex++
+        if (groupIndex === groupNum && group.tasks.length >= taskNum) {
+          targetTask = group.tasks[taskNum - 1]
+          targetGroup = group
           break
         }
       }
     }
 
-    if (matchedSection) continue
+    // task-1-1 형식 (레거시 - 첫 번째 Phase의 첫 번째 그룹의 첫 번째 태스크)
+    const legacyNumMatch = taskId.match(/^task-(\d+)-(\d+)$/)
+    if (!targetTask && legacyNumMatch) {
+      const phaseNum = parseInt(legacyNumMatch[1])
+      const taskNum = parseInt(legacyNumMatch[2])
 
-    // Try numbered task match first (들여쓰기 포함)
-    const numberedTaskMatch = line.match(/^(\s*)(-\s+\[)([ xX])(\]\s*)([\d.]+)(\s*.+)$/)
-    if (numberedTaskMatch) {
-      if (isNumberedTask && numberedTaskMatch[5] === taskNumber) {
-        const newCheckmark = completed ? 'x' : ' '
-        const indent = numberedTaskMatch[1] || ''
-
-        lines[i] = `${indent}${numberedTaskMatch[2]}${newCheckmark}${numberedTaskMatch[4]}${numberedTaskMatch[5]}${numberedTaskMatch[6]}`
-
-        foundTask = {
-          id: taskId,
-          title: numberedTaskMatch[6].trim(),
-          completed,
-          groupId: currentGroupId,
-          lineNumber: i + 1,
-          indent: indent.length,
+      // Phase별로 그룹화된 것에서 찾기
+      for (const group of parsed.groups) {
+        const extGroup = group as ExtendedTaskGroup
+        if (extGroup.majorOrder === phaseNum || extGroup.phaseIndex === phaseNum - 1) {
+          if (group.tasks.length >= taskNum) {
+            targetTask = group.tasks[taskNum - 1]
+            targetGroup = group
+            break
+          }
         }
-        break
-      }
-      continue
-    }
-
-    // Try plain task match (unnumbered, 들여쓰기 포함)
-    const plainTaskMatch = line.match(/^(\s*)(-\s+\[)([ xX])(\]\s*)(.+)$/)
-    if (plainTaskMatch && currentGroupId) {
-      taskCounter++
-      const generatedTaskId = `task-${currentGroupId}-${taskCounter}`
-
-      if (!isNumberedTask && generatedTaskId === taskId) {
-        const newCheckmark = completed ? 'x' : ' '
-        const indent = plainTaskMatch[1] || ''
-
-        lines[i] = `${indent}${plainTaskMatch[2]}${newCheckmark}${plainTaskMatch[4]}${plainTaskMatch[5]}`
-
-        foundTask = {
-          id: taskId,
-          title: plainTaskMatch[5].trim(),
-          completed,
-          groupId: currentGroupId,
-          lineNumber: i + 1,
-          indent: indent.length,
-        }
-        break
       }
     }
   }
 
-  if (!foundTask) {
+  if (!targetTask) {
     throw new Error(`Task not found: ${taskId}`)
+  }
+
+  // lineNumber를 사용해서 해당 라인 수정
+  const lineIndex = targetTask.lineNumber - 1
+  const line = lines[lineIndex]
+
+  // 체크박스 상태 변경
+  const newLine = line.replace(
+    /^(\s*-\s+\[)([ xX])(\].*)$/,
+    `$1${completed ? 'x' : ' '}$3`
+  )
+
+  if (newLine === line) {
+    throw new Error(`Failed to update task at line ${targetTask.lineNumber}`)
+  }
+
+  lines[lineIndex] = newLine
+
+  // 업데이트된 태스크 반환
+  const updatedTask: Task = {
+    ...targetTask,
+    completed,
   }
 
   return {
     newContent: lines.join('\n'),
-    task: foundTask,
+    task: updatedTask,
   }
+}
+
+/**
+ * 제목으로 태스크 찾기 (보조 함수)
+ * 태스크 제목의 일부로 검색
+ */
+export function findTaskByTitle(
+  content: string,
+  titlePattern: string
+): Task | null {
+  const parsed = parseTasksFile('temp', content)
+
+  const pattern = titlePattern.toLowerCase()
+
+  for (const group of parsed.groups) {
+    for (const task of group.tasks) {
+      if (task.title.toLowerCase().includes(pattern)) {
+        return task
+      }
+    }
+  }
+
+  return null
 }

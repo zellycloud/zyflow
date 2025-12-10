@@ -1,4 +1,9 @@
-"""OpenSpec parser for tasks.md and other OpenSpec files."""
+"""OpenSpec parser for tasks.md and other OpenSpec files.
+
+순서 기반 displayId를 사용하여 안정적인 넘버링 제공.
+tasks.md의 명시적 넘버링(task-1-1 등)은 무시하고,
+순서 기반으로 displayId를 자동 생성 (1.1.1, 1.1.2, ...).
+"""
 
 import re
 from dataclasses import dataclass, field
@@ -16,6 +21,7 @@ class Task:
     line_number: int
     group_id: str
     indent: int = 0
+    display_id: str = ""  # 표시용 ID (예: "1.1.1") - 순서 기반 자동 생성
 
 
 @dataclass
@@ -28,6 +34,9 @@ class TaskGroup:
     major_order: int = 1
     major_title: str = ""
     sub_order: int = 1
+    display_id: str = ""  # 표시용 그룹 ID (예: "1.1")
+    phase_index: int = 0  # Phase 내 순서 (0-based)
+    group_index: int = 0  # 전체 그룹 순서 (0-based)
 
 
 @dataclass
@@ -59,6 +68,11 @@ class ParsedTasks:
 def parse_tasks_file(change_id: str, content: str) -> ParsedTasks:
     """Parse tasks.md content into structured data.
 
+    핵심 원칙:
+    1. tasks.md의 명시적 넘버링(task-1-1 등)은 무시
+    2. 순서 기반으로 displayId 자동 생성 (1.1.1, 1.1.2, ...)
+    3. lineNumber는 파일 참조용으로만 사용
+
     Args:
         change_id: The change ID (directory name)
         content: Raw content of tasks.md
@@ -69,70 +83,156 @@ def parse_tasks_file(change_id: str, content: str) -> ParsedTasks:
     lines = content.split("\n")
     result = ParsedTasks(change_id=change_id, title=change_id)
 
-    current_major_order = 0
-    current_major_title = ""
-    current_sub_order = 0
+    # 정규식 패턴
+    patterns = {
+        # Phase/Major 섹션
+        "major_sections": [
+            re.compile(r"^##\s+Phase\s+(\d+)[:.]?\s*(.*)$", re.IGNORECASE),
+            re.compile(r"^##\s+(\d+)\.\s*(.+)$"),
+            re.compile(r"^##\s+(.+)$"),
+        ],
+        # 서브섹션
+        "subsections": [
+            re.compile(r"^#{3,4}\s+[\d.]+\s+(.+)$"),  # 숫자 무시하고 제목만
+            re.compile(r"^#{3,4}\s+(.+)$"),
+        ],
+        # 태스크
+        "tasks": [
+            re.compile(r"^(\s*)-\s+\[([ xX])\]\s*(?:task-[\d-]+:\s*)?(.+)$"),  # task-X-X: 프리픽스 무시
+            re.compile(r"^(\s*)-\s+\[([ xX])\]\s*[\d.]+\s+(.+)$"),  # 숫자 프리픽스 무시
+            re.compile(r"^(\s*)-\s+\[([ xX])\]\s*(.+)$"),  # 일반 태스크
+        ],
+    }
+
+    # 1단계: 원시 파싱 (그룹과 태스크 수집)
+    raw_groups: list[TaskGroup] = []
     current_group: Optional[TaskGroup] = None
-    group_count = 0
 
     for line_num, line in enumerate(lines, start=1):
+        matched = False
+
         # Title (# Tasks: ...)
         title_match = re.match(r"^#\s+(?:Tasks:\s+)?(.+)$", line)
         if title_match:
             result.title = title_match.group(1).strip()
             continue
 
-        # Phase header (## Phase N: Title)
-        phase_match = re.match(r"^##\s+(?:Phase\s+)?(\d+)[:.]?\s*(.*)$", line)
-        if phase_match:
-            current_major_order = int(phase_match.group(1))
-            current_major_title = phase_match.group(2).strip() or f"Phase {current_major_order}"
-            current_sub_order = 0
+        # 메인 섹션(Phase) 확인
+        for pattern in patterns["major_sections"]:
+            match = pattern.match(line)
+            if match:
+                if current_group:
+                    raw_groups.append(current_group)
+
+                # Phase 제목 추출 (숫자는 무시)
+                if match.lastindex and match.lastindex >= 2:
+                    title = match.group(2).strip() if match.group(2) else line.replace("## ", "").strip()
+                else:
+                    title = match.group(1).strip() if match.group(1) else ""
+
+                current_group = TaskGroup(
+                    id="",  # 나중에 설정
+                    title=title,
+                    major_title=title,
+                )
+                matched = True
+                break
+
+        if matched:
             continue
 
-        # Subsection header (### N.N Title)
-        subsection_match = re.match(r"^###\s+(\d+)\.(\d+)\s+(.+)$", line)
-        if subsection_match:
-            major = int(subsection_match.group(1))
-            sub = int(subsection_match.group(2))
-            title = subsection_match.group(3).strip()
+        # 서브섹션 확인
+        if line.startswith("###") or line.startswith("####"):
+            for pattern in patterns["subsections"]:
+                match = pattern.match(line)
+                if match:
+                    if current_group:
+                        raw_groups.append(current_group)
 
-            if major != current_major_order:
-                current_major_order = major
-                current_major_title = f"Phase {major}"
+                    title = match.group(1).strip() if match.group(1) else ""
+                    parent_major_title = current_group.major_title if current_group else title
 
-            current_sub_order = sub
-            group_count += 1
+                    current_group = TaskGroup(
+                        id="",  # 나중에 설정
+                        title=title,
+                        major_title=parent_major_title,
+                    )
+                    matched = True
+                    break
 
-            current_group = TaskGroup(
-                id=f"group-{group_count}",
-                title=f"{major}.{sub} {title}",
-                major_order=current_major_order,
-                major_title=current_major_title,
-                sub_order=current_sub_order,
-            )
-            result.groups.append(current_group)
+        if matched:
             continue
 
-        # Task item (- [ ] or - [x])
-        task_match = re.match(r"^(\s*)-\s+\[([ xX])\]\s+(.+)$", line)
-        if task_match and current_group is not None:
-            indent = len(task_match.group(1))
-            completed = task_match.group(2).lower() == "x"
-            title = task_match.group(3).strip()
+        # 태스크 확인
+        if current_group:
+            for pattern in patterns["tasks"]:
+                match = pattern.match(line)
+                if match:
+                    indent = len(match.group(1)) if match.group(1) else 0
+                    completed = match.group(2).lower() == "x"
+                    task_title = match.group(3).strip() if match.group(3) else ""
 
-            task_num = len(current_group.tasks) + 1
-            task_id = f"task-group-{group_count}-{task_num}"
+                    if task_title:
+                        task = Task(
+                            id="",  # 나중에 설정
+                            title=task_title,
+                            completed=completed,
+                            line_number=line_num,
+                            group_id="",  # 나중에 설정
+                            indent=indent,
+                        )
+                        current_group.tasks.append(task)
+                        matched = True
+                        break
 
-            task = Task(
-                id=task_id,
-                title=title,
-                completed=completed,
-                line_number=line_num,
-                group_id=current_group.id,
-                indent=indent,
-            )
-            current_group.tasks.append(task)
+    # 마지막 그룹 저장
+    if current_group:
+        raw_groups.append(current_group)
+
+    # 2단계: 태스크가 있는 그룹만 필터링
+    groups_with_tasks = [g for g in raw_groups if g.tasks]
+
+    # Phase 그룹화 (major_title 기준)
+    phase_map: dict[str, dict] = {}
+    phase_index = 0
+
+    for group in groups_with_tasks:
+        phase_name = group.major_title or "Default"
+        if phase_name not in phase_map:
+            phase_map[phase_name] = {"groups": [], "index": phase_index}
+            phase_index += 1
+        phase_map[phase_name]["groups"].append(group)
+
+    # 3단계: displayId 할당
+    global_group_index = 0
+
+    for phase_name, phase_data in phase_map.items():
+        phase_groups = phase_data["groups"]
+        p_index = phase_data["index"]
+
+        for g_index, group in enumerate(phase_groups):
+            global_group_index += 1
+
+            # 그룹 displayId: Phase.Group (1.1, 1.2, 2.1, ...)
+            group_display_id = f"{p_index + 1}.{g_index + 1}"
+
+            group.id = f"group-{global_group_index}"
+            group.display_id = group_display_id
+            group.phase_index = p_index
+            group.group_index = g_index
+            group.major_order = p_index + 1
+            group.sub_order = g_index + 1
+
+            # 태스크 displayId 할당
+            for t_index, task in enumerate(group.tasks):
+                # 태스크 displayId: Phase.Group.Task (1.1.1, 1.1.2, ...)
+                task_display_id = f"{group_display_id}.{t_index + 1}"
+
+                task.id = f"task-{global_group_index}-{t_index + 1}"
+                task.display_id = task_display_id
+                task.group_id = group.id
+
+            result.groups.append(group)
 
     return result
 
@@ -265,10 +365,11 @@ class OpenSpecContext:
             parts.append("## Current Tasks\n")
             parts.append(f"Progress: {self.tasks.progress}% ({self.tasks.completed_tasks}/{self.tasks.total_tasks})\n\n")
             for group in self.tasks.groups:
-                parts.append(f"### {group.title}\n")
+                # displayId 사용
+                parts.append(f"### {group.display_id} {group.title}\n")
                 for task in group.tasks:
                     status = "[x]" if task.completed else "[ ]"
-                    parts.append(f"- {status} {task.title}\n")
+                    parts.append(f"- {status} {task.display_id} {task.title}\n")
                 parts.append("\n")
 
         return "".join(parts)
