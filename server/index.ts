@@ -32,7 +32,7 @@ const httpServer = createServer(app)
 initWebSocket(httpServer)
 
 // 서버 시작
-httpServer.listen(PORT, async () => {
+httpServer.listen(PORT, '0.0.0.0', async () => {
   console.log(`ZyFlow API server running on http://localhost:${PORT}`)
 
   // 1. 서버 시작 시 모든 프로젝트의 Changes 초기 동기화

@@ -434,7 +434,7 @@ export class ReplayEngine implements IReplayEngine {
       const processedEvents = await this.prepareEvents(events, options);
       
       // 체크포인트 생성 (활성화된 경우)
-      let checkpointInterval = options.checkpointInterval || 100;
+      const checkpointInterval = options.checkpointInterval || 100;
       let lastCheckpoint = 0;
 
       // 이벤트 재생
