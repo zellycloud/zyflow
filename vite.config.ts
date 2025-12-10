@@ -34,8 +34,9 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    environment: 'node',
-    include: ['**/*.test.ts'],
+    environment: 'jsdom',
+    include: ['**/*.test.ts', '**/*.test.tsx'],
     exclude: ['node_modules', 'dist', '.shadcn-admin-ref'],
+    setupFiles: ['./src/test/setup.ts'],
   },
 })

@@ -26,6 +26,33 @@ import {
   handleTaskView,
 } from './task-tools.js'
 
+// Integration Hub imports
+import {
+  integrationToolDefinitions,
+  handleIntegrationContext,
+  handleListAccounts,
+  handleGetEnv,
+  handleApplyGit,
+  handleGetTestAccount,
+  handleScanEnv,
+  handleImportEnv,
+  // 새로운 로컬 설정 도구
+  handleInitLocal,
+  handleExportToLocal,
+} from './integration-tools.js'
+
+// Agent Tools imports
+import {
+  agentToolDefinitions,
+  handleExecuteChange,
+  handleGetAgentStatus,
+  handleStopAgent,
+  handleResumeAgent,
+  handleListAgentSessions,
+  handleGetAgentLogs,
+  handleDeleteAgentSession,
+} from './agent-tools.js'
+
 // Change Log & Replay imports
 import { getChangeLogManager } from '../server/change-log.js'
 import { getReplayEngine } from '../server/replay-engine.js'
@@ -88,8 +115,9 @@ const PROJECT_PATH = process.env.ZYFLOW_PROJECT || process.cwd()
 /**
  * List all changes in the openspec/changes directory
  */
-async function listChanges(): Promise<Change[]> {
-  const changesDir = join(PROJECT_PATH, 'openspec', 'changes')
+async function listChanges(projectPath?: string): Promise<Change[]> {
+  const basePath = projectPath || PROJECT_PATH
+  const changesDir = join(basePath, 'openspec', 'changes')
   const changes: Change[] = []
 
   try {
@@ -149,8 +177,9 @@ async function listChanges(): Promise<Change[]> {
 /**
  * Get tasks for a specific change
  */
-async function getTasks(changeId: string): Promise<TasksFile> {
-  const tasksPath = join(PROJECT_PATH, 'openspec', 'changes', changeId, 'tasks.md')
+async function getTasks(changeId: string, projectPath?: string): Promise<TasksFile> {
+  const basePath = projectPath || PROJECT_PATH
+  const tasksPath = join(basePath, 'openspec', 'changes', changeId, 'tasks.md')
   const content = await readFile(tasksPath, 'utf-8')
   return parseTasksFile(changeId, content)
 }
@@ -158,8 +187,9 @@ async function getTasks(changeId: string): Promise<TasksFile> {
 /**
  * Get the next incomplete task with context
  */
-async function getNextTask(changeId: string): Promise<NextTaskResponse> {
-  const tasksFile = await getTasks(changeId)
+async function getNextTask(changeId: string, projectPath?: string): Promise<NextTaskResponse> {
+  const basePath = projectPath || PROJECT_PATH
+  const tasksFile = await getTasks(changeId, basePath)
 
   // Find first incomplete task
   let nextTask: Task | null = null
@@ -178,7 +208,7 @@ async function getNextTask(changeId: string): Promise<NextTaskResponse> {
 
   // Build context even if no task found
   const context = await buildTaskContext(
-    PROJECT_PATH,
+    basePath,
     changeId,
     tasksFile,
     nextTask || { id: '', title: '', completed: false, groupId: '', lineNumber: 0 }
@@ -194,8 +224,9 @@ async function getNextTask(changeId: string): Promise<NextTaskResponse> {
 /**
  * Get detailed context for a specific task
  */
-async function getTaskContext(changeId: string, taskId: string) {
-  const tasksFile = await getTasks(changeId)
+async function getTaskContext(changeId: string, taskId: string, projectPath?: string) {
+  const basePath = projectPath || PROJECT_PATH
+  const tasksFile = await getTasks(changeId, basePath)
 
   // Find the task
   let targetTask: Task | null = null
@@ -214,8 +245,8 @@ async function getTaskContext(changeId: string, taskId: string) {
     throw new Error(`Task not found: ${taskId}`)
   }
 
-  const context = await buildTaskContext(PROJECT_PATH, changeId, tasksFile, targetTask)
-  const design = await readDesign(PROJECT_PATH, changeId)
+  const context = await buildTaskContext(basePath, changeId, tasksFile, targetTask)
+  const design = await readDesign(basePath, changeId)
 
   return {
     task: targetTask,
@@ -230,8 +261,9 @@ async function getTaskContext(changeId: string, taskId: string) {
 /**
  * Mark a task as complete
  */
-async function markComplete(changeId: string, taskId: string): Promise<Task> {
-  const tasksPath = join(PROJECT_PATH, 'openspec', 'changes', changeId, 'tasks.md')
+async function markComplete(changeId: string, taskId: string, projectPath?: string): Promise<Task> {
+  const basePath = projectPath || PROJECT_PATH
+  const tasksPath = join(basePath, 'openspec', 'changes', changeId, 'tasks.md')
   const content = await readFile(tasksPath, 'utf-8')
 
   const { newContent, task } = setTaskStatus(content, taskId, true)
@@ -243,8 +275,9 @@ async function markComplete(changeId: string, taskId: string): Promise<Task> {
 /**
  * Mark a task as incomplete
  */
-async function markIncomplete(changeId: string, taskId: string): Promise<Task> {
-  const tasksPath = join(PROJECT_PATH, 'openspec', 'changes', changeId, 'tasks.md')
+async function markIncomplete(changeId: string, taskId: string, projectPath?: string): Promise<Task> {
+  const basePath = projectPath || PROJECT_PATH
+  const tasksPath = join(basePath, 'openspec', 'changes', changeId, 'tasks.md')
   const content = await readFile(tasksPath, 'utf-8')
 
   const { newContent, task } = setTaskStatus(content, taskId, false)
@@ -275,7 +308,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         description: '현재 프로젝트의 OpenSpec 변경 제안 목록을 조회합니다. 각 변경의 ID, 제목, 진행률, 완료/전체 태스크 수를 반환합니다.',
         inputSchema: {
           type: 'object' as const,
-          properties: {},
+          properties: {
+            projectPath: {
+              type: 'string',
+              description: '프로젝트 경로 (선택, 기본값: 현재 디렉토리)',
+            },
+          },
           required: [],
         },
       },
@@ -288,6 +326,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             changeId: {
               type: 'string',
               description: '변경 제안 ID (예: add-payment-method-registry)',
+            },
+            projectPath: {
+              type: 'string',
+              description: '프로젝트 경로 (선택, 기본값: 현재 디렉토리)',
             },
           },
           required: ['changeId'],
@@ -302,6 +344,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             changeId: {
               type: 'string',
               description: '변경 제안 ID',
+            },
+            projectPath: {
+              type: 'string',
+              description: '프로젝트 경로 (선택, 기본값: 현재 디렉토리)',
             },
           },
           required: ['changeId'],
@@ -321,6 +367,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'string',
               description: '태스크 ID (예: task-1-1)',
             },
+            projectPath: {
+              type: 'string',
+              description: '프로젝트 경로 (선택, 기본값: 현재 디렉토리)',
+            },
           },
           required: ['changeId', 'taskId'],
         },
@@ -338,6 +388,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             taskId: {
               type: 'string',
               description: '태스크 ID',
+            },
+            projectPath: {
+              type: 'string',
+              description: '프로젝트 경로 (선택, 기본값: 현재 디렉토리)',
             },
           },
           required: ['changeId', 'taskId'],
@@ -357,13 +411,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'string',
               description: '태스크 ID',
             },
+            projectPath: {
+              type: 'string',
+              description: '프로젝트 경로 (선택, 기본값: 현재 디렉토리)',
+            },
           },
           required: ['changeId', 'taskId'],
         },
       },
       // Task management tools (SQLite-based)
       ...taskToolDefinitions,
-      
+
+      // Integration Hub Tools
+      ...integrationToolDefinitions,
+
+      // Agent Tools
+      ...agentToolDefinitions,
+
       // Change Log Tools
       {
         name: 'get_events',
@@ -595,20 +659,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
       case 'zyflow_list_changes': {
-        const changes = await listChanges()
+        const { projectPath } = args as { projectPath?: string }
+        const changes = await listChanges(projectPath)
         return {
           content: [
             {
               type: 'text' as const,
-              text: JSON.stringify({ changes, projectPath: PROJECT_PATH }, null, 2),
+              text: JSON.stringify({ changes, projectPath: projectPath || PROJECT_PATH }, null, 2),
             },
           ],
         }
       }
 
       case 'zyflow_get_tasks': {
-        const { changeId } = args as { changeId: string }
-        const tasksFile = await getTasks(changeId)
+        const { changeId, projectPath } = args as { changeId: string; projectPath?: string }
+        const tasksFile = await getTasks(changeId, projectPath)
         return {
           content: [
             {
@@ -620,8 +685,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'zyflow_get_next_task': {
-        const { changeId } = args as { changeId: string }
-        const result = await getNextTask(changeId)
+        const { changeId, projectPath } = args as { changeId: string; projectPath?: string }
+        const result = await getNextTask(changeId, projectPath)
         return {
           content: [
             {
@@ -633,8 +698,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'zyflow_get_task_context': {
-        const { changeId, taskId } = args as { changeId: string; taskId: string }
-        const result = await getTaskContext(changeId, taskId)
+        const { changeId, taskId, projectPath } = args as { changeId: string; taskId: string; projectPath?: string }
+        const result = await getTaskContext(changeId, taskId, projectPath)
         return {
           content: [
             {
@@ -646,11 +711,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'zyflow_mark_complete': {
-        const { changeId, taskId } = args as { changeId: string; taskId: string }
-        const task = await markComplete(changeId, taskId)
+        const { changeId, taskId, projectPath } = args as { changeId: string; taskId: string; projectPath?: string }
+        const task = await markComplete(changeId, taskId, projectPath)
 
         // Get updated progress
-        const tasksFile = await getTasks(changeId)
+        const tasksFile = await getTasks(changeId, projectPath)
         const allTasks = tasksFile.groups.flatMap(g => g.tasks)
         const completed = allTasks.filter(t => t.completed).length
         const total = allTasks.length
@@ -671,11 +736,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'zyflow_mark_incomplete': {
-        const { changeId, taskId } = args as { changeId: string; taskId: string }
-        const task = await markIncomplete(changeId, taskId)
+        const { changeId, taskId, projectPath } = args as { changeId: string; taskId: string; projectPath?: string }
+        const task = await markIncomplete(changeId, taskId, projectPath)
 
         // Get updated progress
-        const tasksFile = await getTasks(changeId)
+        const tasksFile = await getTasks(changeId, projectPath)
         const allTasks = tasksFile.groups.flatMap(g => g.tasks)
         const completed = allTasks.filter(t => t.completed).length
         const total = allTasks.length
@@ -750,24 +815,163 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
 
+      // Integration Hub Tools
+      case 'integration_context': {
+        const result = await handleIntegrationContext(args as { projectId: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'integration_list_accounts': {
+        const result = await handleListAccounts(args as { type?: 'github' | 'supabase' | 'vercel' | 'sentry' | 'custom' })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'integration_get_env': {
+        const result = await handleGetEnv(args as { projectId: string; envId?: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'integration_apply_git': {
+        const result = await handleApplyGit(args as { projectId: string; scope?: 'local' | 'global' }, PROJECT_PATH)
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'integration_get_test_account': {
+        const result = await handleGetTestAccount(args as { projectId: string; role?: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'integration_scan_env': {
+        const result = await handleScanEnv(args as { projectPath: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'integration_import_env': {
+        const result = await handleImportEnv(args as { projectPath: string; services: Array<{ type: string; name: string }> })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      // 새로운 로컬 설정 도구
+      case 'integration_init_local': {
+        const result = await handleInitLocal(args as { projectPath: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'integration_export_to_local': {
+        const result = await handleExportToLocal(args as {
+          projectPath: string
+          projectId: string
+          includeEnvironments?: boolean
+          includeTestAccounts?: boolean
+        })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      // Agent Tools
+      case 'zyflow_execute_change': {
+        const result = await handleExecuteChange(
+          args as { changeId: string; projectPath?: string; model?: 'claude-sonnet' | 'claude-haiku' | 'claude-opus' },
+          PROJECT_PATH
+        )
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_get_agent_status': {
+        const result = await handleGetAgentStatus(args as { sessionId: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_stop_agent': {
+        const result = await handleStopAgent(args as { sessionId: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_resume_agent': {
+        const result = await handleResumeAgent(args as { sessionId: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_list_agent_sessions': {
+        const result = await handleListAgentSessions(args as { status?: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_get_agent_logs': {
+        const result = await handleGetAgentLogs(args as { sessionId: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_delete_agent_session': {
+        const result = await handleDeleteAgentSession(args as { sessionId: string })
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
       // Change Log Tools
       case 'get_events':
-        return await handleGetEvents(args);
+        return await handleGetEvents((args || {}) as GetEventsArgs);
       case 'get_event_statistics':
-        return await handleGetEventStatistics(args);
+        return await handleGetEventStatistics((args || {}) as GetEventStatisticsArgs);
       case 'search_events':
-        return await handleSearchEvents(args);
+        return await handleSearchEvents(args as unknown as SearchEventsArgs);
       case 'export_events':
-        return await handleExportEvents(args);
-      
+        return await handleExportEvents((args || {}) as ExportEventsArgs);
+
       // Replay Tools
       case 'create_replay_session':
-        return await handleCreateReplaySession(args);
+        return await handleCreateReplaySession(args as unknown as CreateReplaySessionArgs);
       case 'start_replay':
-        return await handleStartReplay(args);
+        return await handleStartReplay(args as unknown as StartReplayArgs);
       case 'get_replay_progress':
-        return await handleGetReplayProgress(args);
-      
+        return await handleGetReplayProgress(args as unknown as GetReplayProgressArgs);
+
       default:
         throw new Error(`Unknown tool: ${name}`)
     }

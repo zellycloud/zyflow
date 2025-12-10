@@ -3,14 +3,18 @@ import type { SelectedItem } from '@/App'
 import { ProjectDashboard } from './ProjectDashboard'
 import { ChangeDetail } from './ChangeDetail'
 import { StandaloneTasks } from './StandaloneTasks'
+import { SettingsPage } from '@/components/settings'
+import { ProjectSettings } from '@/components/settings/ProjectSettings'
+import { AgentPage } from '@/components/agent'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { useSelectedData } from '@/hooks/useFlowChanges'
 
 interface FlowContentProps {
   selectedItem: SelectedItem
+  onSelectItem?: (item: SelectedItem) => void
 }
 
-export function FlowContent({ selectedItem }: FlowContentProps) {
+export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
   const { data: projectsData, isLoading } = useProjectsAllData()
   // 선택된 항목에 따라 관련 데이터 미리 가져오기 (성능 최적화)
   useSelectedData(selectedItem)
@@ -37,9 +41,14 @@ export function FlowContent({ selectedItem }: FlowContentProps) {
     )
   }
 
+  // Settings 페이지는 프로젝트 선택 없이 표시
+  if (selectedItem.type === 'settings') {
+    return <SettingsPage />
+  }
+
   // 선택된 프로젝트가 활성 프로젝트와 다르면 렌더링하지 않음 (404 방지)
   // 프로젝트 전환 중일 때 이전 프로젝트의 Change를 요청하지 않도록 함
-  if (selectedItem.projectId !== projectsData?.activeProjectId) {
+  if ('projectId' in selectedItem && selectedItem.projectId !== projectsData?.activeProjectId) {
     return (
       <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
         <Loader2 className="h-8 w-8 mb-4 animate-spin opacity-50" />
@@ -47,6 +56,11 @@ export function FlowContent({ selectedItem }: FlowContentProps) {
       </div>
     )
   }
+
+  // 프로젝트 찾기 (project-settings에서 사용)
+  const selectedProject = projectsData?.projects.find(
+    (p) => 'projectId' in selectedItem && p.id === selectedItem.projectId
+  )
 
   switch (selectedItem.type) {
     case 'project':
@@ -56,10 +70,31 @@ export function FlowContent({ selectedItem }: FlowContentProps) {
         <ChangeDetail
           projectId={selectedItem.projectId}
           changeId={selectedItem.changeId}
+          onArchived={() => {
+            // 아카이브 후 프로젝트 대시보드로 이동
+            onSelectItem?.({ type: 'project', projectId: selectedItem.projectId })
+          }}
         />
       )
     case 'standalone-tasks':
       return <StandaloneTasks projectId={selectedItem.projectId} />
+    case 'project-settings':
+      if (!selectedProject) {
+        return (
+          <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+            <p>프로젝트를 찾을 수 없습니다</p>
+          </div>
+        )
+      }
+      return <ProjectSettings project={selectedProject} />
+    case 'agent':
+      return (
+        <AgentPage
+          projectId={selectedItem.projectId}
+          changeId={selectedItem.changeId}
+          projectPath={selectedProject?.path}
+        />
+      )
     default:
       return null
   }

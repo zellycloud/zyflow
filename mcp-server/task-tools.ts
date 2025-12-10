@@ -20,11 +20,15 @@ export interface TaskToolResult {
   error?: string;
 }
 
-// Initialize DB with project path
+// 현재 프로젝트 ID (MCP가 실행되는 프로젝트)
 let currentProjectId: string = '';
 
+/**
+ * DB 초기화 및 프로젝트 ID 설정
+ * 중앙 DB (~/.zyflow/tasks.db)를 사용하므로 projectPath는 projectId 계산에만 사용
+ */
 export function initTaskDb(projectPath: string): void {
-  initDb(projectPath);
+  initDb(); // 중앙 DB 초기화 (projectPath 무시)
   // Extract project ID from path (config.ts의 addProject와 동일한 로직 사용)
   currentProjectId = projectPath.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
 }

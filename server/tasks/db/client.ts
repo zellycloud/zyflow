@@ -3,23 +3,23 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema.js';
 import { existsSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
+import { homedir } from 'os';
 
 let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 let sqlite: Database.Database | null = null;
 let currentDbPath: string | null = null;
 
-export function getDbPath(projectRoot?: string): string {
-  const root = projectRoot || process.cwd();
-  return join(root, '.zyflow', 'tasks.db');
+/**
+ * 중앙 DB 경로 반환
+ * 모든 프로젝트가 ~/.zyflow/tasks.db를 공유
+ * projectRoot 파라미터는 하위 호환성을 위해 유지하지만 무시됨
+ */
+export function getDbPath(_projectRoot?: string): string {
+  return join(homedir(), '.zyflow', 'tasks.db');
 }
 
-export function initDb(projectRoot?: string): ReturnType<typeof drizzle<typeof schema>> {
-  const dbPath = getDbPath(projectRoot);
-
-  // 다른 프로젝트의 DB로 전환해야 하는 경우 기존 연결 닫기
-  if (db && currentDbPath && currentDbPath !== dbPath) {
-    closeDb();
-  }
+export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof schema>> {
+  const dbPath = getDbPath();
 
   if (db) return db;
 
@@ -43,9 +43,22 @@ export function initDb(projectRoot?: string): ReturnType<typeof drizzle<typeof s
     );
   `);
 
-  // Initialize task sequence if not exists
+  // Initialize origin-based task sequences
   sqlite.exec(`
-    INSERT OR IGNORE INTO sequences (name, value) VALUES ('task', 0);
+    INSERT OR IGNORE INTO sequences (name, value) VALUES ('task_inbox', 0);
+    INSERT OR IGNORE INTO sequences (name, value) VALUES ('task_openspec', 0);
+  `);
+
+  // Sync sequence values with actual max task IDs per origin
+  sqlite.exec(`
+    UPDATE sequences
+    SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0)
+    WHERE name = 'task_inbox' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0);
+  `);
+  sqlite.exec(`
+    UPDATE sequences
+    SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'openspec'), 0)
+    WHERE name = 'task_openspec' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'openspec'), 0);
   `);
 
   // Create changes table (Flow의 최상위 단위)
@@ -173,6 +186,40 @@ export function initDb(projectRoot?: string): ReturnType<typeof drizzle<typeof s
     sqlite.exec(`UPDATE tasks SET project_id = 'default' WHERE project_id IS NULL`);
   } catch (e) {
     console.error('Migration warning (project_id update):', e);
+  }
+
+  // Migration: Convert to composite primary key (origin, id)
+  // This allows inbox and openspec tasks to have separate ID sequences
+  try {
+    const tableInfo = sqlite.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='tasks'").get() as { sql: string } | undefined;
+    // Check if already migrated (has composite key)
+    if (tableInfo?.sql && !tableInfo.sql.includes('PRIMARY KEY (origin, id)')) {
+      console.log('Migrating tasks table to composite primary key (origin, id)...');
+
+      // Reassign inbox task IDs starting from 1
+      const inboxTasks = sqlite.prepare(`
+        SELECT id FROM tasks WHERE origin = 'inbox' ORDER BY created_at, id
+      `).all() as Array<{ id: number }>;
+
+      let newInboxId = 1;
+      for (const task of inboxTasks) {
+        sqlite.prepare(`UPDATE tasks SET id = ? WHERE id = ? AND origin = 'inbox'`).run(-task.id - 100000, task.id);
+      }
+      for (const task of inboxTasks) {
+        sqlite.prepare(`UPDATE tasks SET id = ? WHERE id = ? AND origin = 'inbox'`).run(newInboxId++, -task.id - 100000);
+      }
+
+      // Update inbox sequence
+      sqlite.prepare(`UPDATE sequences SET value = ? WHERE name = 'task_inbox'`).run(newInboxId - 1);
+
+      // Update openspec sequence
+      const maxOpenspecId = sqlite.prepare(`SELECT MAX(id) as max FROM tasks WHERE origin = 'openspec'`).get() as { max: number } | undefined;
+      sqlite.prepare(`UPDATE sequences SET value = ? WHERE name = 'task_openspec'`).run(maxOpenspecId?.max ?? 0);
+
+      console.log(`Migration completed: ${inboxTasks.length} inbox tasks renumbered (1-${newInboxId - 1})`);
+    }
+  } catch (e) {
+    console.error('Migration warning (composite key):', e);
   }
 
   // Migration: Convert TEXT id to INTEGER id

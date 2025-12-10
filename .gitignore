@@ -33,3 +33,19 @@ dist-ssr
 server/server/
 server/src/
 tmp/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+py-agents/.venv/
+py-agents/venv/
+py-agents/.env
+py-agents/*.egg-info/
+py-agents/.pytest_cache/
+py-agents/.ruff_cache/
+py-agents/.coverage
+py-agents/htmlcov/
+*.db

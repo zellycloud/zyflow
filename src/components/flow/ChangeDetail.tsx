@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Loader2, FileText, Copy, Check, GitBranch, GitCommit, Upload, Settings, GitPullRequest } from 'lucide-react'
-import { useFlowChangeDetail } from '@/hooks/useFlowChanges'
+import { Loader2, FileText, Copy, Check, GitBranch, GitCommit, Upload, Settings, GitPullRequest, Archive } from 'lucide-react'
+import { useFlowChangeDetail, useArchiveChange } from '@/hooks/useFlowChanges'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
@@ -20,6 +20,16 @@ import {
   CreatePRDialog,
   type PushTiming,
 } from '@/components/git/ChangeWorkflowDialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { useCurrentChangeBranch, useChangePush, useConflicts } from '@/hooks/useChangeGit'
 import { RemoteStatusBanner } from '@/components/git/RemoteStatusBanner'
 import { ConflictResolutionDialog, ConflictBanner } from '@/components/git/ConflictResolutionDialog'
@@ -28,9 +38,10 @@ import type { Stage } from '@/types'
 interface ChangeDetailProps {
   projectId: string
   changeId: string
+  onArchived?: () => void
 }
 
-export function ChangeDetail({ projectId, changeId }: ChangeDetailProps) {
+export function ChangeDetail({ projectId, changeId, onArchived }: ChangeDetailProps) {
   const [activeTab, setActiveTab] = useState<Stage>('task')
   const [copied, setCopied] = useState(false)
   const { data, isLoading, error } = useFlowChangeDetail(changeId)
@@ -54,6 +65,11 @@ export function ChangeDetail({ projectId, changeId }: ChangeDetailProps) {
 
   // 충돌 상태 조회 (Change 브랜치에 있을 때만)
   const { data: conflictsData } = useConflicts({ enabled: !!isOnChangeBranch })
+
+  // Archive 관련 상태
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false)
+  const [archiveError, setArchiveError] = useState<string | null>(null)
+  const archiveChange = useArchiveChange()
 
   // 푸시 핸들러
   const handlePush = async () => {
@@ -208,6 +224,99 @@ export function ChangeDetail({ projectId, changeId }: ChangeDetailProps) {
                   <TooltipContent>GitHub Pull Request 생성</TooltipContent>
                 </Tooltip>
               )}
+
+              {/* Archive 버튼 - 100% 완료 시에만 활성화 */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={change.progress === 100 ? 'default' : 'outline'}
+                    size="sm"
+                    className="gap-2 ml-2"
+                    disabled={change.progress !== 100 || archiveChange.isPending}
+                    onClick={() => {
+                      setArchiveError(null)
+                      setShowArchiveDialog(true)
+                    }}
+                  >
+                    <Archive className={`h-4 w-4 ${archiveChange.isPending ? 'animate-pulse' : ''}`} />
+                    Archive
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {change.progress === 100
+                    ? '완료된 Change를 아카이브로 이동'
+                    : `모든 태스크 완료 필요 (${change.progress}%)`}
+                </TooltipContent>
+              </Tooltip>
+              <AlertDialog open={showArchiveDialog} onOpenChange={setShowArchiveDialog}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Change 아카이브</AlertDialogTitle>
+                    <AlertDialogDescription asChild>
+                      <div className="space-y-3 text-sm text-muted-foreground">
+                        <p>
+                          <strong className="text-foreground">"{change.title}"</strong>를 아카이브하시겠습니까?
+                        </p>
+                        <p>
+                          아카이브하면 Change 폴더가 <code className="bg-muted px-1 rounded">archive/</code>로 이동되고,
+                          관련 Spec이 메인 <code className="bg-muted px-1 rounded">specs/</code> 폴더로 업데이트됩니다.
+                        </p>
+                        {archiveError && (
+                          <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 space-y-2">
+                            <p className="text-destructive font-medium">Spec 업데이트 실패</p>
+                            <p className="text-xs text-muted-foreground">{archiveError}</p>
+                            <p className="text-sm">Spec 업데이트 없이 아카이브하시겠습니까?</p>
+                          </div>
+                        )}
+                      </div>
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setArchiveError(null)}>취소</AlertDialogCancel>
+                    {archiveError ? (
+                      <AlertDialogAction
+                        onClick={async () => {
+                          try {
+                            await archiveChange.mutateAsync({ changeId, skipSpecs: true })
+                            toast.success('Change가 아카이브되었습니다 (Spec 업데이트 건너뜀)')
+                            setShowArchiveDialog(false)
+                            setArchiveError(null)
+                            onArchived?.()
+                          } catch (error) {
+                            toast.error(error instanceof Error ? error.message : '아카이브 실패')
+                          }
+                        }}
+                        disabled={archiveChange.isPending}
+                      >
+                        {archiveChange.isPending ? '처리 중...' : 'Spec 없이 아카이브'}
+                      </AlertDialogAction>
+                    ) : (
+                      <AlertDialogAction
+                        onClick={async (e) => {
+                          e.preventDefault()
+                          try {
+                            await archiveChange.mutateAsync({ changeId, skipSpecs: false })
+                            toast.success('Change가 아카이브되었습니다')
+                            setShowArchiveDialog(false)
+                            onArchived?.()
+                          } catch (error) {
+                            const message = error instanceof Error ? error.message : '아카이브 실패'
+                            // Spec 관련 에러인 경우 재시도 옵션 제공
+                            if (message.includes('spec') || message.includes('Spec') || message.includes('ADDED')) {
+                              setArchiveError(message)
+                            } else {
+                              toast.error(message)
+                            }
+                          }
+                        }}
+                        disabled={archiveChange.isPending}
+                      >
+                        {archiveChange.isPending ? '처리 중...' : '아카이브'}
+                      </AlertDialogAction>
+                    )}
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </TooltipProvider>
         </div>

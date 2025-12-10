@@ -48,6 +48,7 @@ export interface FlowTask {
   taskOrder?: number // 섹션 내 작업 순서
   majorTitle?: string // ## 1. 대제목 (Major Section)
   subOrder?: number // ### 1.x에서 x 값 (Sub Section 순서)
+  displayId?: string // 표시용 ID (예: "1.1.1") - 순서 기반 자동 생성
   createdAt: string
   updatedAt: string
   archivedAt?: string
@@ -74,6 +75,8 @@ export interface Task {
   completed: boolean
   groupId: string
   lineNumber: number
+  indent?: number // 들여쓰기 레벨 (0=상위, 2+=하위 태스크)
+  displayId?: string // 표시용 ID (예: "1.1.1") - 순서 기반 자동 생성
 }
 
 // Task group (section in tasks.md)
@@ -82,6 +85,7 @@ export interface TaskGroup {
   title: string
   tasks: Task[]
   majorOrder?: number // For subsections like "### 1.1", this is 1
+  displayId?: string // 표시용 그룹 ID (예: "1.1") - 순서 기반 자동 생성
 }
 
 // Parsed tasks.md structure
@@ -209,4 +213,33 @@ export interface ExtendedTaskGroup extends TaskGroup {
 
 export interface ExtendedTasksFile extends TasksFile {
   groups: ExtendedTaskGroup[]
+}
+
+// =============================================
+// Integration Local Settings 타입
+// =============================================
+
+export type SettingsSource = 'local' | 'global' | 'hybrid'
+
+export interface LocalSettingsStatus {
+  hasLocal: boolean
+  hasGlobal: boolean
+  primary: SettingsSource
+}
+
+export interface LocalSettingsStatusResponse {
+  projectPath: string
+  status: LocalSettingsStatus
+}
+
+export interface InitLocalSettingsResponse {
+  success: boolean
+  zyflowPath: string
+  created: string[]
+}
+
+export interface ExportToLocalResponse {
+  success: boolean
+  zyflowPath: string
+  exported: string[]
 }

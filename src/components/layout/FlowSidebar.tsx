@@ -2,13 +2,13 @@ import { useState } from 'react'
 import {
   FolderOpen,
   Plus,
-  Trash2,
   Loader2,
   Settings,
   ChevronRight,
   ChevronDown,
   GitBranch,
   ListTodo,
+  Bot,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -25,19 +25,11 @@ import {
 } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
-import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { useProjectsAllData, useAddProject, useActivateProject, useRemoveProject, useBrowseFolder } from '@/hooks/useProjects'
+import { useProjectsAllData, useAddProject, useActivateProject, useBrowseFolder } from '@/hooks/useProjects'
 import { useFlowChangeCounts, useSelectedItem } from '@/hooks/useFlowChanges'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -49,7 +41,6 @@ interface FlowSidebarProps {
 }
 
 export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
 
   const { data: projectsData, isLoading } = useProjectsAllData()
@@ -61,7 +52,6 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
 
   const addProject = useAddProject()
   const activateProject = useActivateProject()
-  const removeProject = useRemoveProject()
   const browseFolder = useBrowseFolder()
 
   const handleBrowseAndAdd = async () => {
@@ -72,15 +62,6 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
       toast.success('프로젝트가 등록되었습니다')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '프로젝트 등록 실패')
-    }
-  }
-
-  const handleRemoveProject = async (projectId: string) => {
-    try {
-      await removeProject.mutateAsync(projectId)
-      toast.success('프로젝트가 삭제되었습니다')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '프로젝트 삭제 실패')
     }
   }
 
@@ -118,7 +99,33 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
 
   const handleSelectStandaloneTasks = (projectId: string) => {
     const selectedItem: SelectedItem = { type: 'standalone-tasks', projectId }
-    
+
+    // 먼저 UI 업데이트 (즉시 반응)
+    onSelect(selectedItem)
+    selectItem(selectedItem)
+
+    // 프로젝트 활성화는 비동기로
+    if (projectId !== projectsData?.activeProjectId) {
+      activateProject.mutate(projectId)
+    }
+  }
+
+  const handleSelectProjectSettings = (projectId: string) => {
+    const selectedItem: SelectedItem = { type: 'project-settings', projectId }
+
+    // 먼저 UI 업데이트 (즉시 반응)
+    onSelect(selectedItem)
+    selectItem(selectedItem)
+
+    // 프로젝트 활성화는 비동기로
+    if (projectId !== projectsData?.activeProjectId) {
+      activateProject.mutate(projectId)
+    }
+  }
+
+  const handleSelectAgent = (projectId: string) => {
+    const selectedItem: SelectedItem = { type: 'agent', projectId }
+
     // 먼저 UI 업데이트 (즉시 반응)
     onSelect(selectedItem)
     selectItem(selectedItem)
@@ -148,86 +155,19 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
         <SidebarGroup>
           <SidebarGroupLabel className="flex items-center justify-between">
             <span>프로젝트</span>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5"
-                onClick={handleBrowseAndAdd}
-                disabled={browseFolder.isPending || addProject.isPending}
-              >
-                {browseFolder.isPending || addProject.isPending ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Plus className="h-3 w-3" />
-                )}
-              </Button>
-              <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-5 w-5">
-                    <Settings className="h-3 w-3" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>프로젝트 관리</DialogTitle>
-                    <DialogDescription>
-                      등록된 프로젝트를 관리합니다.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-2 mt-4">
-                    {projectsData?.projects.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-4">
-                        등록된 프로젝트가 없습니다.
-                      </p>
-                    ) : (
-                      projectsData?.projects.map((project) => (
-                        <div
-                          key={project.id}
-                          className="flex items-center justify-between p-3 rounded-lg border"
-                        >
-                          <div className="flex items-center gap-3">
-                            <FolderOpen className="h-4 w-4 text-muted-foreground" />
-                            <div>
-                              <p className="font-medium text-sm">{project.name}</p>
-                              <p className="text-xs text-muted-foreground truncate max-w-[250px]">
-                                {project.path}
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => handleRemoveProject(project.id)}
-                            disabled={removeProject.isPending}
-                          >
-                            {removeProject.isPending ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </div>
-                      ))
-                    )}
-                    <Button
-                      variant="outline"
-                      className="w-full mt-4"
-                      onClick={handleBrowseAndAdd}
-                      disabled={browseFolder.isPending || addProject.isPending}
-                    >
-                      {browseFolder.isPending || addProject.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <Plus className="h-4 w-4 mr-2" />
-                      )}
-                      프로젝트 추가
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5"
+              onClick={handleBrowseAndAdd}
+              disabled={browseFolder.isPending || addProject.isPending}
+            >
+              {browseFolder.isPending || addProject.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Plus className="h-3 w-3" />
+              )}
+            </Button>
           </SidebarGroupLabel>
           <SidebarMenu>
             {isLoading ? (
@@ -309,6 +249,21 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                               </SidebarMenuSubItem>
                             )
                           })}
+                          {/* Agent */}
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              onClick={() =>
+                                handleSelectAgent(project.id)
+                              }
+                              isActive={
+                                selectedItem?.type === 'agent' &&
+                                selectedItem.projectId === project.id
+                              }
+                            >
+                              <Bot className="size-3" />
+                              <span>Agent</span>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
                           {/* Inbox */}
                           <SidebarMenuSubItem>
                             <SidebarMenuSubButton
@@ -324,6 +279,21 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                               <span>Inbox</span>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>
+                          {/* Project Settings */}
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              onClick={() =>
+                                handleSelectProjectSettings(project.id)
+                              }
+                              isActive={
+                                selectedItem?.type === 'project-settings' &&
+                                selectedItem.projectId === project.id
+                              }
+                            >
+                              <Settings className="size-3" />
+                              <span>Settings</span>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
                         </SidebarMenuSub>
                       </CollapsibleContent>
                     </SidebarMenuItem>
@@ -331,6 +301,24 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                 )
               })
             )}
+          </SidebarMenu>
+        </SidebarGroup>
+
+        {/* Settings */}
+        <SidebarGroup className="border-t pt-2">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => {
+                  onSelect({ type: 'settings' })
+                  selectItem({ type: 'settings' })
+                }}
+                isActive={selectedItem?.type === 'settings'}
+              >
+                <Settings className="size-4" />
+                <span>Settings</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>

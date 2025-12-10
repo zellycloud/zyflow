@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import type { Stage, StageInfo } from '@/types'
 import { STAGES, STAGE_CONFIG } from '@/constants/stages'
-import { Check, Circle, CircleDot, ChevronRight } from 'lucide-react'
+import { Check, Loader2 } from 'lucide-react'
 
 interface PipelineBarProps {
   stages?: Record<Stage, StageInfo>
@@ -17,145 +17,197 @@ function getStageStatus(stageInfo?: StageInfo): 'completed' | 'in-progress' | 'p
   return 'pending'
 }
 
-// 단계별 색상 매핑
-const getStageColor = (stage: Stage, status: 'completed' | 'in-progress' | 'pending') => {
-  const colorMap = {
-    spec: {
-      completed: 'bg-purple-500 text-white',
-      inProgress: 'bg-purple-400 text-white',
-      pending: 'bg-purple-100 text-purple-600'
-    },
-    changes: {
-      completed: 'bg-indigo-500 text-white',
-      inProgress: 'bg-indigo-400 text-white',
-      pending: 'bg-indigo-100 text-indigo-600'
-    },
-    task: {
-      completed: 'bg-blue-500 text-white',
-      inProgress: 'bg-blue-400 text-white',
-      pending: 'bg-blue-100 text-blue-600'
-    },
-    code: {
-      completed: 'bg-green-500 text-white',
-      inProgress: 'bg-green-400 text-white',
-      pending: 'bg-green-100 text-green-600'
-    },
-    test: {
-      completed: 'bg-orange-500 text-white',
-      inProgress: 'bg-orange-400 text-white',
-      pending: 'bg-orange-100 text-orange-600'
-    },
-    commit: {
-      completed: 'bg-teal-500 text-white',
-      inProgress: 'bg-teal-400 text-white',
-      pending: 'bg-teal-100 text-teal-600'
-    },
-    docs: {
-      completed: 'bg-gray-500 text-white',
-      inProgress: 'bg-gray-400 text-white',
-      pending: 'bg-gray-100 text-gray-600'
-    }
+// Stage gradient colors for visual distinction
+const STAGE_GRADIENTS: Record<Stage, { bg: string; active: string; border: string }> = {
+  spec: {
+    bg: 'from-violet-500/10 to-purple-500/10',
+    active: 'from-violet-500 to-purple-600',
+    border: 'border-violet-400/50'
+  },
+  changes: {
+    bg: 'from-indigo-500/10 to-blue-500/10',
+    active: 'from-indigo-500 to-blue-600',
+    border: 'border-indigo-400/50'
+  },
+  task: {
+    bg: 'from-sky-500/10 to-cyan-500/10',
+    active: 'from-sky-500 to-cyan-600',
+    border: 'border-sky-400/50'
+  },
+  code: {
+    bg: 'from-emerald-500/10 to-green-500/10',
+    active: 'from-emerald-500 to-green-600',
+    border: 'border-emerald-400/50'
+  },
+  test: {
+    bg: 'from-amber-500/10 to-orange-500/10',
+    active: 'from-amber-500 to-orange-600',
+    border: 'border-amber-400/50'
+  },
+  commit: {
+    bg: 'from-teal-500/10 to-cyan-500/10',
+    active: 'from-teal-500 to-cyan-600',
+    border: 'border-teal-400/50'
+  },
+  docs: {
+    bg: 'from-slate-500/10 to-gray-500/10',
+    active: 'from-slate-500 to-gray-600',
+    border: 'border-slate-400/50'
   }
-  
-  return colorMap[stage][status === 'completed' ? 'completed' : status === 'in-progress' ? 'inProgress' : 'pending']
 }
 
 export function PipelineBar({ stages, currentStage, activeTab, onTabChange }: PipelineBarProps) {
   return (
-    <div className="w-full overflow-x-auto">
-      <div
-        className="flex items-center justify-between gap-1 min-w-max px-1"
-        role="tablist"
-        aria-label="개발 파이프라인 단계"
-      >
-        {STAGES.map((stage, index) => {
-          const stageInfo = stages?.[stage]
-          const status = getStageStatus(stageInfo)
-          const isActive = activeTab === stage
-          const isCurrent = currentStage === stage
-          const stageColor = getStageColor(stage, status)
+    <div className="w-full">
+      {/* Pipeline Container */}
+      <div className="relative bg-gradient-to-r from-muted/30 via-muted/50 to-muted/30 rounded-2xl p-1.5 shadow-inner">
+        {/* Progress Line (background) */}
+        <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-border/50 -translate-y-1/2 rounded-full" />
 
-          return (
-            <div key={stage} className="flex items-center flex-1 min-w-0">
-              {/* Stage Box */}
+        {/* Stages Grid */}
+        <div
+          className="relative grid grid-cols-7 gap-1"
+          role="tablist"
+          aria-label="Development pipeline stages"
+        >
+          {STAGES.map((stage, index) => {
+            const stageInfo = stages?.[stage]
+            const status = getStageStatus(stageInfo)
+            const isActive = activeTab === stage
+            const isCurrent = currentStage === stage
+            const gradient = STAGE_GRADIENTS[stage]
+            const progress = stageInfo ? (stageInfo.total > 0 ? (stageInfo.completed / stageInfo.total) * 100 : 0) : 0
+            const IconComponent = STAGE_CONFIG[stage].icon
+
+            return (
               <button
+                key={stage}
                 onClick={() => onTabChange(stage)}
                 className={cn(
-                  'flex-1 flex flex-col items-center gap-1.5 py-3 px-2 rounded-lg transition-all duration-200 relative group',
-                  'hover:shadow-md hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-1',
-                  isActive && 'bg-background shadow-lg ring-2 ring-primary/30 scale-105 z-10',
-                  isCurrent && !isActive && 'ring-2 ring-primary/20 bg-primary/5',
-                  !isActive && !isCurrent && 'hover:bg-muted/50'
+                  'relative flex flex-col items-center gap-2 py-3 px-1 rounded-xl transition-all duration-300',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+                  'group',
+                  isActive && 'bg-background shadow-lg scale-[1.02] z-10',
+                  !isActive && 'hover:bg-background/60 hover:shadow-md'
                 )}
                 role="tab"
                 aria-selected={isActive}
-                aria-label={`${STAGE_CONFIG[stage].label} 단계 ${status === 'completed' ? '완료' : status === 'in-progress' ? '진행 중' : '대기 중'}`}
                 tabIndex={isActive ? 0 : -1}
               >
-                {/* 현재 단계 표시기 */}
+                {/* Current Stage Indicator */}
                 {isCurrent && (
-                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-primary rounded-full animate-pulse" />
+                  <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 flex items-center gap-1">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+                    </span>
+                  </div>
                 )}
 
-                {/* Status Icon */}
-                <div
-                  className={cn(
-                    'w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-200',
-                    stageColor,
-                    'group-hover:scale-110 shadow-sm'
-                  )}
-                >
-                  {status === 'completed' ? (
-                    <Check className="h-4 w-4" />
-                  ) : status === 'in-progress' ? (
-                    <CircleDot className="h-4 w-4 animate-pulse" />
-                  ) : (
-                    <Circle className="h-4 w-4" />
-                  )}
-                </div>
+                {/* Icon Circle with Progress Ring */}
+                <div className="relative">
+                  {/* Progress Ring */}
+                  <svg className="w-11 h-11 -rotate-90" viewBox="0 0 36 36">
+                    {/* Background circle */}
+                    <circle
+                      cx="18"
+                      cy="18"
+                      r="15"
+                      fill="none"
+                      className="stroke-muted"
+                      strokeWidth="2.5"
+                    />
+                    {/* Progress circle */}
+                    <circle
+                      cx="18"
+                      cy="18"
+                      r="15"
+                      fill="none"
+                      className={cn(
+                        'transition-all duration-500',
+                        status === 'completed' ? 'stroke-green-500' :
+                        status === 'in-progress' ? 'stroke-blue-500' :
+                        'stroke-transparent'
+                      )}
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeDasharray={`${progress * 0.94} 100`}
+                    />
+                  </svg>
 
-                {/* Icon & Label */}
-                <div className="flex flex-col items-center gap-0.5">
-                  <span className="text-lg" role="img" aria-hidden="true">
-                    {STAGE_CONFIG[stage].icon}
-                  </span>
-                  <span
+                  {/* Icon Container */}
+                  <div
                     className={cn(
-                      'text-xs font-semibold whitespace-nowrap',
-                      isActive ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
+                      'absolute inset-1.5 rounded-full flex items-center justify-center transition-all duration-300',
+                      status === 'completed' && `bg-gradient-to-br ${gradient.active} text-white shadow-md`,
+                      status === 'in-progress' && `bg-gradient-to-br ${gradient.bg} ${gradient.border} border-2`,
+                      status === 'pending' && 'bg-muted/80 text-muted-foreground',
+                      isActive && status === 'pending' && `bg-gradient-to-br ${gradient.bg}`,
+                      'group-hover:scale-110 group-hover:shadow-md'
                     )}
                   >
-                    {STAGE_CONFIG[stage].label}
-                  </span>
+                    {status === 'completed' ? (
+                      <Check className="h-4 w-4" strokeWidth={3} />
+                    ) : status === 'in-progress' ? (
+                      <span className="relative">
+                        <IconComponent className="h-4 w-4" />
+                        <Loader2 className="absolute -bottom-0.5 -right-0.5 h-3 w-3 animate-spin text-blue-500" />
+                      </span>
+                    ) : (
+                      <IconComponent className="h-4 w-4" />
+                    )}
+                  </div>
                 </div>
 
-                {/* Progress Badge */}
+                {/* Label */}
+                <span
+                  className={cn(
+                    'text-[11px] font-semibold tracking-tight transition-colors',
+                    isActive ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
+                  )}
+                >
+                  {STAGE_CONFIG[stage].label}
+                </span>
+
+                {/* Progress Count Badge */}
                 {stageInfo && stageInfo.total > 0 && (
-                  <div className={cn(
-                    'text-xs font-medium px-1.5 py-0.5 rounded-full',
-                    status === 'completed' ? 'bg-green-100 text-green-700' :
-                    status === 'in-progress' ? 'bg-blue-100 text-blue-700' :
-                    'bg-gray-100 text-gray-600'
-                  )}>
+                  <div
+                    className={cn(
+                      'absolute -bottom-1 left-1/2 -translate-x-1/2',
+                      'px-1.5 py-0.5 rounded-full text-[9px] font-bold',
+                      'transition-all duration-300',
+                      status === 'completed' && 'bg-green-500 text-white',
+                      status === 'in-progress' && 'bg-blue-500 text-white',
+                      status === 'pending' && 'bg-muted text-muted-foreground'
+                    )}
+                  >
                     {stageInfo.completed}/{stageInfo.total}
                   </div>
                 )}
 
-                {/* 활성 탭 하단 표시기 */}
+                {/* Active Indicator */}
                 {isActive && (
-                  <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-8 h-1 bg-primary rounded-full" />
+                  <div
+                    className={cn(
+                      'absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-6 h-1 rounded-full',
+                      `bg-gradient-to-r ${gradient.active}`
+                    )}
+                  />
+                )}
+
+                {/* Connector Line */}
+                {index < STAGES.length - 1 && (
+                  <div
+                    className={cn(
+                      'absolute top-1/2 -right-1 w-2 h-0.5 -translate-y-1/2 rounded-full transition-colors',
+                      status === 'completed' ? 'bg-green-400' : 'bg-border'
+                    )}
+                  />
                 )}
               </button>
-
-              {/* Arrow Connector (except last) */}
-              {index < STAGES.length - 1 && (
-                <div className="flex items-center justify-center px-1">
-                  <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors" />
-                </div>
-              )}
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
     </div>
   )

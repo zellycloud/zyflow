@@ -16,6 +16,8 @@ export interface WatcherOptions {
   onTasksChange: (changeId: string, filePath: string, projectPath: string) => void
   /** 디바운스 시간 (ms) - 기본 500ms */
   debounceMs?: number
+  /** 시작 시 기존 파일도 스캔할지 여부 - 기본 false */
+  scanOnStart?: boolean
 }
 
 export interface WatcherInstance {
@@ -35,7 +37,7 @@ export interface WatcherInstance {
  * 단일 프로젝트 tasks.md 파일 감시자 생성
  */
 export function createTasksWatcher(options: WatcherOptions): WatcherInstance {
-  const { projectPath, projectId, onTasksChange, debounceMs = 500 } = options
+  const { projectPath, projectId, onTasksChange, debounceMs = 500, scanOnStart = false } = options
 
   let watcher: FSWatcher | null = null
   const debounceTimers: Map<string, NodeJS.Timeout> = new Map()
@@ -48,17 +50,21 @@ export function createTasksWatcher(options: WatcherOptions): WatcherInstance {
 
     const changeId = match[1]
 
-    // 파일 변경 이벤트 로깅
-    const changeLogManager = getChangeLogManager()
-    await changeLogManager.logFileChange({
-      filePath,
-      changeType: 'MODIFIED',
-      metadata: {
-        changeId,
-        projectPath,
-        timestamp: Date.now()
-      }
-    }, 'DEBUG')
+    // 파일 변경 이벤트 로깅 (ChangeLogManager가 초기화된 경우에만)
+    try {
+      const changeLogManager = getChangeLogManager()
+      await changeLogManager.logFileChange({
+        filePath,
+        changeType: 'MODIFIED',
+        metadata: {
+          changeId,
+          projectPath,
+          timestamp: Date.now()
+        }
+      }, 'DEBUG')
+    } catch {
+      // ChangeLogManager가 아직 초기화되지 않은 경우 무시
+    }
 
     // 디바운스 처리 (파일 저장 중 여러 번 트리거 방지)
     const timerKey = `${projectPath}:${changeId}`
@@ -70,19 +76,24 @@ export function createTasksWatcher(options: WatcherOptions): WatcherInstance {
     const timer = setTimeout(async () => {
       debounceTimers.delete(timerKey)
       console.log(`[Watcher] Detected change in ${changeId}/tasks.md (project: ${projectPath})`)
-      
-      // 파일 변경 완료 이벤트 로깅
-      await changeLogManager.logFileChange({
-        filePath,
-        changeType: 'MODIFIED',
-        metadata: {
-          changeId,
-          projectPath,
-          action: 'debounced_change_processed',
-          timestamp: Date.now()
-        }
-      }, 'INFO')
-      
+
+      // 파일 변경 완료 이벤트 로깅 (ChangeLogManager가 초기화된 경우에만)
+      try {
+        const logManager = getChangeLogManager()
+        await logManager.logFileChange({
+          filePath,
+          changeType: 'MODIFIED',
+          metadata: {
+            changeId,
+            projectPath,
+            action: 'debounced_change_processed',
+            timestamp: Date.now()
+          }
+        }, 'INFO')
+      } catch {
+        // ChangeLogManager가 아직 초기화되지 않은 경우 무시
+      }
+
       onTasksChange(changeId, filePath, projectPath)
     }, debounceMs)
 
@@ -99,7 +110,8 @@ export function createTasksWatcher(options: WatcherOptions): WatcherInstance {
     const watchDir = join(projectPath, 'openspec/changes')
 
     watcher = watch(watchDir, {
-      ignoreInitial: true,
+      // scanOnStart가 true이면 기존 파일도 스캔 (add 이벤트 발생)
+      ignoreInitial: !scanOnStart,
       awaitWriteFinish: {
         stabilityThreshold: 300,
         pollInterval: 100,
@@ -171,7 +183,8 @@ export interface MultiWatcherManager {
  */
 export function createMultiWatcherManager(
   onTasksChange: (changeId: string, filePath: string, projectPath: string) => void,
-  debounceMs = 500
+  debounceMs = 500,
+  scanOnStart = false
 ): MultiWatcherManager {
   const watchers = new Map<string, WatcherInstance>()
 
@@ -187,6 +200,7 @@ export function createMultiWatcherManager(
       projectId,
       onTasksChange,
       debounceMs,
+      scanOnStart,
     })
 
     watcher.start()

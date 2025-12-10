@@ -182,17 +182,27 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
   const showMajorHeaders = majorSections.length > 1
   const showSubHeaders = majorSections.some((m) => m.subSections.length > 1)
 
-  // 넘버링 형식 결정 함수
-  const getTaskNumber = (major: MajorSection, sub: SubSection, taskIdx: number) => {
+  // 넘버링 형식 결정 함수 - displayId 우선, 없으면 기존 로직 폴백
+  const getTaskNumber = (major: MajorSection, sub: SubSection, task: FlowTask) => {
+    // displayId가 있으면 그것을 사용 (파서에서 자동 생성된 순서 기반 ID)
+    if (task.displayId) {
+      return task.displayId
+    }
+
+    // 폴백: 기존 로직 (taskOrder 기반)
+    const taskNum = task.taskOrder ?? 1
     if (showMajorHeaders && showSubHeaders) {
-      // 3단계: 1.1.1, 1.1.2, ...
-      return `${major.majorOrder}.${sub.subOrder}.${taskIdx + 1}`
-    } else if (showMajorHeaders || showSubHeaders) {
-      // 2단계: 1.1, 1.2, ...
-      return `${major.majorOrder}.${taskIdx + 1}`
+      // 3단계: 1.1.1, 1.1.2, ... (major.sub.task)
+      return `${major.majorOrder}.${sub.subOrder}.${taskNum}`
+    } else if (showMajorHeaders) {
+      // 2단계: 1.1, 1.2, ... (major.task)
+      return `${major.majorOrder}.${taskNum}`
+    } else if (showSubHeaders) {
+      // 2단계: 1.1, 1.2, ... (sub.task)
+      return `${sub.subOrder}.${taskNum}`
     } else {
       // 1단계: 1, 2, 3, ...
-      return `${taskIdx + 1}`
+      return `${taskNum}`
     }
   }
 
@@ -201,7 +211,10 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>{STAGE_CONFIG[stage].icon}</span>
+          {(() => {
+            const IconComponent = STAGE_CONFIG[stage].icon
+            return <IconComponent className="h-4 w-4" />
+          })()}
           <span>{STAGE_CONFIG[stage].label} 태스크</span>
           <Badge variant="secondary" className="text-xs">
             {tasks.filter((t) => t.status === 'done').length}/{tasks.length}
@@ -260,7 +273,7 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {sub.tasks.map((task, taskIdx) => (
+                          {sub.tasks.map((task) => (
                             <TableRow
                               key={task.id}
                               className={cn(task.status === 'done' && 'bg-muted/30')}
@@ -272,7 +285,7 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
                                 />
                               </TableCell>
                               <TableCell className="text-xs text-muted-foreground font-mono">
-                                {getTaskNumber(major, sub, taskIdx)}
+                                {getTaskNumber(major, sub, task)}
                               </TableCell>
                               <TableCell className="whitespace-normal">
                                 <span

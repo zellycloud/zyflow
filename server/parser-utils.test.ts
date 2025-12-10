@@ -195,8 +195,8 @@ describe('parser-utils', () => {
       expect(result.groups[2].title).toBe('1.2 Subsection B')
       expect(result.groups[2].tasks).toHaveLength(1)
       
-      // Check Second Section
-      expect(result.groups[3].id).toBe('group-2')
+      // Check Second Section (groupCounter 기반으로 group-4)
+      expect(result.groups[3].id).toBe('group-4')
       expect(result.groups[3].title).toBe('Second Section')
       expect(result.groups[3].tasks).toHaveLength(1)
     })
@@ -211,15 +211,15 @@ describe('parser-utils', () => {
 
 - [ ] 1.1 Build features
 `
-      
+
       const result = parseTasksFileFlexible('phase-test', content)
-      
+
       expect(result.groups).toHaveLength(2)
-      // ID는 majorOrder를 사용하므로 group-0이 됨
-      expect(result.groups[0].id).toBe('group-0')
-      // Phase 형식에서는 "Phase 0:" 부분이 제거됨
+      // ID는 groupCounter 기반으로 순차 생성됨
+      expect(result.groups[0].id).toBe('group-1')
+      // Phase 형식에서는 "Phase N:" 부분이 제거되고 제목만 추출됨
       expect(result.groups[0].title).toBe('Planning')
-      expect(result.groups[1].id).toBe('group-1')
+      expect(result.groups[1].id).toBe('group-2')
       expect(result.groups[1].title).toBe('Development')
     })
 

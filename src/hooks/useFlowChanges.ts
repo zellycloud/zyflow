@@ -78,9 +78,6 @@ export function useSyncFlowChanges() {
 }
 
 // 프로젝트별 활성 Change 수
-interface FlowChangeCounts {
-  counts: Record<string, number>
-}
 
 export function useFlowChangeCounts(options?: {
   status?: 'active' | 'completed' | 'all'
@@ -92,8 +89,8 @@ export function useFlowChangeCounts(options?: {
     queryKey: ['flow', 'changes', 'counts', status],
     queryFn: async (): Promise<Record<string, number>> => {
       const params = new URLSearchParams()
-      if (status !== 'active') params.set('status', status)
-      
+      params.set('status', status) // 항상 status 파라미터 전달
+
       const res = await fetch(`${API_BASE}/flow/changes/counts?${params}`)
       const json: ApiResponse<FlowChangeCountsResponse> = await res.json()
       if (!json.success) throw new Error(json.error)
@@ -303,11 +300,13 @@ export function useChangeSpecContent(changeId: string | null, specId: string | n
 // 선택 상태 관리 훅
 // =============================================
 
-export interface SelectedItem {
-  type: 'project' | 'change' | 'standalone-tasks'
-  projectId: string
-  changeId?: string
-}
+export type SelectedItem =
+  | { type: 'project'; projectId: string }
+  | { type: 'change'; projectId: string; changeId: string }
+  | { type: 'standalone-tasks'; projectId: string }
+  | { type: 'project-settings'; projectId: string }
+  | { type: 'agent'; projectId: string; changeId?: string }
+  | { type: 'settings' }
 
 export function useSelectedItem() {
   const queryClient = useQueryClient()
@@ -322,35 +321,53 @@ export function useSelectedItem() {
       refetchType: 'active'
     })
     
-    // 관련 데이터 미리 가져오기
+    // 관련 데이터 refetch (캐시 무효화 후 다시 가져오기)
     switch (item.type) {
       case 'project':
-        queryClient.prefetchQuery({
+        queryClient.invalidateQueries({
           queryKey: ['flow', 'changes'],
-          staleTime: 30000
+          refetchType: 'active'
         })
-        queryClient.prefetchQuery({
+        queryClient.invalidateQueries({
           queryKey: ['flow', 'tasks', { standalone: true }],
-          staleTime: 30000
+          refetchType: 'active'
         })
         break
-        
+
       case 'change':
-        queryClient.prefetchQuery({
+        queryClient.invalidateQueries({
           queryKey: ['flow', 'changes', item.changeId],
-          staleTime: 30000
+          refetchType: 'active'
         })
-        queryClient.prefetchQuery({
+        queryClient.invalidateQueries({
           queryKey: ['flow', 'tasks', { changeId: item.changeId }],
-          staleTime: 30000
+          refetchType: 'active'
         })
         break
-        
+
       case 'standalone-tasks':
-        queryClient.prefetchQuery({
+        queryClient.invalidateQueries({
           queryKey: ['flow', 'tasks', { standalone: true }],
-          staleTime: 30000
+          refetchType: 'active'
         })
+        break
+
+      case 'project-settings':
+        // Project Settings 페이지는 별도 데이터 refetch 불필요
+        break
+
+      case 'agent':
+        // Agent 페이지는 관련 Change 데이터 refetch
+        if (item.changeId) {
+          queryClient.invalidateQueries({
+            queryKey: ['flow', 'changes', item.changeId],
+            refetchType: 'active'
+          })
+        }
+        break
+
+      case 'settings':
+        // Settings 페이지는 별도 데이터 refetch 불필요
         break
     }
   }
@@ -412,6 +429,44 @@ export function useUpdateFlowTask() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['flow'] })
+    },
+  })
+}
+
+// =============================================
+// Archive Change API
+// =============================================
+
+interface ArchiveChangeInput {
+  changeId: string
+  skipSpecs?: boolean
+}
+
+interface ArchiveChangeResult {
+  changeId: string
+  archived: boolean
+  stdout: string
+  stderr: string
+}
+
+export function useArchiveChange() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ changeId, skipSpecs }: ArchiveChangeInput): Promise<ArchiveChangeResult> => {
+      const res = await fetch(`${API_BASE}/flow/changes/${changeId}/archive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skipSpecs }),
+      })
+      const json: ApiResponse<ArchiveChangeResult> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flow', 'changes'] })
+      queryClient.invalidateQueries({ queryKey: ['flow', 'changes', 'counts'] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
   })
 }

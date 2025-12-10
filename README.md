@@ -1,14 +1,25 @@
 # ZyFlow
 
-OpenSpec 기반 태스크 관리 및 실행 도구 - Claude Code MCP 서버
+OpenSpec 기반 소프트웨어 개발 플로우 관리 도구 - Claude Code MCP 서버
 
 ## 주요 기능
 
-- **MCP 서버**: Claude Code에서 직접 태스크 관리 (OpenSpec + 독립 태스크)
-- **웹 대시보드**: OpenSpec 변경 제안 및 태스크 진행 상황 시각화
+### Flow UI (7단계 파이프라인)
+- **Spec**: 기능 명세서 관리
+- **Changes**: OpenSpec 변경 제안 (proposal.md, design.md)
+- **Tasks**: 태스크 목록 관리 (칸반/리스트 뷰)
+- **Code**: 코드 구현 추적
+- **Test**: 테스트 실행 관리
+- **Commit**: Git 커밋/푸시 워크플로우
+- **Docs**: 문서화 작업 추적
+
+### 핵심 기능
+- **MCP 서버**: Claude Code에서 직접 태스크/변경 관리
+- **웹 대시보드**: 프로젝트별 OpenSpec 변경 제안 및 진행률 시각화
 - **칸반 보드**: 독립형 태스크 관리 시스템 (SQLite + FTS5 검색)
 - **Multi-Project Watcher**: 여러 프로젝트의 tasks.md 파일 실시간 감시 및 동기화
-- **CLI**: `zy tasks` 명령어로 태스크 관리
+- **Git 워크플로우**: 브랜치 관리, 커밋, 푸시, PR 생성
+- **Change Log & Replay**: 이벤트 로깅 및 리플레이 시스템
 
 ## 설치
 
@@ -81,6 +92,18 @@ npm run build:mcp
 | `task_search` | 태스크 검색 (FTS5 전문 검색) |
 | `task_archive` | 완료된 태스크를 아카이브로 이동 |
 | `task_unarchive` | 아카이브된 태스크 복원 |
+
+### Change Log & Replay 도구
+
+| 도구 | 설명 |
+|------|------|
+| `get_events` | 변경 이벤트 조회 (필터링 지원) |
+| `get_event_statistics` | 이벤트 통계 조회 |
+| `search_events` | 텍스트로 이벤트 검색 |
+| `export_events` | 이벤트 내보내기 (JSON/CSV/SQL) |
+| `create_replay_session` | 리플레이 세션 생성 |
+| `start_replay` | 리플레이 세션 시작 |
+| `get_replay_progress` | 리플레이 진행 상황 조회 |
 
 ## 태스크 출처 구분 (Origin)
 
@@ -167,12 +190,32 @@ zy tasks delete TASK-1
 - **태스크 DB**: 각 프로젝트의 `.zyflow/tasks.db` (SQLite)
 - **OpenSpec 태스크**: `openspec/changes/{change-id}/tasks.md`
 
+## 프로젝트 구조
+
+```
+zyflow/
+├── src/                    # React 프론트엔드
+│   ├── components/
+│   │   ├── flow/          # Flow UI 컴포넌트 (PipelineBar, StageContent 등)
+│   │   ├── git/           # Git 워크플로우 컴포넌트
+│   │   └── ui/            # 공통 UI 컴포넌트
+│   ├── hooks/             # React Query 훅
+│   ├── constants/         # 상수 정의 (STAGES, STAGE_CONFIG)
+│   └── types/             # TypeScript 타입 정의
+├── server/                 # Express API 서버
+│   ├── tasks/             # 태스크 관리 모듈 (SQLite)
+│   ├── git/               # Git 워크플로우 API
+│   └── watcher.ts         # Multi-Project Watcher
+├── mcp-server/            # MCP 서버 (Claude Code 통합)
+└── openspec/              # OpenSpec 변경 제안 및 스펙
+```
+
 ## 기술 스택
 
-- **Frontend**: React 19, Vite, TailwindCSS, React Query
+- **Frontend**: React 19, Vite, TailwindCSS 4, React Query, dnd-kit
 - **Backend**: Express, SQLite (better-sqlite3), Drizzle ORM
 - **MCP**: @modelcontextprotocol/sdk
-- **Testing**: Vitest, Playwright
+- **Testing**: Vitest, @testing-library/react, Playwright
 
 ## 라이선스
 

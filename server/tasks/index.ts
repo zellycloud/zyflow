@@ -7,6 +7,7 @@ export type { Task, NewTask, TaskStatus, TaskPriority, TaskOrigin } from './db/s
 export {
   createTask,
   getTask,
+  getTaskByOriginAndId,
   listTasks,
   updateTask,
   deleteTask,
