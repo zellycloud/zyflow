@@ -6,6 +6,7 @@ import { SidebarProvider } from '@/components/ui/sidebar'
 import { ResizableSidebar } from '@/components/ui/resizable-sidebar'
 import { FlowSidebar } from '@/components/layout/FlowSidebar'
 import { FlowContent } from '@/components/flow/FlowContent'
+import { ChatPanel } from '@/components/chat'
 import { ThemeToggle } from '@/components/dashboard/ThemeToggle'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { GitBranch, Circle, Wifi, WifiOff } from 'lucide-react'
@@ -142,7 +143,7 @@ function AppContent() {
           </div>
         </header>
 
-        {/* Body - Sidebar + Content */}
+        {/* Body - Sidebar + Content + Chat */}
         <div className="flex flex-1 overflow-hidden">
           {/* Resizable Sidebar - 프로젝트 + Changes 트리 */}
           <ResizableSidebar>
@@ -156,6 +157,9 @@ function AppContent() {
           <main className="flex-1 overflow-y-auto p-6">
             <FlowContent selectedItem={selectedItem} onSelectItem={setSelectedItem} />
           </main>
+
+          {/* Chat Panel - 오른쪽 채팅 패널 */}
+          <ChatPanel />
         </div>
       </div>
       <Toaster position="bottom-right" />
