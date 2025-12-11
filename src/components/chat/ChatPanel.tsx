@@ -12,8 +12,6 @@ import {
   StopCircle,
   RefreshCw,
   User,
-  PanelRightClose,
-  PanelRight,
   ChevronDown,
   MessageSquare,
   History,
@@ -24,6 +22,7 @@ import {
   Circle,
   ArrowLeft,
   Trash2,
+  Terminal,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -52,6 +51,8 @@ const COLLAPSED_WIDTH = 0
 
 interface ChatPanelProps {
   className?: string
+  collapsed?: boolean
+  onCollapsedChange?: (collapsed: boolean) => void
 }
 
 interface Change {
@@ -64,6 +65,7 @@ function MessageBubble({ message }: { message: AgentMessage }) {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
   const isError = message.role === 'error'
+  const isAgent = message.role === 'agent'
 
   return (
     <div
@@ -76,11 +78,21 @@ function MessageBubble({ message }: { message: AgentMessage }) {
       )}
     >
       {!isUser && (
-        <div className="shrink-0">
-          <Bot className="w-4 h-4 text-primary" />
+        <div className="shrink-0 flex flex-col items-center gap-1">
+          {isAgent && message.cli?.icon ? (
+            <span className="text-base" title={message.cli.name}>{message.cli.icon}</span>
+          ) : (
+            <Bot className="w-4 h-4 text-primary" />
+          )}
         </div>
       )}
       <div className="flex-1 min-w-0">
+        {/* CLI name badge for agent messages */}
+        {isAgent && message.cli && (
+          <div className="text-[10px] font-medium text-muted-foreground mb-1 flex items-center gap-1">
+            <span className="bg-muted px-1.5 py-0.5 rounded">{message.cli.name}</span>
+          </div>
+        )}
         <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
           {message.content}
         </div>
@@ -184,7 +196,9 @@ function SessionHistory({ sessions, onSelect, onDelete, onBack, onNewChat }: Ses
               대화 기록이 없습니다
             </div>
           ) : (
-            sessions.map((session) => (
+            [...sessions]
+              .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+              .map((session) => (
               <div
                 key={session.session_id}
                 className="group flex items-start gap-2 p-2 rounded-lg hover:bg-muted/50 cursor-pointer"
@@ -228,14 +242,24 @@ function SessionHistory({ sessions, onSelect, onDelete, onBack, onNewChat }: Ses
   )
 }
 
-export function ChatPanel({ className }: ChatPanelProps) {
-  const [isCollapsed, setIsCollapsed] = useState(() => {
+export function ChatPanel({ className, collapsed: controlledCollapsed, onCollapsedChange }: ChatPanelProps) {
+  const [internalCollapsed, setInternalCollapsed] = useState(() => {
     const saved = localStorage.getItem('chat-panel-collapsed')
     return saved === 'true'
   })
+
+  // Support both controlled and uncontrolled modes
+  const isCollapsed = controlledCollapsed ?? internalCollapsed
+  const setIsCollapsed = (value: boolean | ((prev: boolean) => boolean)) => {
+    const newValue = typeof value === 'function' ? value(isCollapsed) : value
+    setInternalCollapsed(newValue)
+    onCollapsedChange?.(newValue)
+  }
   const [showHistory, setShowHistory] = useState(false)
   const [selectedChangeId, setSelectedChangeId] = useState<string | undefined>()
   const [loadedSessionId, setLoadedSessionId] = useState<string | undefined>()
+  const [selectedCLI, setSelectedCLI] = useState<string>('claude')
+  const [cliProfiles, setCLIProfiles] = useState<Array<{ id: string; name: string; icon?: string }>>([])
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -270,10 +294,40 @@ export function ChatPanel({ className }: ChatPanelProps) {
     isStreaming,
     error,
     startSession,
+    setCLI,
     stopSession,
     resumeSession,
     sendMessage,
   } = useAgentSession(loadedSessionId)
+
+  // Load CLI profiles
+  useEffect(() => {
+    async function fetchCLIProfiles() {
+      try {
+        const res = await fetch('http://localhost:3001/api/cli/profiles/available')
+        const data = await res.json()
+        if (data.success) {
+          setCLIProfiles(data.profiles)
+          if (!selectedCLI && data.profiles.length > 0) {
+            setSelectedCLI(data.profiles[0].id)
+            // Set initial CLI in hook
+            setCLI(data.profiles[0])
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch CLI profiles:', error)
+      }
+    }
+    fetchCLIProfiles()
+  }, [setCLI])
+
+  // Update hook when CLI selection changes
+  useEffect(() => {
+    const profile = cliProfiles.find(p => p.id === selectedCLI)
+    if (profile) {
+      setCLI(profile)
+    }
+  }, [selectedCLI, cliProfiles, setCLI])
 
   // Save collapsed state
   useEffect(() => {
@@ -285,8 +339,11 @@ export function ChatPanel({ className }: ChatPanelProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Keyboard shortcut (Cmd/Ctrl + Shift + C)
+  // Keyboard shortcut (Cmd/Ctrl + Shift + C) - handled by parent (App.tsx) when using controlled mode
   useEffect(() => {
+    // Skip if controlled externally
+    if (controlledCollapsed !== undefined) return
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'c') {
         e.preventDefault()
@@ -296,11 +353,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
-  const toggleCollapse = () => {
-    setIsCollapsed((prev) => !prev)
-  }
+  }, [controlledCollapsed])
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
@@ -310,7 +363,8 @@ export function ChatPanel({ className }: ChatPanelProps) {
     setInput('')
 
     if (!sessionId && selectedChangeId) {
-      await startSession(selectedChangeId, activeProject?.path, message)
+      const currentCLI = cliProfiles.find(p => p.id === selectedCLI)
+      await startSession(selectedChangeId, activeProject?.path, message, currentCLI)
     } else if (sessionId) {
       await sendMessage(message)
     }
@@ -347,27 +401,6 @@ export function ChatPanel({ className }: ChatPanelProps) {
 
   return (
     <div className={cn('relative flex h-full', className)}>
-      {/* Toggle Button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className={cn(
-          'absolute top-2 z-10 h-7 w-7 rounded-md',
-          'bg-background/80 backdrop-blur-sm border shadow-sm',
-          'hover:bg-accent',
-          'transition-all duration-200',
-          isCollapsed ? 'right-2' : '-left-3'
-        )}
-        onClick={toggleCollapse}
-        title={isCollapsed ? '채팅 열기 (⌘⇧C)' : '채팅 접기 (⌘⇧C)'}
-      >
-        {isCollapsed ? (
-          <PanelRight className="h-4 w-4" />
-        ) : (
-          <PanelRightClose className="h-4 w-4" />
-        )}
-      </Button>
-
       {/* Panel */}
       <div
         className={cn(
@@ -404,14 +437,34 @@ export function ChatPanel({ className }: ChatPanelProps) {
             />
           ) : (
             <>
-              {/* Header */}
-              <div className="flex items-center justify-between p-3 border-b">
+              {/* Header - Row 1: Title and actions */}
+              <div className="flex items-center justify-between px-3 pt-3 pb-2">
                 <div className="flex items-center gap-2">
                   <MessageSquare className="w-4 h-4 text-primary" />
                   <span className="font-medium text-sm">Chat</span>
                 </div>
 
                 <div className="flex items-center gap-1">
+                  {/* New Chat Button */}
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => {
+                            setLoadedSessionId(undefined)
+                            setSelectedChangeId(undefined)
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>새 대화</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+
                   {/* History Button */}
                   <TooltipProvider>
                     <Tooltip>
@@ -428,49 +481,84 @@ export function ChatPanel({ className }: ChatPanelProps) {
                       <TooltipContent>대화 기록</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-
-                  {/* Change Selector */}
-                  {activeProject && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm" className="gap-1 h-7 text-xs">
-                          {selectedChange ? (
-                            <span className="max-w-[100px] truncate">
-                              {selectedChange.title}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">Change</span>
-                          )}
-                          <ChevronDown className="w-3 h-3" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-[250px]">
-                        <DropdownMenuLabel className="text-xs">
-                          {activeProject.name}
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {activeChanges.length > 0 ? (
-                          activeChanges.map((change) => (
-                            <DropdownMenuItem
-                              key={change.id}
-                              onClick={() => setSelectedChangeId(change.id)}
-                              className={cn(
-                                'text-xs',
-                                selectedChangeId === change.id && 'bg-primary/10'
-                              )}
-                            >
-                              <span className="truncate">{change.title}</span>
-                            </DropdownMenuItem>
-                          ))
-                        ) : (
-                          <div className="p-2 text-xs text-muted-foreground text-center">
-                            활성 Change 없음
-                          </div>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
                 </div>
+              </div>
+
+              {/* Header - Row 2: Selectors */}
+              <div className="flex items-center gap-2 px-3 pb-2 border-b">
+                {/* CLI Selector */}
+                {cliProfiles.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-1 h-7 text-xs px-2">
+                        <Terminal className="w-3 h-3" />
+                        <span className="max-w-[80px] truncate">
+                          {cliProfiles.find(p => p.id === selectedCLI)?.name || 'CLI'}
+                        </span>
+                        <ChevronDown className="w-3 h-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-[180px]">
+                      <DropdownMenuLabel className="text-xs">CLI 선택</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {cliProfiles.map((profile) => (
+                        <DropdownMenuItem
+                          key={profile.id}
+                          onClick={() => setSelectedCLI(profile.id)}
+                          className={cn(
+                            'text-xs gap-2',
+                            selectedCLI === profile.id && 'bg-primary/10'
+                          )}
+                        >
+                          <span>{profile.icon || '🔧'}</span>
+                          <span className="truncate">{profile.name}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+
+                {/* Change Selector */}
+                {activeProject && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-1 h-7 text-xs flex-1 justify-between">
+                        {selectedChange ? (
+                          <span className="truncate">
+                            {selectedChange.title}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">Change 선택</span>
+                        )}
+                        <ChevronDown className="w-3 h-3 shrink-0" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-[250px]">
+                      <DropdownMenuLabel className="text-xs">
+                        {activeProject.name}
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {activeChanges.length > 0 ? (
+                        activeChanges.map((change) => (
+                          <DropdownMenuItem
+                            key={change.id}
+                            onClick={() => setSelectedChangeId(change.id)}
+                            className={cn(
+                              'text-xs',
+                              selectedChangeId === change.id && 'bg-primary/10'
+                            )}
+                          >
+                            <span className="truncate">{change.title}</span>
+                          </DropdownMenuItem>
+                        ))
+                      ) : (
+                        <div className="p-2 text-xs text-muted-foreground text-center">
+                          활성 Change 없음
+                        </div>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
 
               {/* Messages Area */}

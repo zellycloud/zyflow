@@ -46,6 +46,8 @@ export interface CLISession {
   id: string
   /** CLI profile used */
   profileId: string
+  /** CLI profile info (for display) */
+  cliInfo?: { id: string; name: string; icon?: string }
   /** Change ID being executed */
   changeId: string
   /** Project path */
@@ -63,7 +65,11 @@ export interface CLISession {
   /** Error message */
   error?: string
   /** Conversation history for multi-turn support */
-  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+  conversationHistory?: Array<{
+    role: 'user' | 'assistant'
+    content: string
+    cli?: { id: string; name: string; icon?: string }
+  }>
 }
 
 export interface CLIOutput {

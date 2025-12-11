@@ -177,10 +177,18 @@ export class CLIProcessManager extends EventEmitter {
       return { success: false, error: 'Failed to start process' }
     }
 
+    // Create CLI info for display
+    const cliInfo = {
+      id: profile.id,
+      name: profile.name,
+      icon: profile.icon,
+    }
+
     // Create session
     const session: CLISession = {
       id: sessionId,
       profileId: profile.id,
+      cliInfo,
       changeId: request.changeId,
       projectPath,
       pid: proc.pid,
@@ -264,7 +272,8 @@ export class CLIProcessManager extends EventEmitter {
         }
         session.conversationHistory.push({
           role: 'assistant',
-          content: entry.currentAssistantResponse.trim()
+          content: entry.currentAssistantResponse.trim(),
+          cli: session.cliInfo,
         })
       }
 

@@ -1,7 +1,5 @@
 import * as React from 'react'
-import { PanelLeftClose, PanelLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
 
 const DEFAULT_WIDTH = 256 // 16rem = 256px
 const MIN_WIDTH = 200
@@ -14,6 +12,8 @@ interface ResizableSidebarProps {
   defaultWidth?: number
   minWidth?: number
   maxWidth?: number
+  collapsed?: boolean
+  onCollapsedChange?: (collapsed: boolean) => void
 }
 
 export function ResizableSidebar({
@@ -22,15 +22,25 @@ export function ResizableSidebar({
   defaultWidth = DEFAULT_WIDTH,
   minWidth = MIN_WIDTH,
   maxWidth = MAX_WIDTH,
+  collapsed: controlledCollapsed,
+  onCollapsedChange,
 }: ResizableSidebarProps) {
   const [width, setWidth] = React.useState(() => {
     const saved = localStorage.getItem('sidebar-width')
     return saved ? parseInt(saved, 10) : defaultWidth
   })
-  const [isCollapsed, setIsCollapsed] = React.useState(() => {
+  const [internalCollapsed, setInternalCollapsed] = React.useState(() => {
     const saved = localStorage.getItem('sidebar-collapsed')
     return saved === 'true'
   })
+
+  // Support both controlled and uncontrolled modes
+  const isCollapsed = controlledCollapsed ?? internalCollapsed
+  const setIsCollapsed = (value: boolean | ((prev: boolean) => boolean)) => {
+    const newValue = typeof value === 'function' ? value(isCollapsed) : value
+    setInternalCollapsed(newValue)
+    onCollapsedChange?.(newValue)
+  }
   const [isResizing, setIsResizing] = React.useState(false)
   const sidebarRef = React.useRef<HTMLDivElement>(null)
 
@@ -86,8 +96,11 @@ export function ResizableSidebar({
     }
   }, [isResizing, minWidth, maxWidth])
 
-  // Keyboard shortcut (Cmd/Ctrl + B)
+  // Keyboard shortcut (Cmd/Ctrl + B) - handled by parent (App.tsx) when using controlled mode
   React.useEffect(() => {
+    // Skip if controlled externally
+    if (controlledCollapsed !== undefined) return
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
         e.preventDefault()
@@ -138,26 +151,6 @@ export function ResizableSidebar({
         )}
       </div>
 
-      {/* Toggle Button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className={cn(
-          'absolute top-2 z-10 h-7 w-7 rounded-md',
-          'bg-background/80 backdrop-blur-sm border shadow-sm',
-          'hover:bg-accent',
-          'transition-all duration-200',
-          isCollapsed ? 'left-2' : '-right-3'
-        )}
-        onClick={toggleCollapse}
-        title={isCollapsed ? '사이드바 열기 (⌘B)' : '사이드바 접기 (⌘B)'}
-      >
-        {isCollapsed ? (
-          <PanelLeft className="h-4 w-4" />
-        ) : (
-          <PanelLeftClose className="h-4 w-4" />
-        )}
-      </Button>
     </div>
   )
 }

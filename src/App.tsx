@@ -5,6 +5,7 @@ import { ThemeProvider } from '@/context/theme-provider'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { ResizableSidebar } from '@/components/ui/resizable-sidebar'
 import { FlowSidebar } from '@/components/layout/FlowSidebar'
+import { StatusBar } from '@/components/layout/StatusBar'
 import { FlowContent } from '@/components/flow/FlowContent'
 import { ChatPanel } from '@/components/chat'
 import { ThemeToggle } from '@/components/dashboard/ThemeToggle'
@@ -115,8 +116,46 @@ function AppContent() {
       return null
     }
   })
-  
+
+  // Sidebar collapsed states
+  const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebar-collapsed')
+    return saved === 'true'
+  })
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('chat-panel-collapsed')
+    return saved === 'true'
+  })
+
   const { isConnected } = useWebSocket()
+
+  // Save sidebar states
+  useEffect(() => {
+    localStorage.setItem('sidebar-collapsed', leftSidebarCollapsed.toString())
+  }, [leftSidebarCollapsed])
+
+  useEffect(() => {
+    localStorage.setItem('chat-panel-collapsed', rightSidebarCollapsed.toString())
+  }, [rightSidebarCollapsed])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl + B for left sidebar
+      if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+        e.preventDefault()
+        setLeftSidebarCollapsed(prev => !prev)
+      }
+      // Cmd/Ctrl + Shift + C for right sidebar (chat)
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'c') {
+        e.preventDefault()
+        setRightSidebarCollapsed(prev => !prev)
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   // 상태 변경 시 로컬 스토리지에 저장
   useEffect(() => {
@@ -143,10 +182,21 @@ function AppContent() {
           </div>
         </header>
 
+        {/* Status Bar - Sidebar toggles */}
+        <StatusBar
+          leftSidebarCollapsed={leftSidebarCollapsed}
+          rightSidebarCollapsed={rightSidebarCollapsed}
+          onToggleLeftSidebar={() => setLeftSidebarCollapsed(prev => !prev)}
+          onToggleRightSidebar={() => setRightSidebarCollapsed(prev => !prev)}
+        />
+
         {/* Body - Sidebar + Content + Chat */}
         <div className="flex flex-1 overflow-hidden">
           {/* Resizable Sidebar - 프로젝트 + Changes 트리 */}
-          <ResizableSidebar>
+          <ResizableSidebar
+            collapsed={leftSidebarCollapsed}
+            onCollapsedChange={setLeftSidebarCollapsed}
+          >
             <FlowSidebar
               selectedItem={selectedItem}
               onSelect={setSelectedItem}
@@ -159,7 +209,10 @@ function AppContent() {
           </main>
 
           {/* Chat Panel - 오른쪽 채팅 패널 */}
-          <ChatPanel />
+          <ChatPanel
+            collapsed={rightSidebarCollapsed}
+            onCollapsedChange={setRightSidebarCollapsed}
+          />
         </div>
       </div>
       <Toaster position="bottom-right" />

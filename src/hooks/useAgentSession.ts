@@ -12,6 +12,11 @@ export interface AgentMessage {
   content: string
   timestamp?: string
   taskId?: string
+  cli?: {
+    id: string
+    name: string
+    icon?: string
+  }
 }
 
 export interface AgentSessionState {
@@ -30,13 +35,31 @@ export interface AgentSessionState {
 
 const API_BASE = 'http://localhost:3001/api/agents'
 
+export interface CLIProfile {
+  id: string
+  name: string
+  icon?: string
+}
+
 export function useAgentSession(initialSessionId?: string) {
   const [sessionId, setSessionId] = useState<string | undefined>(initialSessionId)
   const [messages, setMessages] = useState<AgentMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [activeCLI, setActiveCLI] = useState<CLIProfile | undefined>()
   const eventSourceRef = useRef<EventSource | null>(null)
   const queryClient = useQueryClient()
+
+  // Sync sessionId when initialSessionId changes (e.g., loading from history)
+  useEffect(() => {
+    if (initialSessionId !== sessionId) {
+      setSessionId(initialSessionId)
+      // Clear messages when switching sessions - will be repopulated from conversation_history
+      setMessages([])
+      setError(null)
+      setIsStreaming(false)
+    }
+  }, [initialSessionId])
 
   // Fetch session status
   const { data: sessionState } = useQuery({
@@ -108,6 +131,7 @@ export function useAgentSession(initialSessionId?: string) {
                 role: 'agent',
                 content: data.content || data.output,
                 timestamp: data.timestamp,
+                cli: activeCLI,
               },
             ])
             break
@@ -177,19 +201,21 @@ export function useAgentSession(initialSessionId?: string) {
   // Sync messages from conversation history when session is loaded
   useEffect(() => {
     if (sessionState?.conversation_history && sessionState.conversation_history.length > 0) {
-      // Only sync if we have fewer messages than the history
-      // This avoids overwriting messages during active streaming
-      const historyMessages: AgentMessage[] = sessionState.conversation_history.map((item) => ({
+      const historyMessages: AgentMessage[] = sessionState.conversation_history.map((item: { role: string; content: string; cli?: CLIProfile }) => ({
         role: item.role === 'assistant' ? 'agent' : 'user',
         content: item.content,
+        cli: item.cli,
       }))
 
-      // If messages are empty or less than history, restore from history
-      if (messages.length < historyMessages.length) {
+      // Restore from history if:
+      // 1. Messages are empty (just switched sessions)
+      // 2. OR messages length is less than history (session was resumed elsewhere)
+      // But NOT if we're actively streaming (to avoid overwriting live messages)
+      if (!isStreaming && (messages.length === 0 || messages.length < historyMessages.length)) {
         setMessages(historyMessages)
       }
     }
-  }, [sessionState?.conversation_history])
+  }, [sessionState?.conversation_history, isStreaming])
 
   // Start new session
   const startSessionMutation = useMutation({
@@ -320,7 +346,10 @@ export function useAgentSession(initialSessionId?: string) {
 
   // Start session helper
   const startSession = useCallback(
-    async (changeId: string, projectPath?: string, initialPrompt?: string) => {
+    async (changeId: string, projectPath?: string, initialPrompt?: string, cli?: CLIProfile) => {
+      if (cli) {
+        setActiveCLI(cli)
+      }
       if (initialPrompt) {
         setMessages([
           {
@@ -335,6 +364,11 @@ export function useAgentSession(initialSessionId?: string) {
     [startSessionMutation]
   )
 
+  // Set active CLI (for when CLI selection changes)
+  const setCLI = useCallback((cli: CLIProfile) => {
+    setActiveCLI(cli)
+  }, [])
+
   return {
     sessionId,
     messages,
@@ -344,7 +378,9 @@ export function useAgentSession(initialSessionId?: string) {
     totalTasks: sessionState?.total_tasks ?? 0,
     isStreaming,
     error,
+    activeCLI,
     startSession,
+    setCLI,
     stopSession: stopSessionMutation.mutateAsync,
     resumeSession: resumeSessionMutation.mutateAsync,
     sendMessage,
