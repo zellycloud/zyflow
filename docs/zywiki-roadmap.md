@@ -6,40 +6,39 @@
 
 ---
 
-## 현재 상태 (v0.3.0)
+## 현재 상태 (v0.4.0)
 
 ```
-사람 → CLI 실행 → Claude가 마크다운 생성 → 사람이 읽음
+사람 → CLI 실행 → Claude가 마크다운 생성 → 에이전트/사람이 JSON으로 읽음
 ```
 
 **현재 기능**:
 - `zywiki init` - 프로젝트 초기화
 - `zywiki add` - 파일 트래킹 추가
-- `zywiki build` - 문서 생성
+- `zywiki build` - 문서 생성 (`--json` 지원)
 - `zywiki update` - 변경된 문서만 업데이트
-- `zywiki status` - 트래킹 상태 확인
+- `zywiki status` - 트래킹 상태 확인 (`--json` 지원)
 - `zywiki search` - RAG 기반 검색 (`--json` 지원)
 - `zywiki stack` - 기술 스택 분석
 
 **한계**:
-- `search --json` 외 다른 명령은 텍스트 출력만
-- 구조화된 상태 조회 없음 (`status --json` 미지원)
 - 전체 빌드만 가능 (비용 낭비)
-- 안전장치 없음
+- 안전장치 없음 (토큰 제한, dry-run 미지원)
+- DB 스키마 문서화 미지원
 
 ---
 
-## v0.4.0 - JSON 출력
+## ~~v0.4.0 - JSON 출력~~ ✅ 완료
 
 > **목표**: 구조화된 출력으로 에이전트 친화성 확보
 
 ### 핵심 기능
 
-| 기능 | 설명 |
-|------|------|
-| `--json` 플래그 | 모든 CLI 명령에 JSON 출력 옵션 |
-| `zywiki status --json` | 구조화된 상태 조회 |
-| 매니페스트 | `.zywiki/manifest.json` 자동 생성 |
+| 기능 | 설명 | 상태 |
+|------|------|------|
+| `--json` 플래그 | 모든 CLI 명령에 JSON 출력 옵션 | ✅ |
+| `zywiki status --json` | 구조화된 상태 조회 | ✅ |
+| `zywiki build --json` | 빌드 결과 JSON 출력 | ✅ |
 
 ### 상세
 
@@ -349,10 +348,10 @@ zywiki watch --max-daily-tokens 100000
 ## 버전별 요약
 
 ```
-v0.3.0 (현재)  기본 CLI + RAG 검색 (search --json 지원)
+v0.3.0        기본 CLI + RAG 검색 (search --json 지원)
               └─ 사람이 실행하고 읽음
 
-v0.4.0        JSON 출력 확장 + 매니페스트
+v0.4.0 (현재)  JSON 출력 확장 ✅
               └─ 에이전트가 "읽을 수 있음"
 
 v0.5.0        SQL 스키마 문서화
@@ -385,11 +384,12 @@ v1.1.0        analyze + watch 모드
 
 ---
 
-## 다음 할 일 (v0.4.0 toward)
+## 다음 할 일 (v0.5.0 toward)
 
-1. `--json` 플래그 출력 스키마 정의
-2. `zywiki status --json` 구현
-3. `zywiki build --json` 결과 리포트 추가
-4. `.zywiki/manifest.json` 자동 생성
+1. `zywiki schema` 명령어 스캐폴딩
+2. Prisma 스키마 파서 구현
+3. raw SQL 파서 구현
+4. 스키마 → 마크다운 문서 생성기
+5. `--json` 출력 지원
 
-이 4개가 끝나면 **v0.4.0 릴리스** 가능.
+이 5개가 끝나면 **v0.5.0 릴리스** 가능.
