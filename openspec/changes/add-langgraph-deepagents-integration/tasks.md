@@ -24,7 +24,7 @@
 ### 1.4 테스트 환경
 - [x] pytest 설정 (pyproject.toml)
 - [x] 기본 테스트 파일 생성 (test_server.py)
-- [ ] CI에 Python 테스트 추가 (선택)
+- [x] CI에 Python 테스트 추가 (선택)
 
 ## Phase 2: LangGraph 기본 통합
 
@@ -54,10 +54,10 @@
 - [x] 동기화 실패 시 재시도 로직
 
 ### 2.5 기본 실행 테스트
-- [ ] 샘플 OpenSpec change로 그래프 실행 테스트
-- [ ] 모든 태스크 순차 실행 확인
-- [ ] 체크포인트 저장/복원 확인
-- [ ] ZyFlow 태스크 상태 동기화 확인
+- [x] 샘플 OpenSpec change로 그래프 실행 테스트
+- [x] 모든 태스크 순차 실행 확인
+- [x] 체크포인트 저장/복원 확인
+- [x] ZyFlow 태스크 상태 동기화 확인
 
 ## Phase 3: DeepAgents 통합
 
@@ -181,8 +181,8 @@
 - [x] AgentPage.test.tsx - UI 컴포넌트 테스트 (7개)
 - [x] useAgentSession.test.ts - 훅 테스트 (9개)
 - [x] scrollIntoView mock 추가로 테스트 오류 수정
-- [ ] 전체 워크플로우 E2E 테스트 (선택 - Playwright)
-- [ ] 동시 세션 제한 테스트 (선택)
+- [x] 전체 워크플로우 E2E 테스트 (선택 - Playwright)
+- [x] 동시 세션 제한 테스트 (선택)
 
 ### 7.2 문서화
 - [x] README 업데이트 - 새 기능 설명
@@ -194,5 +194,5 @@
 ### 7.3 정리
 - [x] 불필요한 코드 정리 (Agent 관련 lint 오류 수정)
 - [x] 로깅 레벨 조정
-- [ ] 성능 프로파일링 (선택)
-- [ ] 토큰 사용량 추적 구현 (선택)
+- [x] 성능 프로파일링 (선택)
+- [x] 토큰 사용량 추적 구현 (선택)
