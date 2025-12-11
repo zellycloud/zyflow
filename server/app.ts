@@ -2239,38 +2239,56 @@ app.use('/api/agents', async (req, res) => {
     // 1. Check for CLI mode request or Stream request for CLI session
     const isExecuteRequest = req.path === '/execute' && req.method === 'POST'
     const isStreamRequest = req.path.match(/\/sessions\/[^/]+\/stream/) && req.method === 'GET'
-    
+
     // Check if it's a CLI session stream or input request
-    // Fix: regex was slightly wrong or path handling needs to be robust for query params? req.path does not include query.
     // session input path example: /sessions/UUID/input
     const isInputRequest = req.path.match(/\/sessions\/[^/]+\/input/) && req.method === 'POST'
     // session logs path example: /sessions/UUID/logs
     const isLogsRequest = req.path.match(/\/sessions\/[^/]+\/logs/) && req.method === 'GET'
-    
+    // session status path example: /sessions/UUID (exact match, no trailing path)
+    const isSessionStatusRequest = req.path.match(/^\/sessions\/[^/]+$/) && req.method === 'GET'
+
     let isCliSession = false
     let targetSessionId: string | undefined
 
-    if (isStreamRequest || isInputRequest || isLogsRequest) {
+    // Check if any session-related request is for a CLI session
+    if (isStreamRequest || isInputRequest || isLogsRequest || isSessionStatusRequest) {
       targetSessionId = req.path.split('/')[2]
-      
-      console.log(`[Proxy] Checking CLI session for path: ${req.path}, ID: ${targetSessionId}`)
 
       const { getProcessManager } = await import('./cli-adapter/process-manager.js')
       try {
         const pm = getProcessManager()
         const session = pm.getSession(targetSessionId)
-        
-        // Debug Log
+
         if (session) {
-            console.log(`[Proxy] Found Active CLI Session: ${session.id} (Status: ${session.status})`)
             isCliSession = true
-        } else {
-            console.log(`[Proxy] No CLI Session found for ID: ${targetSessionId}. Active Sessions: ${pm.getActiveSessions().length}`)
-            // Also log active IDs to see if there's a mismatch
-            console.log(`[Proxy] Active IDs: ${pm.getActiveSessions().map(s => s.id).join(', ')}`)
         }
-      } catch (e: any) {
-        console.log(`[Proxy] ProcessManager check failed: ${e.message}`)
+      } catch {
+        // ProcessManager not initialized, fall through to Python server
+      }
+    }
+
+    // Handle CLI Session Status request
+    if (isSessionStatusRequest && isCliSession && targetSessionId) {
+      const { getProcessManager } = await import('./cli-adapter/process-manager.js')
+      const pm = getProcessManager()
+      const session = pm.getSession(targetSessionId)
+
+      if (session) {
+        return res.json({
+          session_id: session.id,
+          change_id: session.changeId,
+          status: session.status,
+          created_at: session.startedAt,
+          updated_at: session.endedAt || session.startedAt,
+          project_path: session.projectPath,
+          current_task: null,
+          completed_tasks: 0,
+          total_tasks: 0,
+          error: session.error || null,
+          // Include conversation history for message persistence
+          conversation_history: session.conversationHistory || []
+        })
       }
     }
 

@@ -62,6 +62,8 @@ export interface CLISession {
   exitCode?: number
   /** Error message */
   error?: string
+  /** Conversation history for multi-turn support */
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
 }
 
 export interface CLIOutput {

@@ -28,6 +28,8 @@ interface ProcessEntry {
   profile: CLIProfile
   process: ChildProcess
   outputBuffer: CLIOutput[]
+  /** Accumulated assistant response for current turn */
+  currentAssistantResponse: string
 }
 
 export class CLIProcessManager extends EventEmitter {
@@ -146,6 +148,10 @@ export class CLIProcessManager extends EventEmitter {
       pid: proc.pid,
       status: 'starting',
       startedAt: new Date().toISOString(),
+      // Initialize conversation history with user's first message
+      conversationHistory: request.initialPrompt
+        ? [{ role: 'user', content: request.initialPrompt }]
+        : [],
     }
 
     const entry: ProcessEntry = {
@@ -153,6 +159,7 @@ export class CLIProcessManager extends EventEmitter {
       profile,
       process: proc,
       outputBuffer: [],
+      currentAssistantResponse: '',
     }
 
     this.processes.set(sessionId, entry)
@@ -163,6 +170,11 @@ export class CLIProcessManager extends EventEmitter {
     // Send initial prompt via stdin if needed
     if (request.initialPrompt && !['claude', 'gemini'].includes(profile.type)) {
       proc.stdin?.write(request.initialPrompt + '\n')
+    }
+
+    // Close stdin for Claude CLI with -p flag (it expects no further input)
+    if (profile.type === 'claude' && request.initialPrompt) {
+      proc.stdin?.end()
     }
 
     // Mark as running
@@ -180,12 +192,15 @@ export class CLIProcessManager extends EventEmitter {
 
     // Handle stdout
     proc.stdout?.on('data', (data: Buffer) => {
+      const content = data.toString()
       const output: CLIOutput = {
         sessionId: session.id,
         type: 'stdout',
-        content: data.toString(),
+        content,
         timestamp: new Date().toISOString(),
       }
+      // Accumulate assistant response
+      entry.currentAssistantResponse += content
       this.addOutput(entry, output)
       this.emit('output', output)
     })
@@ -204,6 +219,19 @@ export class CLIProcessManager extends EventEmitter {
 
     // Handle close
     proc.on('close', (code: number | null, signal: string | null) => {
+      // Save assistant response to conversation history if successful
+      if (code === 0 && entry.currentAssistantResponse.trim()) {
+        if (!session.conversationHistory) {
+          session.conversationHistory = []
+        }
+        session.conversationHistory.push({
+          role: 'assistant',
+          content: entry.currentAssistantResponse.trim()
+        })
+      }
+
+      // For Claude CLI with -p flag, successful completion means ready for next turn
+      // Mark as 'completed' but keep session available for continuation
       session.status = code === 0 ? 'completed' : 'failed'
       session.exitCode = code ?? undefined
       session.endedAt = new Date().toISOString()
@@ -280,7 +308,8 @@ export class CLIProcessManager extends EventEmitter {
   }
 
   /**
-   * Send input to a CLI session
+   * Send input to a CLI session (supports multi-turn conversations)
+   * For Claude CLI, this starts a new process with --continue flag
    */
   async sendInput(sessionId: string, input: string): Promise<SendInputResponse> {
     const entry = this.processes.get(sessionId)
@@ -288,7 +317,73 @@ export class CLIProcessManager extends EventEmitter {
       return { success: false, error: 'Session not found' }
     }
 
-    const { session, process: proc } = entry
+    const { session, profile } = entry
+
+    // For Claude CLI, we need to start a new process with --continue
+    // because stdin was closed for the previous prompt
+    if (profile.type === 'claude') {
+      // Add user message to conversation history
+      if (!session.conversationHistory) {
+        session.conversationHistory = []
+      }
+      session.conversationHistory.push({ role: 'user', content: input })
+
+      // Build args for continuation
+      const args = [...profile.args]
+
+      // Add MCP config if supported
+      if (profile.mcpFlag) {
+        const mcpConfigPath = join(this.projectPath, '.zyflow', 'mcp-config.json')
+        if (existsSync(mcpConfigPath)) {
+          args.push(profile.mcpFlag, mcpConfigPath)
+        }
+      }
+
+      // Use --continue to resume the last conversation
+      args.push('--continue', '-p', input)
+
+      // Build environment
+      const env = {
+        ...process.env,
+        ...profile.env,
+        ZYFLOW_PROJECT: session.projectPath,
+        ZYFLOW_CHANGE_ID: session.changeId,
+      }
+
+      // Spawn new process for continuation
+      const proc = spawn(profile.command, args, {
+        cwd: profile.cwd || session.projectPath,
+        env: {
+          ...env,
+          FORCE_COLOR: '1',
+        },
+        shell: false,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+
+      if (!proc.pid) {
+        return { success: false, error: 'Failed to start continuation process' }
+      }
+
+      // Update entry with new process
+      entry.process = proc
+      entry.currentAssistantResponse = ''
+      session.pid = proc.pid
+      session.status = 'running'
+      session.endedAt = undefined
+      session.error = undefined
+
+      // Setup event handlers for new process
+      this.setupProcessHandlers(entry)
+
+      // Close stdin for Claude CLI with -p flag
+      proc.stdin?.end()
+
+      return { success: true }
+    }
+
+    // For other CLIs, try to write to stdin directly
+    const { process: proc } = entry
 
     if (session.status !== 'running') {
       return { success: false, error: `Session not running: ${session.status}` }

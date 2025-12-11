@@ -25,6 +25,7 @@ export interface AgentSessionState {
   completed_tasks: number
   total_tasks: number
   error: string | null
+  conversation_history?: Array<{ role: 'user' | 'assistant'; content: string }>
 }
 
 const API_BASE = 'http://localhost:3001/api/agents'
@@ -54,8 +55,10 @@ export function useAgentSession(initialSessionId?: string) {
     refetchInterval: (query) => {
       // Stop refetching if we got a 404 or error
       if (!query.state.data && query.state.error) return false
-      return isStreaming ? 2000 : false
+      // Poll less frequently - SSE handles real-time updates
+      return isStreaming ? 5000 : false
     },
+    staleTime: 2000, // Consider data fresh for 2 seconds
   })
 
   // Connect to SSE stream
@@ -170,6 +173,23 @@ export function useAgentSession(initialSessionId?: string) {
       }
     }
   }, [])
+
+  // Sync messages from conversation history when session is loaded
+  useEffect(() => {
+    if (sessionState?.conversation_history && sessionState.conversation_history.length > 0) {
+      // Only sync if we have fewer messages than the history
+      // This avoids overwriting messages during active streaming
+      const historyMessages: AgentMessage[] = sessionState.conversation_history.map((item) => ({
+        role: item.role === 'assistant' ? 'agent' : 'user',
+        content: item.content,
+      }))
+
+      // If messages are empty or less than history, restore from history
+      if (messages.length < historyMessages.length) {
+        setMessages(historyMessages)
+      }
+    }
+  }, [sessionState?.conversation_history])
 
   // Start new session
   const startSessionMutation = useMutation({
@@ -287,12 +307,16 @@ export function useAgentSession(initialSessionId?: string) {
         if (!res.ok) {
            const err = await res.json()
            setError(err.error || 'Failed to send input')
+        } else {
+          // Reconnect to stream after sending input (for multi-turn conversations)
+          // The backend starts a new process with --continue, so we need to listen for its output
+          connectStream(sessionId)
         }
       } catch (e: any) {
         setError(e.message)
       }
     }
-  }, [sessionId])
+  }, [sessionId, connectStream])
 
   // Start session helper
   const startSession = useCallback(
