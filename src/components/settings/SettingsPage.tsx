@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { FolderOpen, Key } from 'lucide-react'
+import { FolderOpen, Key, Terminal } from 'lucide-react'
 import { ProjectsSettings } from './ProjectsSettings'
 import { IntegrationsSettings } from './IntegrationsSettings'
+import { CLISettings } from './CLISettings'
 
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState('projects')
@@ -22,6 +23,10 @@ export function SettingsPage() {
             <FolderOpen className="h-4 w-4" />
             Projects
           </TabsTrigger>
+          <TabsTrigger value="cli" className="flex items-center gap-2">
+            <Terminal className="h-4 w-4" />
+            AI CLI
+          </TabsTrigger>
           <TabsTrigger value="accounts" className="flex items-center gap-2">
             <Key className="h-4 w-4" />
             Accounts
@@ -30,6 +35,10 @@ export function SettingsPage() {
 
         <TabsContent value="projects" className="space-y-4">
           <ProjectsSettings />
+        </TabsContent>
+
+        <TabsContent value="cli" className="space-y-4">
+          <CLISettings />
         </TabsContent>
 
         <TabsContent value="accounts" className="space-y-4">

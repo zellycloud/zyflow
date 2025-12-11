@@ -7,10 +7,11 @@
  * - Qwen Code (qwen)
  * - Kilo Code (kilo)
  * - OpenCode (opencode)
+ * - Codex CLI (codex)
  * - Custom CLIs
  */
 
-export type CLIType = 'claude' | 'gemini' | 'qwen' | 'kilo' | 'opencode' | 'custom'
+export type CLIType = 'claude' | 'gemini' | 'qwen' | 'kilo' | 'opencode' | 'codex' | 'custom'
 
 export interface CLIProfile {
   /** Unique identifier */
@@ -204,5 +205,21 @@ export const DEFAULT_CLI_PROFILES: CLIProfile[] = [
     description: 'OpenCode CLI',
     icon: '🔓',
     builtin: true,
+  },
+  {
+    id: 'codex',
+    name: 'Codex CLI',
+    type: 'codex',
+    command: 'codex',
+    args: [],
+    description: 'OpenAI Codex CLI',
+    icon: '🧠',
+    builtin: true,
+    defaultModel: 'o4-mini',
+    availableModels: [
+      'o4-mini',
+      'o3',
+      'gpt-4.1',
+    ],
   },
 ]

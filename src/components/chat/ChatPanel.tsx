@@ -300,18 +300,29 @@ export function ChatPanel({ className, collapsed: controlledCollapsed, onCollaps
     sendMessage,
   } = useAgentSession(loadedSessionId)
 
-  // Load CLI profiles
+  // Load CLI profiles (only enabled ones)
   useEffect(() => {
     async function fetchCLIProfiles() {
       try {
-        const res = await fetch('http://localhost:3001/api/cli/profiles/available')
-        const data = await res.json()
-        if (data.success) {
-          setCLIProfiles(data.profiles)
-          if (!selectedCLI && data.profiles.length > 0) {
-            setSelectedCLI(data.profiles[0].id)
+        // Fetch settings to filter enabled profiles
+        const settingsRes = await fetch('http://localhost:3001/api/cli/settings')
+        const settingsData = await settingsRes.json()
+
+        const availableRes = await fetch('http://localhost:3001/api/cli/profiles/available')
+        const availableData = await availableRes.json()
+
+        if (availableData.success) {
+          // Filter to only enabled profiles
+          const enabledProfiles = availableData.profiles.filter((profile: { id: string }) => {
+            const setting = settingsData.settings?.[profile.id]
+            return setting?.enabled !== false // Default to enabled if no setting
+          })
+
+          setCLIProfiles(enabledProfiles)
+          if (!selectedCLI && enabledProfiles.length > 0) {
+            setSelectedCLI(enabledProfiles[0].id)
             // Set initial CLI in hook
-            setCLI(data.profiles[0])
+            setCLI(enabledProfiles[0])
           }
         }
       } catch (error) {

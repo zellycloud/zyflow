@@ -5,6 +5,9 @@
  */
 
 import { Router, Request, Response } from 'express'
+import { readFile, writeFile, mkdir } from 'fs/promises'
+import { existsSync } from 'fs'
+import { join } from 'path'
 import { getProfileManager, initProfileManager } from './profile-manager.js'
 import { getProcessManager, initProcessManager } from './process-manager.js'
 import type {
@@ -12,6 +15,16 @@ import type {
   StartCLIRequest,
   SendInputRequest,
 } from './types.js'
+
+// CLI Settings storage path
+const getSettingsPath = (projectPath: string) => join(projectPath, '.zyflow', 'cli-settings.json')
+
+interface CLISettings {
+  [profileId: string]: {
+    enabled: boolean
+    selectedModel?: string
+  }
+}
 
 const router = Router()
 
@@ -163,6 +176,80 @@ router.get('/profiles/:id/check', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({
       success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    })
+  }
+})
+
+/**
+ * GET /api/cli/settings
+ * Get CLI settings (enabled/disabled status and selected models)
+ */
+router.get('/settings', async (req: Request, res: Response) => {
+  try {
+    const projectPath = (req.query.projectPath as string) || process.cwd()
+    const profileManager = getProfileManager()
+    const profiles = await profileManager.getAll()
+
+    // Load settings from file
+    const settingsPath = getSettingsPath(projectPath)
+    let settings: CLISettings = {}
+
+    if (existsSync(settingsPath)) {
+      try {
+        const content = await readFile(settingsPath, 'utf-8')
+        settings = JSON.parse(content)
+      } catch {
+        // Use defaults if file is invalid
+      }
+    }
+
+    // Initialize settings for profiles that don't have settings yet
+    for (const profile of profiles) {
+      if (!settings[profile.id]) {
+        settings[profile.id] = {
+          enabled: true,
+          selectedModel: profile.defaultModel,
+        }
+      }
+    }
+
+    res.json({ profiles, settings })
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Unknown error',
+    })
+  }
+})
+
+/**
+ * PUT /api/cli/settings
+ * Update CLI settings
+ */
+router.put('/settings', async (req: Request, res: Response) => {
+  try {
+    const projectPath = (req.query.projectPath as string) || process.cwd()
+    const { settings } = req.body as { settings: CLISettings }
+
+    if (!settings) {
+      return res.status(400).json({
+        error: 'Missing required field: settings',
+      })
+    }
+
+    // Ensure .zyflow directory exists
+    const zyflowDir = join(projectPath, '.zyflow')
+    if (!existsSync(zyflowDir)) {
+      await mkdir(zyflowDir, { recursive: true })
+    }
+
+    // Save settings to file
+    const settingsPath = getSettingsPath(projectPath)
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
+
+    res.json({ success: true, settings })
+  } catch (error) {
+    res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     })
   }
