@@ -148,11 +148,11 @@ export const DEFAULT_CLI_PROFILES: CLIProfile[] = [
     description: 'Anthropic Claude Code CLI',
     icon: '🤖',
     builtin: true,
-    defaultModel: 'claude-sonnet-4-20250514',
+    defaultModel: 'sonnet',
     availableModels: [
-      'claude-sonnet-4-20250514',
-      'claude-opus-4-20250514',
-      'claude-haiku-4-20250514',
+      'sonnet',
+      'opus',
+      'haiku',
     ],
   },
   {
@@ -164,11 +164,11 @@ export const DEFAULT_CLI_PROFILES: CLIProfile[] = [
     description: 'Google Gemini CLI',
     icon: '💎',
     builtin: true,
-    defaultModel: 'gemini-2.0-flash',
+    defaultModel: 'gemini-2.5-flash',
     availableModels: [
-      'gemini-2.0-flash',
-      'gemini-2.0-pro',
-      'gemini-1.5-flash',
+      'gemini-2.5-flash',
+      'gemini-2.5-pro',
+      'gemini-3-pro-preview',
     ],
   },
   {
@@ -215,11 +215,10 @@ export const DEFAULT_CLI_PROFILES: CLIProfile[] = [
     description: 'OpenAI Codex CLI',
     icon: '🧠',
     builtin: true,
-    defaultModel: 'o4-mini',
+    defaultModel: 'gpt-5.1-codex',
     availableModels: [
-      'o4-mini',
-      'o3',
-      'gpt-4.1',
+      'gpt-5-codex',
+      'gpt-5.1-codex',
     ],
   },
 ]

@@ -23,6 +23,7 @@ interface CLISettings {
   [profileId: string]: {
     enabled: boolean
     selectedModel?: string
+    order?: number
   }
 }
 
@@ -205,12 +206,16 @@ router.get('/settings', async (req: Request, res: Response) => {
     }
 
     // Initialize settings for profiles that don't have settings yet
-    for (const profile of profiles) {
+    for (let i = 0; i < profiles.length; i++) {
+      const profile = profiles[i]
       if (!settings[profile.id]) {
         settings[profile.id] = {
           enabled: true,
           selectedModel: profile.defaultModel,
+          order: i,
         }
+      } else if (settings[profile.id].order === undefined) {
+        settings[profile.id].order = i
       }
     }
 

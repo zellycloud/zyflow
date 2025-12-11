@@ -1,20 +1,30 @@
 /**
  * CLI Settings Component
  *
- * Manage CLI profiles: enable/disable and select default models
+ * Manage CLI profiles: enable/disable, select default models, and reorder
  */
 
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -23,8 +33,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Terminal, CheckCircle2 } from 'lucide-react'
+import { Loader2, GripVertical, Terminal } from 'lucide-react'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
 interface CLIProfile {
   id: string
@@ -40,16 +51,123 @@ interface CLIProfile {
   selectedModel?: string
 }
 
+interface CLISetting {
+  enabled: boolean
+  selectedModel?: string
+  order?: number
+}
+
 interface CLISettingsResponse {
   profiles: CLIProfile[]
-  settings: Record<string, { enabled: boolean; selectedModel?: string }>
+  settings: Record<string, CLISetting>
+}
+
+interface SortableCLIItemProps {
+  profile: CLIProfile
+  settings: CLISetting
+  onToggle: (enabled: boolean) => void
+  onModelChange: (model: string) => void
+}
+
+function SortableCLIItem({ profile, settings, onToggle, onModelChange }: SortableCLIItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: profile.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  const isEnabled = settings.enabled ?? true
+  const selectedModel = settings.selectedModel ?? profile.defaultModel
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <Card className={cn(
+        'transition-all',
+        isDragging && 'shadow-lg ring-2 ring-primary/20',
+        !isEnabled && 'opacity-60'
+      )}>
+        <CardContent className="py-1.5 px-3">
+          <div className="flex items-center gap-2">
+            {/* Drag Handle */}
+            <button
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-muted-foreground hover:text-foreground touch-none"
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+
+            {/* Icon */}
+            <span className="text-xl">{profile.icon || '🔧'}</span>
+
+            {/* Name & Badge */}
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-medium text-sm truncate">{profile.name}</span>
+              {profile.builtin && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
+                  Built-in
+                </Badge>
+              )}
+            </div>
+
+            {/* Model Selector - inline */}
+            {isEnabled && profile.availableModels && profile.availableModels.length > 0 ? (
+              <Select
+                value={selectedModel}
+                onValueChange={onModelChange}
+              >
+                <SelectTrigger className="h-7 text-xs w-[220px] ml-auto">
+                  <SelectValue placeholder="모델 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  {profile.availableModels.map((model) => (
+                    <SelectItem key={model} value={model} className="text-xs">
+                      {model}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : isEnabled ? (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground ml-auto">
+                <Terminal className="h-3 w-3" />
+                <span>기본값</span>
+              </div>
+            ) : (
+              <div className="ml-auto" />
+            )}
+
+            {/* Enable/Disable Switch */}
+            <Switch
+              checked={isEnabled}
+              onCheckedChange={onToggle}
+              className="shrink-0 ml-4"
+            />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
 }
 
 export function CLISettings() {
   const queryClient = useQueryClient()
-  const [localSettings, setLocalSettings] = useState<
-    Record<string, { enabled: boolean; selectedModel?: string }>
-  >({})
+  const [localSettings, setLocalSettings] = useState<Record<string, CLISetting>>({})
+  const [orderedProfileIds, setOrderedProfileIds] = useState<string[]>([])
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   // Fetch CLI profiles and settings
   const { data, isLoading, error } = useQuery({
@@ -61,26 +179,36 @@ export function CLISettings() {
     },
   })
 
-  // Initialize local settings from server data
+  // Initialize local settings and order from server data
   useEffect(() => {
-    if (data?.settings) {
+    if (data?.profiles && data?.settings) {
       setLocalSettings(data.settings)
+
+      // Sort profiles by order
+      const sorted = [...data.profiles].sort((a, b) => {
+        const orderA = data.settings[a.id]?.order ?? 999
+        const orderB = data.settings[b.id]?.order ?? 999
+        return orderA - orderB
+      })
+      setOrderedProfileIds(sorted.map(p => p.id))
     } else if (data?.profiles) {
       // Initialize with all enabled if no settings exist
-      const initialSettings: Record<string, { enabled: boolean; selectedModel?: string }> = {}
-      data.profiles.forEach((profile) => {
+      const initialSettings: Record<string, CLISetting> = {}
+      data.profiles.forEach((profile, index) => {
         initialSettings[profile.id] = {
           enabled: true,
           selectedModel: profile.defaultModel,
+          order: index,
         }
       })
       setLocalSettings(initialSettings)
+      setOrderedProfileIds(data.profiles.map(p => p.id))
     }
   }, [data])
 
   // Save settings mutation
   const saveMutation = useMutation({
-    mutationFn: async (settings: Record<string, { enabled: boolean; selectedModel?: string }>) => {
+    mutationFn: async (settings: Record<string, CLISetting>) => {
       const res = await fetch('http://localhost:3001/api/cli/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -117,6 +245,26 @@ export function CLISettings() {
     saveMutation.mutate(newSettings)
   }
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (over && active.id !== over.id) {
+      const oldIndex = orderedProfileIds.indexOf(active.id as string)
+      const newIndex = orderedProfileIds.indexOf(over.id as string)
+
+      const newOrder = arrayMove(orderedProfileIds, oldIndex, newIndex)
+      setOrderedProfileIds(newOrder)
+
+      // Update order in settings
+      const newSettings = { ...localSettings }
+      newOrder.forEach((id, index) => {
+        newSettings[id] = { ...newSettings[id], order: index }
+      })
+      setLocalSettings(newSettings)
+      saveMutation.mutate(newSettings)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -138,91 +286,43 @@ export function CLISettings() {
   }
 
   const profiles = data?.profiles ?? []
+  const profileMap = new Map(profiles.map(p => [p.id, p]))
 
   return (
     <div className="space-y-4">
       <div className="text-sm text-muted-foreground">
-        사용할 AI CLI를 선택하고 기본 모델을 설정합니다. 비활성화된 CLI는 채팅 패널에서 표시되지 않습니다.
+        사용할 AI CLI를 선택하고 기본 모델을 설정합니다. 드래그하여 순서를 변경할 수 있습니다.
       </div>
 
-      <div className="grid gap-4">
-        {profiles.map((profile) => {
-          const settings = localSettings[profile.id] ?? { enabled: true }
-          const isEnabled = settings.enabled ?? true
-          const selectedModel = settings.selectedModel ?? profile.defaultModel
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={orderedProfileIds}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="space-y-2">
+            {orderedProfileIds.map((profileId) => {
+              const profile = profileMap.get(profileId)
+              if (!profile) return null
 
-          return (
-            <Card key={profile.id} className={!isEnabled ? 'opacity-60' : ''}>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">{profile.icon || '🔧'}</span>
-                    <div>
-                      <CardTitle className="text-base flex items-center gap-2">
-                        {profile.name}
-                        {profile.builtin && (
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                            Built-in
-                          </Badge>
-                        )}
-                      </CardTitle>
-                      <CardDescription className="text-xs mt-0.5">
-                        {profile.description || `${profile.command} CLI`}
-                      </CardDescription>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={isEnabled}
-                    onCheckedChange={(checked) => handleToggle(profile.id, checked)}
-                  />
-                </div>
-              </CardHeader>
+              const settings = localSettings[profileId] ?? { enabled: true }
 
-              {isEnabled && profile.availableModels && profile.availableModels.length > 0 && (
-                <CardContent className="pt-0">
-                  <div className="flex items-center gap-4">
-                    <Label htmlFor={`model-${profile.id}`} className="text-xs text-muted-foreground whitespace-nowrap">
-                      기본 모델
-                    </Label>
-                    <Select
-                      value={selectedModel}
-                      onValueChange={(value) => handleModelChange(profile.id, value)}
-                    >
-                      <SelectTrigger id={`model-${profile.id}`} className="h-8 text-xs">
-                        <SelectValue placeholder="모델 선택" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {profile.availableModels.map((model) => (
-                          <SelectItem key={model} value={model} className="text-xs">
-                            <div className="flex items-center gap-2">
-                              {model === profile.defaultModel && (
-                                <CheckCircle2 className="h-3 w-3 text-green-500" />
-                              )}
-                              <span>{model}</span>
-                              {model === profile.defaultModel && (
-                                <span className="text-muted-foreground">(기본)</span>
-                              )}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </CardContent>
-              )}
-
-              {isEnabled && (!profile.availableModels || profile.availableModels.length === 0) && (
-                <CardContent className="pt-0">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Terminal className="h-3 w-3" />
-                    <span>모델 선택 불가 - CLI 기본값 사용</span>
-                  </div>
-                </CardContent>
-              )}
-            </Card>
-          )
-        })}
-      </div>
+              return (
+                <SortableCLIItem
+                  key={profileId}
+                  profile={profile}
+                  settings={settings}
+                  onToggle={(enabled) => handleToggle(profileId, enabled)}
+                  onModelChange={(model) => handleModelChange(profileId, model)}
+                />
+              )
+            })}
+          </div>
+        </SortableContext>
+      </DndContext>
 
       {profiles.length === 0 && (
         <Card>

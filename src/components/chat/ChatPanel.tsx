@@ -300,11 +300,11 @@ export function ChatPanel({ className, collapsed: controlledCollapsed, onCollaps
     sendMessage,
   } = useAgentSession(loadedSessionId)
 
-  // Load CLI profiles (only enabled ones)
+  // Load CLI profiles (only enabled ones, sorted by order)
   useEffect(() => {
     async function fetchCLIProfiles() {
       try {
-        // Fetch settings to filter enabled profiles
+        // Fetch settings to filter enabled profiles and get order
         const settingsRes = await fetch('http://localhost:3001/api/cli/settings')
         const settingsData = await settingsRes.json()
 
@@ -312,11 +312,17 @@ export function ChatPanel({ className, collapsed: controlledCollapsed, onCollaps
         const availableData = await availableRes.json()
 
         if (availableData.success) {
-          // Filter to only enabled profiles
-          const enabledProfiles = availableData.profiles.filter((profile: { id: string }) => {
-            const setting = settingsData.settings?.[profile.id]
-            return setting?.enabled !== false // Default to enabled if no setting
-          })
+          // Filter to only enabled profiles and sort by order
+          const enabledProfiles = availableData.profiles
+            .filter((profile: { id: string }) => {
+              const setting = settingsData.settings?.[profile.id]
+              return setting?.enabled !== false // Default to enabled if no setting
+            })
+            .sort((a: { id: string }, b: { id: string }) => {
+              const orderA = settingsData.settings?.[a.id]?.order ?? 999
+              const orderB = settingsData.settings?.[b.id]?.order ?? 999
+              return orderA - orderB
+            })
 
           setCLIProfiles(enabledProfiles)
           if (!selectedCLI && enabledProfiles.length > 0) {
