@@ -292,6 +292,29 @@ router.post('/sessions/:id/input', async (req: Request, res: Response) => {
 })
 
 /**
+ * DELETE /api/cli/sessions/:id
+ * Delete a CLI session from history
+ */
+router.delete('/sessions/:id', async (req: Request, res: Response) => {
+  try {
+    const processManager = getProcessManager()
+    const deleted = processManager.deleteSession(req.params.id)
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        error: 'Session not found',
+      })
+    }
+    res.json({ success: true })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    })
+  }
+})
+
+/**
  * GET /api/cli/sessions/:id/output
  * Get session output
  */

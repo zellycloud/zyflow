@@ -11,7 +11,7 @@ import { spawn, ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
 import { randomUUID } from 'crypto'
 import { join } from 'path'
-import { existsSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import {
   CLISession,
   CLIOutput,
@@ -35,11 +35,49 @@ interface ProcessEntry {
 export class CLIProcessManager extends EventEmitter {
   private projectPath: string
   private processes: Map<string, ProcessEntry> = new Map()
+  private completedSessions: Map<string, CLISession> = new Map()
   private maxOutputBuffer = 1000 // Max output lines to keep
+  private sessionsFilePath: string
 
   constructor(projectPath: string) {
     super()
     this.projectPath = projectPath
+    this.sessionsFilePath = join(projectPath, '.zyflow', 'sessions.json')
+    this.loadSessions()
+  }
+
+  /**
+   * Load sessions from file
+   */
+  private loadSessions(): void {
+    try {
+      if (existsSync(this.sessionsFilePath)) {
+        const data = readFileSync(this.sessionsFilePath, 'utf-8')
+        const sessions: CLISession[] = JSON.parse(data)
+        for (const session of sessions) {
+          this.completedSessions.set(session.id, session)
+        }
+        console.log(`[ProcessManager] Loaded ${sessions.length} sessions from file`)
+      }
+    } catch (error) {
+      console.error('[ProcessManager] Failed to load sessions:', error)
+    }
+  }
+
+  /**
+   * Save sessions to file
+   */
+  private saveSessions(): void {
+    try {
+      const dir = join(this.projectPath, '.zyflow')
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true })
+      }
+      const sessions = Array.from(this.completedSessions.values())
+      writeFileSync(this.sessionsFilePath, JSON.stringify(sessions, null, 2))
+    } catch (error) {
+      console.error('[ProcessManager] Failed to save sessions:', error)
+    }
   }
 
   /**
@@ -242,6 +280,10 @@ export class CLIProcessManager extends EventEmitter {
         session.error = `Process exited with code: ${code}`
       }
 
+      // Save to completed sessions and persist
+      this.completedSessions.set(session.id, { ...session })
+      this.saveSessions()
+
       this.emit('session:end', session)
     })
 
@@ -259,6 +301,11 @@ export class CLIProcessManager extends EventEmitter {
       }
       this.addOutput(entry, output)
       this.emit('output', output)
+
+      // Save to completed sessions and persist
+      this.completedSessions.set(session.id, { ...session })
+      this.saveSessions()
+
       this.emit('session:end', session)
     })
   }
@@ -401,14 +448,40 @@ export class CLIProcessManager extends EventEmitter {
    * Get session info
    */
   getSession(sessionId: string): CLISession | undefined {
-    return this.processes.get(sessionId)?.session
+    // Check active processes first
+    const active = this.processes.get(sessionId)?.session
+    if (active) return active
+
+    // Check completed sessions
+    return this.completedSessions.get(sessionId)
   }
 
   /**
-   * Get all sessions
+   * Get all sessions (active + completed)
    */
   getAllSessions(): CLISession[] {
-    return Array.from(this.processes.values()).map(e => e.session)
+    const activeSessions = Array.from(this.processes.values()).map(e => e.session)
+    const completedSessions = Array.from(this.completedSessions.values())
+
+    // Merge, avoiding duplicates (active sessions take precedence)
+    const activeIds = new Set(activeSessions.map(s => s.id))
+    const uniqueCompleted = completedSessions.filter(s => !activeIds.has(s.id))
+
+    return [...activeSessions, ...uniqueCompleted].sort((a, b) =>
+      new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+    )
+  }
+
+  /**
+   * Delete a session from history
+   */
+  deleteSession(sessionId: string): boolean {
+    const existed = this.completedSessions.has(sessionId)
+    if (existed) {
+      this.completedSessions.delete(sessionId)
+      this.saveSessions()
+    }
+    return existed
   }
 
   /**

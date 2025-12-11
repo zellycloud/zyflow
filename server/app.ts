@@ -2236,6 +2236,49 @@ app.get('/api/agents/health', async (_req, res) => {
 // Proxy all /api/agents/* requests to Python server
 app.use('/api/agents', async (req, res) => {
   try {
+    // 0. Handle session list request (GET /sessions)
+    const isSessionListRequest = req.path === '/sessions' && req.method === 'GET'
+    if (isSessionListRequest) {
+      const { getProcessManager } = await import('./cli-adapter/process-manager.js')
+      try {
+        const pm = getProcessManager()
+        const sessions = pm.getAllSessions()
+        return res.json(sessions.map(session => ({
+          session_id: session.id,
+          change_id: session.changeId,
+          status: session.status,
+          created_at: session.startedAt,
+          updated_at: session.endedAt || session.startedAt,
+          project_path: session.projectPath,
+          current_task: null,
+          completed_tasks: 0,
+          total_tasks: 0,
+          error: session.error || null,
+          conversation_history: session.conversationHistory || []
+        })))
+      } catch {
+        // ProcessManager not initialized, return empty array
+        return res.json([])
+      }
+    }
+
+    // 0.5. Handle session delete request (DELETE /sessions/:id)
+    const isSessionDeleteRequest = req.path.match(/^\/sessions\/[^/]+$/) && req.method === 'DELETE'
+    if (isSessionDeleteRequest) {
+      const sessionId = req.path.split('/')[2]
+      const { getProcessManager } = await import('./cli-adapter/process-manager.js')
+      try {
+        const pm = getProcessManager()
+        const deleted = pm.deleteSession(sessionId)
+        if (deleted) {
+          return res.json({ success: true })
+        }
+        return res.status(404).json({ success: false, error: 'Session not found' })
+      } catch {
+        return res.status(404).json({ success: false, error: 'Session not found' })
+      }
+    }
+
     // 1. Check for CLI mode request or Stream request for CLI session
     const isExecuteRequest = req.path === '/execute' && req.method === 'POST'
     const isStreamRequest = req.path.match(/\/sessions\/[^/]+\/stream/) && req.method === 'GET'

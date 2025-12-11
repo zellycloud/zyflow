@@ -142,7 +142,7 @@ function SessionHistory({ sessions, onSelect, onDelete, onBack, onNewChat }: Ses
 
   const deleteMutation = useMutation({
     mutationFn: async (sessionId: string) => {
-      const res = await fetch(`http://localhost:3001/api/agents/sessions/${sessionId}`, {
+      const res = await fetch(`http://localhost:3001/api/cli/sessions/${sessionId}`, {
         method: 'DELETE',
       })
       if (!res.ok) throw new Error('Failed to delete session')

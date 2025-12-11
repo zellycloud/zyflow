@@ -353,14 +353,29 @@ export function useAgentSession(initialSessionId?: string) {
   }
 }
 
-// Hook to list all sessions
+// Hook to list all sessions (from CLI adapter)
 export function useAgentSessions() {
   return useQuery({
     queryKey: ['agent-sessions'],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/sessions`)
+      const res = await fetch('http://localhost:3001/api/cli/sessions')
       if (!res.ok) throw new Error('Failed to fetch sessions')
-      return res.json() as Promise<AgentSessionState[]>
+      const data = await res.json()
+      // Map CLI session format to AgentSessionState format
+      const sessions: AgentSessionState[] = (data.sessions || []).map((s: any) => ({
+        session_id: s.id,
+        change_id: s.changeId,
+        status: s.status,
+        created_at: s.startedAt,
+        updated_at: s.endedAt || s.startedAt,
+        project_path: s.projectPath,
+        current_task: null,
+        completed_tasks: 0,
+        total_tasks: 0,
+        error: s.error || null,
+        conversation_history: s.conversationHistory,
+      }))
+      return sessions
     },
   })
 }
