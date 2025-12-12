@@ -130,6 +130,11 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
         const task = group.tasks[taskIdx]
         const taskOrder = taskIdx + 1
 
+        // Extract original task number from title (e.g., "1.1 Title" -> "1.1")
+        // This is the actual number in tasks.md that toggleTaskInFile expects
+        const titleNumberMatch = task.title.match(/^([\d.]+)\s+/)
+        const originalDisplayId = titleNumberMatch ? titleNumberMatch[1] : task.displayId
+
         // 우선순위 1: title + group_title로 매칭 (기존 로직)
         // 우선순위 2: group_title + task_order로 매칭 (title이 변경된 경우)
         let existingTask = sqlite.prepare(`
@@ -146,7 +151,7 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
         const newStatus = task.completed ? 'done' : 'todo'
 
         if (existingTask) {
-          // 기존 태스크 업데이트 (상태 + 그룹 정보 + title)
+          // 기존 태스크 업데이트 (상태 + 그룹 정보 + title + display_id)
           const oldStatus = existingTask.status
           const oldTitle = existingTask.title
 
@@ -159,6 +164,7 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
                 task_order = ?,
                 major_title = ?,
                 sub_order = ?,
+                display_id = ?,
                 updated_at = ?
             WHERE id = ?
           `).run(
@@ -169,6 +175,7 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
             taskOrder,
             majorTitle,
             subOrder,
+            originalDisplayId || null,
             now,
             existingTask.id
           )
@@ -202,9 +209,9 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
             INSERT INTO tasks (
               id, change_id, stage, title, status, priority, "order",
               group_title, group_order, task_order, major_title, sub_order,
-              origin, created_at, updated_at
+              display_id, origin, created_at, updated_at
             )
-            VALUES (?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
+            VALUES (?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
           `).run(
             newId,
             changeId,
@@ -216,6 +223,7 @@ export async function syncChangeTasksFromFile(changeId: string): Promise<SyncRes
             taskOrder,
             majorTitle,
             subOrder,
+            originalDisplayId || null,
             now,
             now
           )

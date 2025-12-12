@@ -176,6 +176,13 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
     // Column already exists, ignore
   }
 
+  // Migration: Add display_id column for task numbering (e.g., "1.1", "1.2.3")
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN display_id TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
   // Migration: Set default project_id for existing tasks
   try {
     sqlite.exec(`

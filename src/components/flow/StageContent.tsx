@@ -1,4 +1,5 @@
-import { FileText, Plus, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { FileText, Plus, Loader2, Play } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
@@ -13,7 +14,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from '@/components/ui/tooltip'
 import { useUpdateFlowTask, useProposalContent, useDesignContent, useChangeSpec } from '@/hooks/useFlowChanges'
+import { TaskExecutionDialog } from './TaskExecutionDialog'
 import type { FlowTask, Stage } from '@/types'
 import { STAGE_CONFIG } from '@/constants/stages'
 import { cn } from '@/lib/utils'
@@ -28,6 +36,7 @@ interface StageContentProps {
 
 export function StageContent({ changeId, stage, tasks }: StageContentProps) {
   const updateTask = useUpdateFlowTask()
+  const [executingTask, setExecutingTask] = useState<FlowTask | null>(null)
 
   // Proposal 내용 가져오기 (Changes 탭용)
   const { data: proposalContent, isLoading: proposalLoading } = useProposalContent(
@@ -270,6 +279,7 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
                             <TableHead>태스크</TableHead>
                             <TableHead className="w-20 text-center">우선순위</TableHead>
                             <TableHead className="w-20 text-center">상태</TableHead>
+                            <TableHead className="w-16 text-center">실행</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -319,6 +329,26 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
                                   {task.status === 'done' ? '완료' : '대기'}
                                 </Badge>
                               </TableCell>
+                              <TableCell className="text-center">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        disabled={task.status === 'done'}
+                                        onClick={() => setExecutingTask(task)}
+                                      >
+                                        <Play className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {task.status === 'done' ? '이미 완료됨' : 'Claude Code로 실행'}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
@@ -339,6 +369,26 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
             전체 보기 ({tasks.length}개)
           </Button>
         </div>
+      )}
+
+      {/* Task Execution Dialog */}
+      {executingTask && (
+        <TaskExecutionDialog
+          open={!!executingTask}
+          onOpenChange={(open) => !open && setExecutingTask(null)}
+          changeId={changeId}
+          taskId={
+            // Convert displayId (e.g., "1.1") to task format (e.g., "task-1-1")
+            executingTask.displayId
+              ? `task-${executingTask.displayId.replace(/\./g, '-')}`
+              : String(executingTask.id)
+          }
+          taskTitle={executingTask.title}
+          onComplete={() => {
+            // Refresh task status after completion
+            updateTask.mutateAsync({ id: executingTask.id, status: 'done' })
+          }}
+        />
       )}
     </div>
   )

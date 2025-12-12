@@ -927,16 +927,25 @@ ${context || '추가 컨텍스트 없음'}
     // Send initial event
     res.write(`data: ${JSON.stringify({ type: 'start', runId, taskId, changeId })}\n\n`)
 
-    // Spawn Claude CLI process
-    const claudeProcess = spawn(
-      'claude',
-      ['--print', '--output-format', 'stream-json', '--dangerously-skip-permissions', prompt],
-      {
-        cwd: project.path,
-        env: { ...process.env },
-        shell: true,
-      }
-    )
+    // Spawn Claude CLI process via 'expect' for pseudo-TTY support
+    // Claude CLI requires TTY to output stream-json properly
+    // Based on official docs: https://code.claude.com/docs/en/headless.md
+    const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/\$/g, '\\$')
+    const expectScript = `
+spawn /opt/homebrew/bin/claude -p --verbose --output-format stream-json --dangerously-skip-permissions "${escapedPrompt}"
+expect eof
+`
+    console.log('[Claude Execute] Running via expect with prompt length:', prompt.length)
+    console.log('[Claude Execute] CWD:', project.path)
+
+    const claudeProcess = spawn('expect', ['-c', expectScript], {
+      cwd: project.path,
+      env: { ...process.env },
+      shell: false,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+
+    console.log('[Claude Execute] Process PID:', claudeProcess.pid)
 
     const taskState = {
       process: claudeProcess,
@@ -949,7 +958,9 @@ ${context || '추가 컨텍스트 없음'}
     let buffer = ''
 
     claudeProcess.stdout.on('data', (data: Buffer) => {
-      buffer += data.toString()
+      const chunk = data.toString()
+      console.log('[Claude Execute] stdout chunk:', chunk.slice(0, 200))
+      buffer += chunk
       const lines = buffer.split('\n')
       buffer = lines.pop() || ''
 
@@ -971,7 +982,15 @@ ${context || '추가 컨텍스트 없음'}
 
     claudeProcess.stderr.on('data', (data: Buffer) => {
       const text = data.toString()
+      console.log('[Claude Execute] stderr:', text)
       res.write(`data: ${JSON.stringify({ type: 'stderr', content: text })}\n\n`)
+    })
+
+    claudeProcess.on('error', (err) => {
+      console.error('[Claude Execute] Process error:', err)
+      taskState.status = 'error'
+      res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`)
+      res.end()
     })
 
     claudeProcess.on('close', async (code) => {
@@ -1010,7 +1029,49 @@ ${context || '추가 컨텍스트 없음'}
         try {
           const tasksPath = join(paths!.openspecDir, changeId, 'tasks.md')
           const content = await readFile(tasksPath, 'utf-8')
-          const { newContent, task } = toggleTaskInFile(content, taskId)
+
+          // Convert taskId to the format expected by toggleTaskInFile
+          // If taskId looks like a displayId (e.g., "1.1"), convert to "task-1-1"
+          // If it's already "task-X-X" format, use as-is
+          // If it's a pure numeric string (DB ID), look up display_id from DB
+          let taskIdForToggle = taskId
+          if (typeof taskId === 'string') {
+            if (taskId.startsWith('task-')) {
+              // Already in task-X-X format
+              taskIdForToggle = taskId
+            } else if (/^\d+(\.\d+)+$/.test(taskId)) {
+              // displayId format like "1.1" or "1.2.3" -> "task-1-1" or "task-1-2-3"
+              taskIdForToggle = `task-${taskId.replace(/\./g, '-')}`
+            } else if (/^\d+$/.test(taskId)) {
+              // Pure numeric string (DB ID) - look up display_id from DB
+              const sqlite = getSqlite()
+              const dbTask = sqlite.prepare(`SELECT display_id FROM tasks WHERE id = ?`).get(parseInt(taskId, 10)) as { display_id: string | null } | undefined
+              if (dbTask?.display_id) {
+                taskIdForToggle = `task-${dbTask.display_id.replace(/\./g, '-')}`
+                console.log(`[Claude Execute] Resolved DB ID ${taskId} to display_id: ${dbTask.display_id}`)
+              } else {
+                console.warn(`[Claude Execute] Cannot auto-complete: no display_id found for DB ID ${taskId}`)
+                throw new Error(`Cannot auto-complete: no display_id found for task ID ${taskId}`)
+              }
+            } else {
+              // Unknown format, try prefixing with task-
+              taskIdForToggle = `task-${taskId}`
+            }
+          } else if (typeof taskId === 'number') {
+            // Numeric type - look up display_id from DB
+            const sqlite = getSqlite()
+            const dbTask = sqlite.prepare(`SELECT display_id FROM tasks WHERE id = ?`).get(taskId) as { display_id: string | null } | undefined
+            if (dbTask?.display_id) {
+              taskIdForToggle = `task-${dbTask.display_id.replace(/\./g, '-')}`
+              console.log(`[Claude Execute] Resolved numeric ID ${taskId} to display_id: ${dbTask.display_id}`)
+            } else {
+              console.warn(`[Claude Execute] Cannot auto-complete: no display_id found for numeric ID ${taskId}`)
+              throw new Error(`Cannot auto-complete: no display_id found for numeric task ID ${taskId}`)
+            }
+          }
+
+          console.log(`[Claude Execute] Auto-completing task: ${taskId} -> ${taskIdForToggle}`)
+          const { newContent, task } = toggleTaskInFile(content, taskIdForToggle)
 
           // toggleTaskInFile returns the NEW state after toggle
           // If task.completed is true, it means it WAS uncompleted and is now completed
@@ -1851,6 +1912,7 @@ app.get('/api/flow/tasks', async (req, res) => {
       tags: string | null
       assignee: string | null
       order: number
+      display_id: string | null
       created_at: number
       updated_at: number
       archived_at: number | null
@@ -1867,6 +1929,7 @@ app.get('/api/flow/tasks', async (req, res) => {
       tags: t.tags ? JSON.parse(t.tags) : [],
       assignee: t.assignee,
       order: t.order,
+      displayId: t.display_id,
       createdAt: new Date(t.created_at).toISOString(),
       updatedAt: new Date(t.updated_at).toISOString(),
       archivedAt: t.archived_at ? new Date(t.archived_at).toISOString() : null,
