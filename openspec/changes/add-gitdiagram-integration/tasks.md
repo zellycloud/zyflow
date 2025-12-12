@@ -2,7 +2,7 @@
 
 ## 1. 패키지 스캐폴딩
 
-- [ ] 1.1 `packages/gitdiagram-core/` 디렉토리 구조 생성
+- [x] 1.1 `packages/gitdiagram-core/` 디렉토리 구조 생성
 - [ ] 1.2 `package.json` 작성 (upstream 메타데이터 포함)
 - [ ] 1.3 TypeScript 설정 (`tsconfig.json`)
 - [ ] 1.4 `UPSTREAM.md` 동기화 가이드 문서 작성

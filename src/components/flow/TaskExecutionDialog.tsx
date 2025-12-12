@@ -58,11 +58,15 @@ export function TaskExecutionDialog({
   }, [execution.messages])
 
   // Call onComplete when task completes successfully
+  // Using ref to avoid re-triggering effect when onComplete changes
+  const onCompleteRef = useRef(onComplete)
+  onCompleteRef.current = onComplete
+
   useEffect(() => {
-    if (execution.status === 'completed' && onComplete) {
-      onComplete()
+    if (execution.status === 'completed' && onCompleteRef.current) {
+      onCompleteRef.current()
     }
-  }, [execution.status, onComplete])
+  }, [execution.status])
 
   const handleStop = async () => {
     await stop()
