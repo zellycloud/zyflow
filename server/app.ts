@@ -251,21 +251,8 @@ app.put('/api/projects/:id/activate', async (req, res) => {
     await setActiveProject(req.params.id)
     const project = await getActiveProject()
 
-    // 프로젝트 활성화 시 자동으로 Git pull 및 OpenSpec 동기화 수행
+    // 프로젝트 활성화 시 OpenSpec 동기화 수행 (Git pull은 수동으로)
     if (project) {
-      // Git pull 먼저 실행 (원격 저장소와 동기화)
-      try {
-        const pullResult = await gitPull(project.path)
-        if (pullResult.success) {
-          console.log(`[Git] Pulled latest changes for "${project.name}"`)
-        } else {
-          console.warn(`[Git] Pull failed for "${project.name}": ${pullResult.error || pullResult.stderr}`)
-        }
-      } catch (gitError) {
-        console.warn(`[Git] Pull error for "${project.name}":`, gitError)
-        // Git pull 실패해도 활성화는 진행
-      }
-
       try {
         initDb(project.path)
         const openspecDir = join(project.path, 'openspec', 'changes')

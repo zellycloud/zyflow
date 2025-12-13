@@ -296,3 +296,75 @@ export async function gitShowConflict(cwd: string, file: string): Promise<GitCom
 export async function gitMergeContinue(cwd: string): Promise<GitCommandResult> {
   return runGitCommand('git -c core.editor=true merge --continue', cwd)
 }
+
+/**
+ * Git 동기화 상태 확인 (로컬과 원격 비교)
+ */
+export interface GitSyncStatus {
+  currentBranch: string
+  trackingBranch: string | null
+  ahead: number // 로컬이 원격보다 앞선 커밋 수
+  behind: number // 로컬이 원격보다 뒤처진 커밋 수
+  hasRemote: boolean
+  lastFetched: number | null // epoch timestamp
+}
+
+export async function gitSyncStatus(cwd: string): Promise<GitSyncStatus | null> {
+  // 현재 브랜치 확인
+  const branchResult = await runGitCommand('git rev-parse --abbrev-ref HEAD', cwd)
+  if (!branchResult.success) return null
+
+  const currentBranch = branchResult.stdout
+
+  // 트래킹 브랜치 확인
+  const trackingResult = await runGitCommand(
+    `git rev-parse --abbrev-ref ${currentBranch}@{upstream}`,
+    cwd
+  )
+  const trackingBranch = trackingResult.success ? trackingResult.stdout : null
+
+  if (!trackingBranch) {
+    return {
+      currentBranch,
+      trackingBranch: null,
+      ahead: 0,
+      behind: 0,
+      hasRemote: false,
+      lastFetched: null,
+    }
+  }
+
+  // ahead/behind 계산
+  const countResult = await runGitCommand(
+    `git rev-list --left-right --count ${currentBranch}...${trackingBranch}`,
+    cwd
+  )
+
+  let ahead = 0
+  let behind = 0
+  if (countResult.success) {
+    const parts = countResult.stdout.split(/\s+/)
+    ahead = parseInt(parts[0] || '0', 10)
+    behind = parseInt(parts[1] || '0', 10)
+  }
+
+  // 마지막 fetch 시간 (FETCH_HEAD 파일의 mtime)
+  let lastFetched: number | null = null
+  try {
+    const { stat } = await import('fs/promises')
+    const fetchHeadPath = `${cwd}/.git/FETCH_HEAD`
+    const stats = await stat(fetchHeadPath)
+    lastFetched = stats.mtimeMs
+  } catch {
+    // FETCH_HEAD가 없으면 null
+  }
+
+  return {
+    currentBranch,
+    trackingBranch,
+    ahead,
+    behind,
+    hasRemote: true,
+    lastFetched,
+  }
+}

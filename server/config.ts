@@ -149,6 +149,14 @@ export async function getActiveProject(): Promise<Project | null> {
 }
 
 /**
+ * ID로 프로젝트 조회
+ */
+export async function getProjectById(projectId: string): Promise<Project | null> {
+  const config = await loadConfig()
+  return config.projects.find((p) => p.id === projectId) || null
+}
+
+/**
  * 프로젝트 경로 변경
  */
 export async function updateProjectPath(projectId: string, newPath: string): Promise<Project> {

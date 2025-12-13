@@ -31,7 +31,9 @@ import {
   gitConflictFiles,
   gitShowConflict,
   gitMergeContinue,
+  gitSyncStatus,
 } from './commands.js'
+import { loadConfig, getProjectById } from '../config.js'
 import { getGitStatus, checkRemoteUpdates, detectPotentialConflicts } from './status.js'
 import {
   startChangeBranch,
@@ -54,6 +56,103 @@ import {
 import { getActiveProject } from '../config.js'
 
 export const gitRouter = Router()
+
+// ==================== 프로젝트별 Git Sync Status API ====================
+
+// GET /api/git/projects/sync-status - 모든 프로젝트의 Git 동기화 상태
+gitRouter.get('/projects/sync-status', async (_req, res) => {
+  try {
+    const config = await loadConfig()
+    const results: Record<string, {
+      currentBranch: string
+      ahead: number
+      behind: number
+      hasRemote: boolean
+      lastFetched: number | null
+    } | null> = {}
+
+    // 모든 프로젝트에 대해 병렬로 상태 확인
+    await Promise.all(
+      config.projects.map(async (project) => {
+        try {
+          const status = await gitSyncStatus(project.path)
+          results[project.id] = status
+        } catch {
+          results[project.id] = null
+        }
+      })
+    )
+
+    res.json({ success: true, data: results })
+  } catch (error) {
+    console.error('Error getting projects sync status:', error)
+    res.status(500).json({ success: false, error: 'Failed to get projects sync status' })
+  }
+})
+
+// GET /api/git/projects/:projectId/sync-status - 특정 프로젝트의 Git 동기화 상태
+gitRouter.get('/projects/:projectId/sync-status', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.projectId)
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Project not found' })
+    }
+
+    const status = await gitSyncStatus(project.path)
+    res.json({ success: true, data: status })
+  } catch (error) {
+    console.error('Error getting project sync status:', error)
+    res.status(500).json({ success: false, error: 'Failed to get project sync status' })
+  }
+})
+
+// POST /api/git/projects/:projectId/fetch - 특정 프로젝트 fetch
+gitRouter.post('/projects/:projectId/fetch', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.projectId)
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Project not found' })
+    }
+
+    const result = await gitFetch(project.path, { all: true })
+    if (!result.success) {
+      return res.status(400).json({ success: false, error: result.error || result.stderr })
+    }
+
+    // fetch 후 상태 다시 확인
+    const status = await gitSyncStatus(project.path)
+    res.json({ success: true, data: { message: 'Fetch successful', status } })
+  } catch (error) {
+    console.error('Error fetching project:', error)
+    res.status(500).json({ success: false, error: 'Failed to fetch project' })
+  }
+})
+
+// POST /api/git/projects/:projectId/pull - 특정 프로젝트 pull
+gitRouter.post('/projects/:projectId/pull', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.projectId)
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Project not found' })
+    }
+
+    const result = await gitPull(project.path)
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || result.stderr,
+        stderr: result.stderr,
+      })
+    }
+
+    // pull 후 상태 다시 확인
+    const status = await gitSyncStatus(project.path)
+    res.json({ success: true, data: { message: result.stdout || 'Already up to date.', status } })
+  } catch (error) {
+    console.error('Error pulling project:', error)
+    res.status(500).json({ success: false, error: 'Failed to pull project' })
+  }
+})
 
 // 헬퍼: 활성 프로젝트 경로 가져오기
 async function getProjectPath(): Promise<string | null> {

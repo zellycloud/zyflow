@@ -1,6 +1,92 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ApiResponse } from '@/types'
 
+// Git Sync 상태 타입 (프로젝트별)
+export interface GitSyncStatus {
+  currentBranch: string
+  trackingBranch: string | null
+  ahead: number
+  behind: number
+  hasRemote: boolean
+  lastFetched: number | null
+}
+
+// 모든 프로젝트의 Git Sync 상태 조회
+async function fetchAllProjectsSyncStatus(): Promise<Record<string, GitSyncStatus | null>> {
+  const response = await fetch('/api/git/projects/sync-status')
+  const json: ApiResponse<Record<string, GitSyncStatus | null>> = await response.json()
+
+  if (!json.success || !json.data) {
+    throw new Error(json.error || 'Failed to fetch projects sync status')
+  }
+
+  return json.data
+}
+
+export function useProjectsSyncStatus() {
+  return useQuery({
+    queryKey: ['git', 'projects-sync-status'],
+    queryFn: fetchAllProjectsSyncStatus,
+    refetchInterval: 5 * 60 * 1000, // 5분마다 자동 갱신
+    staleTime: 60 * 1000, // 1분간 캐시
+  })
+}
+
+// 특정 프로젝트 fetch
+async function fetchProject(projectId: string): Promise<{ message: string; status: GitSyncStatus | null }> {
+  const response = await fetch(`/api/git/projects/${projectId}/fetch`, {
+    method: 'POST',
+  })
+  const json: ApiResponse<{ message: string; status: GitSyncStatus | null }> = await response.json()
+
+  if (!json.success) {
+    throw new Error(json.error || 'Failed to fetch project')
+  }
+
+  return json.data || { message: 'Fetch successful', status: null }
+}
+
+export function useProjectFetch() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: fetchProject,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['git', 'projects-sync-status'] })
+    },
+  })
+}
+
+// 특정 프로젝트 pull
+async function pullProject(projectId: string): Promise<{ message: string; status: GitSyncStatus | null }> {
+  const response = await fetch(`/api/git/projects/${projectId}/pull`, {
+    method: 'POST',
+  })
+  const json: ApiResponse<{ message: string; status: GitSyncStatus | null }> = await response.json()
+
+  if (!json.success) {
+    throw new Error(json.error || 'Failed to pull project')
+  }
+
+  return json.data || { message: 'Pull successful', status: null }
+}
+
+export function useProjectPull() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: pullProject,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['git', 'projects-sync-status'] })
+      queryClient.invalidateQueries({ queryKey: ['git', 'status'] })
+      // 프로젝트 데이터도 갱신
+      queryClient.invalidateQueries({ queryKey: ['flow'] })
+      queryClient.invalidateQueries({ queryKey: ['changes'] })
+      queryClient.invalidateQueries({ queryKey: ['projects-all-data'] })
+    },
+  })
+}
+
 // Git 상태 타입
 export interface GitStatus {
   branch: string

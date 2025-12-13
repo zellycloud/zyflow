@@ -9,6 +9,8 @@ import {
   GitBranch,
   ListTodo,
   Bot,
+  ArrowDown,
+  RefreshCw,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -31,7 +33,14 @@ import {
 } from '@/components/ui/collapsible'
 import { useProjectsAllData, useAddProject, useActivateProject, useBrowseFolder } from '@/hooks/useProjects'
 import { useFlowChangeCounts, useSelectedItem } from '@/hooks/useFlowChanges'
+import { useProjectsSyncStatus, useProjectPull } from '@/hooks/useGit'
 import { toast } from 'sonner'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { SelectedItem } from '@/App'
 
@@ -48,11 +57,13 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
     status: 'active',
     enabled: !!projectsData?.projects.length
   })
+  const { data: syncStatus } = useProjectsSyncStatus()
   const { selectItem } = useSelectedItem()
 
   const addProject = useAddProject()
   const activateProject = useActivateProject()
   const browseFolder = useBrowseFolder()
+  const projectPull = useProjectPull()
 
   const handleBrowseAndAdd = async () => {
     try {
@@ -148,6 +159,16 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
     })
   }
 
+  const handlePullProject = async (e: React.MouseEvent, projectId: string) => {
+    e.stopPropagation()
+    try {
+      await projectPull.mutateAsync(projectId)
+      toast.success('최신 변경사항을 가져왔습니다')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Pull 실패')
+    }
+  }
+
   return (
     <Sidebar collapsible="none">
       <SidebarContent>
@@ -194,6 +215,9 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                   selectedItem?.type === 'project' &&
                   selectedItem.projectId === project.id
                 const projectChangeCount = changeCounts?.[project.id] ?? 0
+                const projectSync = syncStatus?.[project.id]
+                const behindCount = projectSync?.behind ?? 0
+                const isPulling = projectPull.isPending && projectPull.variables === project.id
 
                 return (
                   <Collapsible
@@ -225,6 +249,35 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                         <span className="truncate font-medium">{project.name}</span>
                         {projectChangeCount > 0 && (
                           <SidebarMenuBadge>{projectChangeCount}</SidebarMenuBadge>
+                        )}
+                        {/* Git behind 표시 + Pull 버튼 */}
+                        {behindCount > 0 && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={(e) => handlePullProject(e, project.id)}
+                                  disabled={isPulling}
+                                  className={cn(
+                                    "ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-xs",
+                                    "bg-blue-500/20 text-blue-600 dark:text-blue-400",
+                                    "hover:bg-blue-500/30 transition-colors",
+                                    isPulling && "opacity-50 cursor-not-allowed"
+                                  )}
+                                >
+                                  {isPulling ? (
+                                    <RefreshCw className="size-3 animate-spin" />
+                                  ) : (
+                                    <ArrowDown className="size-3" />
+                                  )}
+                                  <span>{behindCount}</span>
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="right">
+                                <p>{behindCount}개 커밋 뒤처짐 - 클릭하여 Pull</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         )}
                       </SidebarMenuButton>
                       <CollapsibleContent>
