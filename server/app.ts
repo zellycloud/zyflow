@@ -2456,7 +2456,7 @@ app.use('/api/agents', async (req, res) => {
       res.setHeader('Cache-Control', 'no-cache')
       res.setHeader('Connection', 'keep-alive')
 
-      const sendEvent = (type: string, data: any) => {
+      const sendEvent = (type: string, data: Record<string, unknown>) => {
         if (res.writableEnded || !res.writable) return
         try {
           res.write(`event: message\ndata: ${JSON.stringify({ type, ...data })}\n\n`)
@@ -2466,7 +2466,7 @@ app.use('/api/agents', async (req, res) => {
       }
 
       // Convert CLI output to Agent events
-      const onOutput = (output: any) => {
+      const onOutput = (output: { sessionId: string; content: string; timestamp: string }) => {
         if (output.sessionId === sessionId) {
           // Map stdout to agent_response or task_complete based on content?
           // For now just stream raw output as agent_response
@@ -2476,8 +2476,8 @@ app.use('/api/agents', async (req, res) => {
           })
         }
       }
-      
-      const onEnd = (session: any) => {
+
+      const onEnd = (session: { id: string }) => {
         if (session.id === sessionId) {
           sendEvent('session_end', { timestamp: new Date().toISOString() })
           if (!res.writableEnded) {
@@ -2606,6 +2606,137 @@ app.post('/api/flow/changes/:id/archive', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to archive change',
+    })
+  }
+})
+
+// ==================== DIAGRAM API ====================
+
+// GET /api/diagram/context - Get file tree and README for diagram generation
+app.get('/api/diagram/context', async (req, res) => {
+  try {
+    const project = await getActiveProject()
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const projectPath = req.query.path as string || project.path
+    const maxDepth = parseInt(req.query.maxDepth as string) || 10
+
+    // Dynamic import of gitdiagram-core
+    const { generateFileTree, readReadme } = await import('../packages/gitdiagram-core/src/file-tree.js')
+
+    const [fileTree, readme] = await Promise.all([
+      generateFileTree(projectPath, { maxDepth }),
+      readReadme(projectPath),
+    ])
+
+    res.json({
+      success: true,
+      data: {
+        projectPath,
+        fileTree,
+        readme,
+        fileTreeLines: fileTree.split('\n').length,
+      },
+    })
+  } catch (error) {
+    console.error('Error getting diagram context:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get diagram context',
+    })
+  }
+})
+
+// POST /api/diagram/validate - Validate Mermaid syntax
+app.post('/api/diagram/validate', async (req, res) => {
+  try {
+    const { code } = req.body
+    if (!code) {
+      return res.status(400).json({ success: false, error: 'No code provided' })
+    }
+
+    const { validateMermaidSyntax, extractClickEvents } = await import('../packages/gitdiagram-core/src/mermaid-utils.js')
+
+    const validation = validateMermaidSyntax(code)
+    const clickEvents = extractClickEvents(code)
+
+    res.json({
+      success: true,
+      data: {
+        valid: validation.valid,
+        errors: validation.errors,
+        warnings: validation.warnings,
+        clickEvents,
+      },
+    })
+  } catch (error) {
+    console.error('Error validating diagram:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to validate diagram',
+    })
+  }
+})
+
+// GET /api/diagram/change/:changeId - Get diagram context for an OpenSpec change
+app.get('/api/diagram/change/:changeId', async (req, res) => {
+  try {
+    const { changeId } = req.params
+    const project = await getActiveProject()
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const changeDir = join(project.path, 'openspec', 'changes', changeId)
+
+    // Read change documents
+    let proposal = ''
+    let spec = ''
+    let tasks = ''
+
+    try {
+      proposal = await readFile(join(changeDir, 'proposal.md'), 'utf-8')
+    } catch { /* no proposal */ }
+
+    try {
+      spec = await readFile(join(changeDir, 'spec.md'), 'utf-8')
+    } catch { /* no spec */ }
+
+    try {
+      tasks = await readFile(join(changeDir, 'tasks.md'), 'utf-8')
+    } catch { /* no tasks */ }
+
+    // Extract affected files
+    const affectedFiles: string[] = []
+    const filePattern = /`([^`]+\.(ts|tsx|js|jsx|py|go|rs|java|md))`/g
+
+    for (const content of [proposal, spec, tasks]) {
+      let match
+      while ((match = filePattern.exec(content)) !== null) {
+        if (!affectedFiles.includes(match[1])) {
+          affectedFiles.push(match[1])
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        changeId,
+        affectedFiles,
+        hasProposal: !!proposal,
+        hasSpec: !!spec,
+        hasTasks: !!tasks,
+      },
+    })
+  } catch (error) {
+    console.error('Error getting change diagram context:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get change context',
     })
   }
 })

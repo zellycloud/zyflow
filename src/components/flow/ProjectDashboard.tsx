@@ -1,4 +1,4 @@
-import { Loader2, GitBranch, CheckCircle2, Clock, BarChart3, Link2 } from 'lucide-react'
+import { Loader2, GitBranch, CheckCircle2, Clock, BarChart3, Link2, GitFork } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useFlowChanges } from '@/hooks/useFlowChanges'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { ProjectIntegrations } from '@/components/integrations'
+import { ProjectDiagramTab } from '@/components/diagram/ProjectDiagramTab'
 
 interface ProjectDashboardProps {
   projectId: string
@@ -56,6 +57,10 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
           <TabsTrigger value="overview" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
             Overview
+          </TabsTrigger>
+          <TabsTrigger value="diagram" className="flex items-center gap-2">
+            <GitFork className="h-4 w-4" />
+            Diagram
           </TabsTrigger>
           <TabsTrigger value="integrations" className="flex items-center gap-2">
             <Link2 className="h-4 w-4" />
@@ -145,6 +150,10 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="diagram">
+          <ProjectDiagramTab projectId={projectId} projectPath={project.path} />
         </TabsContent>
 
         <TabsContent value="integrations">

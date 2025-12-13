@@ -26,7 +26,7 @@ export interface ValidationResult {
 const SYNTAX_CHECKS = [
   {
     // Special characters without quotes in node labels
-    pattern: /\[([^\]"]*[()\/\\<>][^\]"]*)\]/g,
+    pattern: /\[([^\]"]*[()\\<>][^\]"]*)\]/g,
     message: 'Node label contains special characters without quotes',
     severity: 'error' as const,
   },
@@ -212,7 +212,7 @@ export function pathsToGitHubUrls(
   branch: string = 'main'
 ): string {
   // Normalize repo URL
-  let baseUrl = repoUrl.replace(/\.git$/, '').replace(/\/$/, '');
+  const baseUrl = repoUrl.replace(/\.git$/, '').replace(/\/$/, '');
 
   // Extract click events and update paths
   const clickPattern = /click\s+(\w+)\s+"([^"]+)"/g;
@@ -235,7 +235,7 @@ export function extractNodeIds(code: string): string[] {
   const nodeIds = new Set<string>();
 
   // Match node definitions: NodeId[...] or NodeId(...) or NodeId{...}
-  const nodePattern = /^\s*(\w+)\s*[\[\(\{]/gm;
+  const nodePattern = /^\s*(\w+)\s*[[({]/gm;
 
   let match;
   while ((match = nodePattern.exec(code)) !== null) {
