@@ -81,7 +81,7 @@ async function typeCheckExecutor(
   options: TaskExecutorOptions
 ): Promise<TaskResult> {
   let issuesFound = 0;
-  let issuesFixed = 0;
+  const issuesFixed = 0;
   const modifiedFiles: string[] = [];
   const suggestions: TaskSuggestion[] = [];
   let rawOutput = '';

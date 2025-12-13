@@ -185,7 +185,7 @@ async function testFixExecutor(
   options: TaskExecutorOptions
 ): Promise<TaskResult> {
   let issuesFound = 0;
-  let issuesFixed = 0;
+  const issuesFixed = 0;
   const suggestions: TaskSuggestion[] = [];
   let rawOutput = '';
   const tempFile = join(projectPath, '.test-result-temp.json');
