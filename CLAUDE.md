@@ -172,3 +172,134 @@ Agent UI에서 다양한 AI CLI를 선택하여 사용할 수 있습니다:
 - Kilo Code CLI
 
 각 CLI는 ZyFlow MCP 서버와 연동되어 OpenSpec 태스크를 실행합니다.
+
+## Post-Task Agent (자동 코드 품질 관리)
+
+Post-Task Agent는 작업 완료 후 자동으로 코드 품질 검사, 테스트, CI/CD 분석, 프로덕션 모니터링을 수행합니다.
+
+### MCP 도구
+
+```
+post_task_run          - Post-Task 작업 실행
+quarantine_list        - 격리된 파일 목록 조회
+quarantine_restore     - 격리된 파일 복구
+quarantine_delete      - 격리된 파일 삭제
+quarantine_stats       - 격리 시스템 통계
+post_task_setup_hooks  - Git hooks 설치/제거
+post_task_start_scheduler - 스케줄러 시작/중지
+post_task_event_listener  - 이벤트 리스너 시작/중지
+post_task_trigger_status  - 트리거 시스템 상태
+post_task_reports      - 실행 리포트 목록
+post_task_report_view  - 특정 리포트 조회
+```
+
+### 작업 카테고리
+
+| 카테고리 | 작업 | 설명 |
+|----------|------|------|
+| **code-quality** | lint-fix | ESLint 오류 수정 |
+| | type-check | TypeScript 타입 검사 |
+| | dead-code | 미사용 코드 감지 |
+| | todo-cleanup | TODO/FIXME 정리 |
+| | refactor-suggest | 리팩토링 제안 |
+| **testing** | test-fix | 실패 테스트 수정 |
+| | test-gen | 테스트 자동 생성 |
+| | e2e-expand | E2E 테스트 확장 |
+| | coverage-fix | 커버리지 개선 |
+| | snapshot-update | 스냅샷 업데이트 |
+| | flaky-detect | 불안정 테스트 감지 |
+| **ci-cd** | ci-fix | CI 실패 분석 |
+| | dep-audit | 의존성 보안 검사 |
+| | bundle-check | 번들 크기 분석 |
+| **production** | sentry-triage | Sentry 이슈 분석 |
+| | security-audit | 보안 로그 분석 |
+| | api-validate | API 스키마 검증 |
+
+### 사용 예시
+
+```
+# 전체 카테고리 실행
+post_task_run(category: "all")
+
+# 특정 카테고리 실행
+post_task_run(category: "code-quality")
+
+# 개별 작업 실행
+post_task_run(tasks: ["lint-fix", "type-check"])
+
+# CLI 및 모델 지정
+post_task_run(category: "testing", cli: "gemini", model: "balanced")
+
+# 드라이런 (실제 변경 없이 분석만)
+post_task_run(category: "code-quality", dryRun: true)
+```
+
+### Quarantine 시스템 (Dead Code 격리)
+
+미사용 코드는 즉시 삭제하지 않고 `.quarantine/` 폴더로 이동됩니다:
+
+- **0-14일**: 격리됨 (quarantined) - 쉽게 복구 가능
+- **14-30일**: 삭제 대기 (pending) - 경고 표시
+- **30일+**: 만료 (expired) - 삭제 권장
+
+```
+# 격리 파일 조회
+quarantine_list(status: "quarantined")
+
+# 파일 복구
+quarantine_restore(itemId: "abc123")
+
+# 파일 삭제
+quarantine_delete(itemId: "abc123")
+```
+
+### 트리거 설정
+
+`.zyflow/triggers.json`에서 자동 실행을 설정할 수 있습니다:
+
+```json
+{
+  "hooks": {
+    "pre-commit": ["lint-fix", "type-check"],
+    "pre-push": ["test-fix"],
+    "post-merge": ["dep-audit", "dead-code"]
+  },
+  "schedule": [
+    { "cron": "0 9 * * *", "tasks": ["sentry-triage"] },
+    { "cron": "0 9 * * 1", "tasks": ["dead-code", "e2e-expand"] }
+  ],
+  "events": {
+    "ci-failure": ["ci-fix", "test-fix"],
+    "pr-created": ["lint-fix", "type-check", "test-gen"]
+  }
+}
+```
+
+```
+# Git hooks 설치
+post_task_setup_hooks(action: "install")
+
+# 스케줄러 시작
+post_task_start_scheduler(action: "start")
+
+# 이벤트 리스너 시작
+post_task_event_listener(action: "start")
+
+# 전체 트리거 상태 확인
+post_task_trigger_status()
+```
+
+### 리포트 조회
+
+실행 결과는 `.zyflow/reports/post-task/`에 저장됩니다:
+
+```
+# 최근 리포트 목록
+post_task_reports(limit: 10)
+
+# 특정 작업 리포트
+post_task_reports(taskType: "lint-fix")
+
+# 리포트 상세 조회
+post_task_report_view(reportId: "2024-12-13T10-30-00_lint-fix")
+```
