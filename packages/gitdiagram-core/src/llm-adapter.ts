@@ -75,10 +75,10 @@ export class ClaudeAdapter implements LLMAdapter {
       throw new Error(`Claude API error: ${response.status} - ${error}`);
     }
 
-    const data = await response.json();
-    const textContent = data.content?.find(
-      (c: { type: string }) => c.type === 'text'
-    );
+    const data = (await response.json()) as {
+      content?: Array<{ type: string; text?: string }>;
+    };
+    const textContent = data.content?.find((c) => c.type === 'text');
     return textContent?.text ?? '';
   }
 }
@@ -125,7 +125,9 @@ export class OpenAIAdapter implements LLMAdapter {
       throw new Error(`OpenAI API error: ${response.status} - ${error}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
     return data.choices?.[0]?.message?.content ?? '';
   }
 }

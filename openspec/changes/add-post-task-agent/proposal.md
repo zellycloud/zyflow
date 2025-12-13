@@ -27,7 +27,8 @@
 │  Trigger                                             │
 │  ├─ Manual: 사용자가 "점검 실행" 요청                  │
 │  ├─ Scheduled: 정기 실행 (cron)                      │
-│  └─ Event: PR merge, deploy 완료 시                  │
+│  ├─ Hook: git commit, git push 시                   │
+│  └─ Event: PR merge, deploy 완료, CI 실패 시         │
 ├──────────────────────────────────────────────────────┤
 │  Category: Code Quality (자동 수정)                   │
 │  ├─ lint-fix       → ESLint 오류 자동 수정            │
@@ -35,6 +36,14 @@
 │  ├─ dead-code      → 미사용 코드 격리/정리            │
 │  ├─ todo-cleanup   → 해결된 TODO 제거                │
 │  └─ refactor-suggest → 리팩토링 제안 리포트          │
+├──────────────────────────────────────────────────────┤
+│  Category: Testing (테스트 자동화)                    │
+│  ├─ test-fix       → 실패한 테스트 분석/수정          │
+│  ├─ test-gen       → 새 코드에 테스트 자동 생성       │
+│  ├─ e2e-expand     → E2E 테스트 커버리지 확장         │
+│  ├─ coverage-fix   → 커버리지 부족 영역 테스트 추가   │
+│  ├─ snapshot-update→ 깨진 스냅샷 분석/업데이트        │
+│  └─ flaky-detect   → 불안정한 테스트 감지/수정        │
 ├──────────────────────────────────────────────────────┤
 │  Category: CI/CD (분석 + 수정 시도)                   │
 │  ├─ ci-fix         → GitHub Actions 실패 분석/수정    │
@@ -50,6 +59,48 @@
 │  ├─ todo-remind    → 오래된 TODO 알림                │
 │  └─ coverage-check → 테스트 커버리지 모니터링         │
 └──────────────────────────────────────────────────────┘
+```
+
+### 실행 트리거 시스템
+
+다양한 시점에 자동으로 점검 작업을 실행할 수 있습니다:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Trigger System                                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  1. Git Hooks (로컬)                                        │
+│  ┌─────────────┬────────────────────────────────────────┐  │
+│  │ pre-commit  │ lint-fix, type-check                   │  │
+│  │ pre-push    │ test-fix, coverage-check               │  │
+│  │ post-commit │ test-gen (새 코드에 테스트 생성)        │  │
+│  │ post-merge  │ dep-audit, dead-code                   │  │
+│  └─────────────┴────────────────────────────────────────┘  │
+│                                                             │
+│  2. Scheduled (cron)                                        │
+│  ┌─────────────┬────────────────────────────────────────┐  │
+│  │ 매일 오전 9시│ sentry-triage, security-audit          │  │
+│  │ 매주 월요일 │ dead-code, dep-audit, e2e-expand       │  │
+│  │ 매월 1일    │ refactor-suggest, coverage-fix         │  │
+│  └─────────────┴────────────────────────────────────────┘  │
+│                                                             │
+│  3. Event-driven (webhook/polling)                          │
+│  ┌─────────────┬────────────────────────────────────────┐  │
+│  │ CI 실패     │ ci-fix, test-fix                       │  │
+│  │ PR 생성     │ lint-fix, type-check, test-gen         │  │
+│  │ PR 머지     │ dead-code, coverage-check              │  │
+│  │ 배포 완료   │ e2e-expand, api-validate               │  │
+│  │ Sentry 알림 │ sentry-triage                          │  │
+│  └─────────────┴────────────────────────────────────────┘  │
+│                                                             │
+│  4. Manual (MCP/CLI)                                        │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ post_task_run({ category: 'all' })                  │   │
+│  │ post_task_run({ tasks: ['lint-fix', 'test-gen'] })  │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ### Dead Code 격리 시스템
@@ -82,15 +133,18 @@ project/
 
 ### In Scope
 - Post-Task Agent 타입 정의 및 MCP 도구
-- Code Quality 카테고리 Agent 구현 (lint-fix, type-check, dead-code, todo-cleanup)
-- CI/CD 카테고리 Agent 구현 (ci-fix, dep-audit)
-- Production 카테고리 Agent 구현 (sentry-triage, security-audit)
+- Code Quality 카테고리 구현 (lint-fix, type-check, dead-code, todo-cleanup, refactor-suggest)
+- Testing 카테고리 구현 (test-fix, test-gen, e2e-expand, coverage-fix, snapshot-update, flaky-detect)
+- CI/CD 카테고리 구현 (ci-fix, dep-audit, bundle-check)
+- Production 카테고리 구현 (sentry-triage, security-audit, api-validate)
+- Maintenance 카테고리 구현 (todo-remind, coverage-check)
 - .quarantine 격리 시스템
+- 트리거 시스템 (Git Hooks, Scheduled, Event-driven)
 - Agent 실행 결과 리포트 생성
 
 ### Out of Scope
-- 스케줄러 (cron) 구현 - 별도 제안으로 분리
-- GitHub/Sentry webhook 연동 - 별도 제안으로 분리
+- 실시간 모니터링 대시보드 - 별도 제안으로 분리
+- Webhook 서버 (GitHub/Sentry 수신) - polling으로 대체
 - UI 대시보드 - 기존 Agent UI 재사용
 
 ## Success Criteria
@@ -99,7 +153,10 @@ project/
 2. lint/type 오류가 자동으로 수정되고 커밋된다
 3. 미사용 코드가 `.quarantine/`로 안전하게 격리된다
 4. GitHub Actions 실패 시 원인 분석 및 수정안이 제시된다
-5. 각 실행 결과가 구조화된 리포트로 저장된다
+5. 새 코드에 테스트가 자동 생성된다
+6. 실패한 테스트가 분석되고 수정안이 제시된다
+7. Git hook, cron, 이벤트 기반 트리거가 동작한다
+8. 각 실행 결과가 구조화된 리포트로 저장된다
 
 ## Affected Components
 

@@ -25,11 +25,11 @@
 
 ## 4. MCP 도구 통합
 
-- [ ] 4.1 `mcp-server/diagram-tools.ts` 생성
-- [ ] 4.2 `diagram_generate` 도구 정의 (저장소 경로 → Mermaid)
-- [ ] 4.3 `diagram_from_change` 도구 (OpenSpec 변경 영향도)
-- [ ] 4.4 `mcp-server/index.ts`에 도구 등록
-- [ ] 4.5 MCP 빌드 및 테스트
+- [x] 4.1 `mcp-server/diagram-tools.ts` 생성
+- [x] 4.2 `diagram_generate` 도구 정의 (저장소 경로 → Mermaid)
+- [x] 4.3 `diagram_from_change` 도구 (OpenSpec 변경 영향도)
+- [x] 4.4 `mcp-server/index.ts`에 도구 등록
+- [x] 4.5 MCP 빌드 및 테스트
 
 ## 5. 프론트엔드 컴포넌트
 
