@@ -2649,6 +2649,134 @@ app.get('/api/diagram/context', async (req, res) => {
   }
 })
 
+// POST /api/diagram/generate - Generate diagram using LLM
+app.post('/api/diagram/generate', async (req, res) => {
+  try {
+    const project = await getActiveProject()
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { instructions } = req.body
+    const projectPath = req.body.projectPath || project.path
+
+    // Dynamic import of gitdiagram-core
+    const { generateFileTree, readReadme } = await import('../packages/gitdiagram-core/src/file-tree.js')
+    const { generateDiagram, createLLMAdapter } = await import('../packages/gitdiagram-core/src/index.js')
+
+    // Get file tree and README
+    const [fileTree, readme] = await Promise.all([
+      generateFileTree(projectPath, { maxDepth: 8 }),
+      readReadme(projectPath),
+    ])
+
+    // Check for API key
+    const apiKey = process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY
+    const provider = process.env.ANTHROPIC_API_KEY ? 'claude' : 'openai'
+
+    if (!apiKey) {
+      // Return a generated diagram based on file structure analysis (no LLM)
+      const simpleDiagram = generateSimpleDiagram(fileTree, project.name)
+      return res.json({
+        success: true,
+        data: {
+          mermaidCode: simpleDiagram,
+          projectPath,
+          generated: 'simple', // Indicates no LLM was used
+          message: 'Generated simple diagram (no LLM API key configured)',
+        },
+      })
+    }
+
+    // Use LLM to generate diagram
+    const adapter = createLLMAdapter(provider as 'claude' | 'openai', { apiKey })
+
+    const result = await generateDiagram(adapter, {
+      fileTree,
+      readme,
+      instructions,
+    })
+
+    res.json({
+      success: true,
+      data: {
+        mermaidCode: result.mermaidCode,
+        projectPath,
+        generated: 'llm',
+        stages: result.stages,
+      },
+    })
+  } catch (error) {
+    console.error('Error generating diagram:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate diagram',
+    })
+  }
+})
+
+// Helper function to generate simple diagram from file tree (no LLM)
+function generateSimpleDiagram(fileTree: string, projectName: string): string {
+  const lines = fileTree.split('\n').filter(l => l.trim())
+  const dirs = new Set<string>()
+  const files: string[] = []
+
+  // Parse top-level directories and key files
+  for (const line of lines) {
+    const depth = (line.match(/^[│├└─\s]*/)?.[0] || '').length / 4
+    const name = line.replace(/^[│├└─\s]+/, '').trim()
+
+    if (depth === 0 && name && !name.startsWith('.')) {
+      if (!name.includes('.')) {
+        dirs.add(name)
+      } else if (name.endsWith('.ts') || name.endsWith('.tsx') || name.endsWith('.json')) {
+        files.push(name)
+      }
+    }
+  }
+
+  // Build diagram
+  let diagram = `flowchart TD
+    subgraph Project["${projectName}"]
+`
+
+  const nodeIds: string[] = []
+
+  // Add directories
+  for (const dir of dirs) {
+    const nodeId = dir.replace(/[^a-zA-Z0-9]/g, '')
+    nodeIds.push(nodeId)
+    diagram += `        ${nodeId}[📁 ${dir}]\n`
+  }
+
+  // Add key files
+  for (const file of files.slice(0, 5)) {
+    const nodeId = file.replace(/[^a-zA-Z0-9]/g, '')
+    nodeIds.push(nodeId)
+    diagram += `        ${nodeId}[📄 ${file}]\n`
+  }
+
+  diagram += `    end\n`
+
+  // Add some connections based on common patterns
+  if (nodeIds.includes('src') && nodeIds.includes('server')) {
+    diagram += `    src --> server\n`
+  }
+  if (nodeIds.includes('src') && nodeIds.includes('components')) {
+    diagram += `    src --> components\n`
+  }
+  if (nodeIds.includes('server') && nodeIds.includes('api')) {
+    diagram += `    server --> api\n`
+  }
+
+  // Add styles
+  diagram += `
+    style Project fill:#f5f5f5,stroke:#333
+`
+
+  return diagram
+}
+
 // POST /api/diagram/validate - Validate Mermaid syntax
 app.post('/api/diagram/validate', async (req, res) => {
   try {

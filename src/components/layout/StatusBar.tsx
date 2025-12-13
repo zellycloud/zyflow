@@ -4,7 +4,7 @@
  * Horizontal bar below header with sidebar toggles and status indicators
  */
 
-import { PanelLeft, PanelLeftClose, PanelRight, PanelRightClose } from 'lucide-react'
+import { PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, FolderOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -19,6 +19,7 @@ interface StatusBarProps {
   rightSidebarCollapsed: boolean
   onToggleLeftSidebar: () => void
   onToggleRightSidebar: () => void
+  currentWorkingDirectory?: string
   className?: string
 }
 
@@ -27,8 +28,18 @@ export function StatusBar({
   rightSidebarCollapsed,
   onToggleLeftSidebar,
   onToggleRightSidebar,
+  currentWorkingDirectory,
   className,
 }: StatusBarProps) {
+  // 경로에서 마지막 2-3 폴더만 표시 (너무 길면 축약)
+  const shortenPath = (path: string | undefined) => {
+    if (!path) return null
+    const parts = path.split('/')
+    if (parts.length <= 3) return path
+    return '~/' + parts.slice(-2).join('/')
+  }
+
+  const displayPath = shortenPath(currentWorkingDirectory)
   return (
     <div
       className={cn(
@@ -61,8 +72,24 @@ export function StatusBar({
         </TooltipProvider>
       </div>
 
-      {/* Center - Can add breadcrumb or status later */}
-      <div className="flex-1" />
+      {/* Center - Current Working Directory */}
+      <div className="flex-1 flex items-center justify-center">
+        {displayPath && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-2 py-1 rounded hover:bg-muted/50 cursor-default max-w-md">
+                  <FolderOpen className="h-3 w-3 shrink-0" />
+                  <span className="truncate font-mono">{displayPath}</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <div className="text-xs font-mono">{currentWorkingDirectory}</div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
 
       {/* Right Side - Chat Toggle */}
       <div className="flex items-center gap-2">

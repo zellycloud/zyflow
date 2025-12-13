@@ -4,107 +4,68 @@
  * Dashboard tab for generating and viewing project architecture diagrams
  */
 
-import { useState } from 'react'
-import { Loader2, RefreshCw, AlertCircle, GitFork } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Loader2, RefreshCw, AlertCircle, GitFork, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { DiagramViewer } from './DiagramViewer'
 
 interface ProjectDiagramTabProps {
-  projectId: string // Reserved for future use (e.g., caching diagrams per project)
+  projectId: string
   projectPath: string
 }
 
-interface DiagramContext {
-  fileTree: string
-  readme: string | null
+interface GenerateResult {
+  mermaidCode: string
   projectPath: string
+  generated: 'simple' | 'llm'
+  message?: string
 }
 
-export function ProjectDiagramTab({ projectId: _projectId, projectPath }: ProjectDiagramTabProps) {
+export function ProjectDiagramTab({ projectId, projectPath }: ProjectDiagramTabProps) {
   const [diagramCode, setDiagramCode] = useState<string | null>(null)
-  const [context, setContext] = useState<DiagramContext | null>(null)
-  const [isLoadingContext, setIsLoadingContext] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [generationType, setGenerationType] = useState<'simple' | 'llm' | null>(null)
+  const [infoMessage, setInfoMessage] = useState<string | null>(null)
 
-  // Fetch project context (file tree, readme)
-  const fetchContext = async () => {
-    setIsLoadingContext(true)
+  // Reset diagram when project changes
+  useEffect(() => {
+    setDiagramCode(null)
     setError(null)
+    setGenerationType(null)
+    setInfoMessage(null)
+  }, [projectId, projectPath])
+
+  // Generate diagram using API
+  const generateDiagram = async () => {
+    setIsGenerating(true)
+    setError(null)
+    setInfoMessage(null)
 
     try {
-      const response = await fetch(
-        `/api/diagram/context?projectPath=${encodeURIComponent(projectPath)}`
-      )
+      const response = await fetch('/api/diagram/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath }),
+      })
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.error || 'Failed to fetch project context')
+        throw new Error(data.error || 'Failed to generate diagram')
       }
 
-      const data = await response.json()
-      setContext(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
-    } finally {
-      setIsLoadingContext(false)
-    }
-  }
+      const json = await response.json()
+      const result: GenerateResult = json.data
 
-  // Generate diagram using MCP tool (via API)
-  const generateDiagram = async () => {
-    if (!context) {
-      await fetchContext()
-    }
+      setDiagramCode(result.mermaidCode)
+      setGenerationType(result.generated)
 
-    setIsGenerating(true)
-    setError(null)
-
-    try {
-      // For now, show a placeholder message since actual generation
-      // requires LLM API integration through MCP
-      // In production, this would call the diagram_generate MCP tool
-
-      // Create a sample diagram based on common project structure
-      const sampleDiagram = `flowchart TD
-    subgraph Frontend["Frontend (React)"]
-        App[App.tsx]
-        Components[Components]
-        Hooks[Hooks]
-        Pages[Pages]
-    end
-
-    subgraph Backend["Backend (Express)"]
-        Server[server/app.ts]
-        API[API Routes]
-        DB[(Database)]
-    end
-
-    subgraph Tools["Development Tools"]
-        MCP[MCP Server]
-        OpenSpec[OpenSpec]
-    end
-
-    App --> Components
-    App --> Hooks
-    Components --> Pages
-    Pages --> API
-    API --> Server
-    Server --> DB
-    MCP --> OpenSpec
-    OpenSpec --> Server
-
-    click App "src/App.tsx"
-    click Server "server/app.ts"
-    click MCP "mcp-server/index.ts"
-
-    style Frontend fill:#e1f5fe
-    style Backend fill:#fff3e0
-    style Tools fill:#f3e5f5`
-
-      setDiagramCode(sampleDiagram)
+      if (result.message) {
+        setInfoMessage(result.message)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate diagram')
     } finally {
@@ -137,7 +98,7 @@ export function ProjectDiagramTab({ projectId: _projectId, projectPath }: Projec
           <div className="flex items-center gap-4">
             <Button
               onClick={generateDiagram}
-              disabled={isGenerating || isLoadingContext}
+              disabled={isGenerating}
             >
               {isGenerating ? (
                 <>
@@ -152,14 +113,22 @@ export function ProjectDiagramTab({ projectId: _projectId, projectPath }: Projec
               )}
             </Button>
 
-            {context && (
-              <span className="text-sm text-muted-foreground">
-                {context.fileTree.split('\n').length} 파일/폴더 분석됨
-              </span>
+            {generationType && (
+              <Badge variant={generationType === 'llm' ? 'default' : 'secondary'}>
+                {generationType === 'llm' ? 'AI 생성' : '간단 분석'}
+              </Badge>
             )}
           </div>
         </CardContent>
       </Card>
+
+      {/* Info Message */}
+      {infoMessage && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>{infoMessage}</AlertDescription>
+        </Alert>
+      )}
 
       {/* Error Alert */}
       {error && (

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Toaster } from 'sonner'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { ThemeProvider } from '@/context/theme-provider'
@@ -10,6 +10,7 @@ import { FlowContent } from '@/components/flow/FlowContent'
 import { ChatPanel } from '@/components/chat'
 import { ThemeToggle } from '@/components/dashboard/ThemeToggle'
 import { useWebSocket } from '@/hooks/useWebSocket'
+import { useProjectsAllData } from '@/hooks/useProjects'
 import { GitBranch, Circle, Wifi, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -128,6 +129,16 @@ function AppContent() {
   })
 
   const { isConnected } = useWebSocket()
+  const { data: projectsData } = useProjectsAllData()
+
+  // 현재 작업 폴더 (활성 프로젝트의 경로)
+  const currentWorkingDirectory = useMemo(() => {
+    const activeProjectId = projectsData?.activeProjectId
+    const projects = projectsData?.projects
+    if (!activeProjectId || !projects) return undefined
+    const activeProject = projects.find(p => p.id === activeProjectId)
+    return activeProject?.path
+  }, [projectsData])
 
   // Save sidebar states
   useEffect(() => {
@@ -182,12 +193,13 @@ function AppContent() {
           </div>
         </header>
 
-        {/* Status Bar - Sidebar toggles */}
+        {/* Status Bar - Sidebar toggles + Current Working Directory */}
         <StatusBar
           leftSidebarCollapsed={leftSidebarCollapsed}
           rightSidebarCollapsed={rightSidebarCollapsed}
           onToggleLeftSidebar={() => setLeftSidebarCollapsed(prev => !prev)}
           onToggleRightSidebar={() => setRightSidebarCollapsed(prev => !prev)}
+          currentWorkingDirectory={currentWorkingDirectory}
         />
 
         {/* Body - Sidebar + Content + Chat */}
