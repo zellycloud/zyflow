@@ -60,6 +60,8 @@ export function ProjectsSettings() {
   const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [exportTarget, setExportTarget] = useState<{ id: string; name: string; path: string } | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
 
   const { data: projectsData, isLoading } = useProjectsAllData()
   const addProject = useAddProject()
@@ -81,10 +83,18 @@ export function ProjectsSettings() {
     }
   }
 
-  const handleRemoveProject = async (projectId: string) => {
+  const handleOpenDeleteDialog = (project: { id: string; name: string }) => {
+    setDeleteTarget(project)
+    setDeleteDialogOpen(true)
+  }
+
+  const handleRemoveProject = async () => {
+    if (!deleteTarget) return
     try {
-      await removeProject.mutateAsync(projectId)
+      await removeProject.mutateAsync(deleteTarget.id)
       toast.success('프로젝트가 삭제되었습니다')
+      setDeleteDialogOpen(false)
+      setDeleteTarget(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '프로젝트 삭제 실패')
     }
@@ -402,15 +412,10 @@ export function ProjectsSettings() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => handleRemoveProject(project.id)}
-                          disabled={removeProject.isPending}
+                          onClick={() => handleOpenDeleteDialog(project)}
                           title="프로젝트 삭제"
                         >
-                          {removeProject.isPending ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </>
                     ) : null}
@@ -435,6 +440,54 @@ export function ProjectsSettings() {
         )}
         프로젝트 추가
       </Button>
+
+      {/* 삭제 확인 다이얼로그 */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>프로젝트 삭제</DialogTitle>
+            <DialogDescription>
+              정말로 이 프로젝트를 삭제하시겠습니까?
+            </DialogDescription>
+          </DialogHeader>
+          {deleteTarget && (
+            <div className="py-4">
+              <p className="text-sm">
+                <span className="font-medium">{deleteTarget.name}</span> 프로젝트가 목록에서 제거됩니다.
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                실제 파일은 삭제되지 않으며, 등록만 해제됩니다.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={removeProject.isPending}
+            >
+              취소
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRemoveProject}
+              disabled={removeProject.isPending}
+            >
+              {removeProject.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  삭제 중...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  삭제
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 내보내기 확인 다이얼로그 */}
       <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
