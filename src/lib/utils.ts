@@ -10,6 +10,67 @@ export function sleep(ms: number = 1000) {
 }
 
 /**
+ * 날짜를 상대적 시간 또는 절대 날짜로 포맷팅
+ * @param dateStr - ISO 날짜 문자열
+ * @returns 상대적 시간 (예: "방금 전", "3일 전") 또는 절대 날짜 (예: "2025.12.13")
+ */
+export function formatRelativeDate(dateStr: string | undefined | null): string {
+  if (!dateStr) return '-'
+
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMinutes = Math.floor(diffMs / (1000 * 60))
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+  if (diffMinutes < 1) return '방금 전'
+  if (diffMinutes < 60) return `${diffMinutes}분 전`
+  if (diffHours < 24) return `${diffHours}시간 전`
+  if (diffDays < 7) return `${diffDays}일 전`
+
+  return date.toLocaleDateString('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).replace(/\. /g, '.').replace(/\.$/, '')
+}
+
+/**
+ * 날짜를 절대 날짜로 포맷팅
+ * @param dateStr - ISO 날짜 문자열
+ * @returns 절대 날짜 (예: "2025.12.13")
+ */
+export function formatDate(dateStr: string | undefined | null): string {
+  if (!dateStr) return '-'
+
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).replace(/\. /g, '.').replace(/\.$/, '')
+}
+
+/**
+ * 날짜를 상세 형식으로 포맷팅 (시간 포함)
+ * @param dateStr - ISO 날짜 문자열
+ * @returns 상세 날짜 (예: "2025.12.13 17:30")
+ */
+export function formatDateTime(dateStr: string | undefined | null): string {
+  if (!dateStr) return '-'
+
+  const date = new Date(dateStr)
+  return date.toLocaleString('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).replace(/\. /g, '.').replace(/\.$/, '')
+}
+
+/**
  * Generates page numbers for pagination with ellipsis
  * @param currentPage - Current page number (1-based)
  * @param totalPages - Total number of pages

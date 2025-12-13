@@ -1,8 +1,9 @@
 import { useChanges } from '@/hooks/useChanges'
-import { cn } from '@/lib/utils'
+import { cn, formatRelativeDate } from '@/lib/utils'
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { FileText, Loader2 } from 'lucide-react'
+import { FileText, Loader2, Calendar } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface ChangeListProps {
   selectedId: string | null
@@ -54,7 +55,22 @@ export function ChangeList({ selectedId, onSelect }: ChangeListProps) {
                 selectedId === change.id && 'border-primary bg-accent'
               )}
             >
-              <div className="mb-2 font-medium text-sm">{change.title}</div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="font-medium text-sm truncate">{change.title}</span>
+                {change.updatedAt && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                        <Calendar className="h-3 w-3" />
+                        {formatRelativeDate(change.updatedAt)}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      최근 수정: {new Date(change.updatedAt).toLocaleString('ko-KR')}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <Progress value={change.progress} className="h-1.5 flex-1" />
                 <span className="text-xs text-muted-foreground">

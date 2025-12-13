@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Loader2, FileText, Copy, Check, GitBranch, GitCommit, Upload, Settings, GitPullRequest, Archive } from 'lucide-react'
+import { Loader2, FileText, Copy, Check, GitBranch, GitCommit, Upload, Settings, GitPullRequest, Archive, Calendar, Clock } from 'lucide-react'
 import { useFlowChangeDetail, useArchiveChange } from '@/hooks/useFlowChanges'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { Button } from '@/components/ui/button'
@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useCurrentChangeBranch, useChangePush, useConflicts } from '@/hooks/useChangeGit'
+import { formatRelativeDate, formatDateTime } from '@/lib/utils'
 import { RemoteStatusBanner } from '@/components/git/RemoteStatusBanner'
 import { ConflictResolutionDialog, ConflictBanner } from '@/components/git/ConflictResolutionDialog'
 import type { Stage } from '@/types'
@@ -320,12 +321,34 @@ export function ChangeDetail({ projectId, changeId, onArchived }: ChangeDetailPr
             </div>
           </TooltipProvider>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">진행률</span>
             <span className="font-medium">{change.progress}%</span>
           </div>
           <Progress value={change.progress} className="w-32" />
+
+          {/* 생성/수정 날짜 */}
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  생성: {formatRelativeDate(change.createdAt)}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{formatDateTime(change.createdAt)}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  수정: {formatRelativeDate(change.updatedAt)}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{formatDateTime(change.updatedAt)}</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
         {/* tasks.md 파일 경로 표시 */}
         {tasksFilePath && (

@@ -1,4 +1,4 @@
-import { ChevronRight, ChevronDown, GitBranch, GitCommit, Upload, Settings } from 'lucide-react'
+import { ChevronRight, ChevronDown, GitBranch, GitCommit, Upload, Settings, Calendar } from 'lucide-react'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import {
 import { useState } from 'react'
 import type { FlowChange, Stage } from '@/types'
 import { STAGE_CONFIG } from '@/constants/stages'
+import { formatRelativeDate } from '@/lib/utils'
 import { useCurrentChangeBranch, useChangePush } from '@/hooks/useChangeGit'
 
 interface ChangeItemProps {
@@ -65,6 +66,19 @@ export function ChangeItem({ change, isExpanded, onToggle }: ChangeItemProps) {
 
           {/* Title */}
           <span className="font-medium truncate flex-1">{change.title}</span>
+
+          {/* Created Date */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                <Calendar className="h-3 w-3" />
+                {formatRelativeDate(change.createdAt)}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              생성일: {change.createdAt ? new Date(change.createdAt).toLocaleString('ko-KR') : '-'}
+            </TooltipContent>
+          </Tooltip>
 
           {/* Current Stage Badge */}
           <Badge variant="outline" className="shrink-0 flex items-center gap-1">

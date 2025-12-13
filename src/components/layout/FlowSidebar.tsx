@@ -42,7 +42,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
+import { cn, formatRelativeDate } from '@/lib/utils'
 import type { SelectedItem } from '@/App'
 
 interface FlowSidebarProps {
@@ -304,15 +304,27 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
 
                             return (
                               <SidebarMenuSubItem key={change.id}>
-                                <SidebarMenuSubButton
-                                  onClick={() =>
-                                    handleSelectChange(project.id, change.id)
-                                  }
-                                  isActive={isChangeSelected}
-                                >
-                                  <GitBranch className="size-3" />
-                                  <span className="truncate">{change.title}</span>
-                                </SidebarMenuSubButton>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <SidebarMenuSubButton
+                                        onClick={() =>
+                                          handleSelectChange(project.id, change.id)
+                                        }
+                                        isActive={isChangeSelected}
+                                      >
+                                        <GitBranch className="size-3" />
+                                        <span className="truncate flex-1">{change.title}</span>
+                                        <span className="text-[10px] text-muted-foreground shrink-0">
+                                          {formatRelativeDate((change as { updatedAt?: string }).updatedAt)}
+                                        </span>
+                                      </SidebarMenuSubButton>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right">
+                                      <p>최근 수정: {(change as { updatedAt?: string }).updatedAt ? new Date((change as { updatedAt?: string }).updatedAt!).toLocaleString('ko-KR') : '-'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
                               </SidebarMenuSubItem>
                             )
                           })}

@@ -66,6 +66,7 @@ export interface Change {
   progress: number // 0-100
   totalTasks: number
   completedTasks: number
+  updatedAt?: string // ISO 8601 날짜 문자열 - 문서 최종 수정 시간
 }
 
 // Task item from tasks.md

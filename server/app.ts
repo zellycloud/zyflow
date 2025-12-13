@@ -518,8 +518,26 @@ async function getChangesForProject(projectPath: string) {
       // tasks.md not found
     }
 
+    // Get last modified date from git
+    let updatedAt: string | null = null
+    try {
+      const relativeChangeDir = `openspec/changes/${changeId}`
+      const gitCmd = `git log -1 --format="%aI" -- "${relativeChangeDir}"`
+      const { stdout } = await execAsync(gitCmd, { cwd: projectPath })
+      if (stdout.trim()) {
+        updatedAt = stdout.trim()
+      } else {
+        // Fallback to file stat
+        const tasksPath = join(changeDir, 'tasks.md')
+        const stat = await import('fs/promises').then(fs => fs.stat(tasksPath))
+        updatedAt = stat.mtime.toISOString()
+      }
+    } catch {
+      updatedAt = new Date().toISOString()
+    }
+
     const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-    changes.push({ id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs })
+    changes.push({ id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt })
   }
 
   return changes
@@ -649,12 +667,41 @@ app.get('/api/changes', async (_req, res) => {
 
       const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
 
+      // Get last modified date from git (latest commit in change directory)
+      let updatedAt: string | null = null
+      try {
+        // Get latest commit date for any file in the change directory
+        // Use relative path from project root for git command
+        const relativeChangeDir = `openspec/changes/${changeId}`
+        const gitCmd = `git log -1 --format="%aI" -- "${relativeChangeDir}"`
+        const { stdout } = await execAsync(gitCmd, { cwd: paths.projectPath })
+        if (stdout.trim()) {
+          updatedAt = stdout.trim()
+        } else {
+          // Fallback to file stat of tasks.md or proposal.md
+          const tasksPath = join(changeDir, 'tasks.md')
+          const proposalPath = join(changeDir, 'proposal.md')
+          try {
+            const stat = await import('fs/promises').then(fs => fs.stat(tasksPath))
+            updatedAt = stat.mtime.toISOString()
+          } catch {
+            const stat = await import('fs/promises').then(fs => fs.stat(proposalPath))
+            updatedAt = stat.mtime.toISOString()
+          }
+        }
+      } catch (err) {
+        // If all fails, use current time
+        console.error('Git log error:', err)
+        updatedAt = new Date().toISOString()
+      }
+
       changes.push({
         id: changeId,
         title,
         progress,
         totalTasks,
         completedTasks,
+        updatedAt,
       })
     }
 
@@ -1692,6 +1739,31 @@ app.get('/api/flow/changes/:id', async (req, res) => {
     const progress = calculateProgress(stages)
     const currentStage = determineCurrentStage(stages)
 
+    // Git에서 실제 날짜 가져오기
+    let gitCreatedAt: string | null = null
+    let gitUpdatedAt: string | null = null
+    try {
+      const relativeChangeDir = `openspec/changes/${change.id}`
+      // 최신 커밋 날짜 (수정일)
+      const { stdout: updatedStdout } = await execAsync(
+        `git log -1 --format="%aI" -- "${relativeChangeDir}"`,
+        { cwd: project.path }
+      )
+      if (updatedStdout.trim()) {
+        gitUpdatedAt = updatedStdout.trim()
+      }
+      // 최초 커밋 날짜 (생성일)
+      const { stdout: createdStdout } = await execAsync(
+        `git log --diff-filter=A --format="%aI" -- "${relativeChangeDir}" | tail -1`,
+        { cwd: project.path }
+      )
+      if (createdStdout.trim()) {
+        gitCreatedAt = createdStdout.trim()
+      }
+    } catch {
+      // Git 명령 실패 시 DB 값 사용
+    }
+
     res.json({
       success: true,
       data: {
@@ -1703,8 +1775,8 @@ app.get('/api/flow/changes/:id', async (req, res) => {
           status: change.status,
           currentStage,
           progress,
-          createdAt: new Date(change.created_at).toISOString(),
-          updatedAt: new Date(change.updated_at).toISOString(),
+          createdAt: gitCreatedAt || new Date(change.created_at).toISOString(),
+          updatedAt: gitUpdatedAt || new Date(change.updated_at).toISOString(),
         },
         stages,
       },
