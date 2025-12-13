@@ -1,0 +1,122 @@
+name: Check GitDiagram Upstream
+
+on:
+  schedule:
+    # Run weekly on Mondays at 9:00 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    # Allow manual trigger
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check GitDiagram upstream
+        id: check
+        run: |
+          UPSTREAM_REPO="ahmedkhaleel2004/gitdiagram"
+          UPSTREAM_BRANCH="main"
+          LOCAL_PACKAGE="packages/gitdiagram-core"
+
+          # Get upstream latest commit
+          UPSTREAM_API="https://api.github.com/repos/${UPSTREAM_REPO}/commits/${UPSTREAM_BRANCH}"
+          UPSTREAM_COMMIT=$(curl -s "${UPSTREAM_API}" | jq -r '.sha')
+          UPSTREAM_DATE=$(curl -s "${UPSTREAM_API}" | jq -r '.commit.committer.date')
+          UPSTREAM_MSG=$(curl -s "${UPSTREAM_API}" | jq -r '.commit.message' | head -1)
+
+          echo "upstream_commit=${UPSTREAM_COMMIT:0:7}" >> $GITHUB_OUTPUT
+          echo "upstream_date=${UPSTREAM_DATE}" >> $GITHUB_OUTPUT
+          echo "upstream_message=${UPSTREAM_MSG}" >> $GITHUB_OUTPUT
+
+          # Get local last sync
+          LOCAL_SYNC_FILE="${LOCAL_PACKAGE}/UPSTREAM.md"
+          if [ -f "${LOCAL_SYNC_FILE}" ]; then
+            LAST_SYNC=$(grep -oP 'Last synced.*commit `\K[a-f0-9]+' "${LOCAL_SYNC_FILE}" || echo "unknown")
+          else
+            LAST_SYNC="unknown"
+          fi
+
+          echo "last_sync=${LAST_SYNC:0:7}" >> $GITHUB_OUTPUT
+
+          # Check if update needed
+          if [ "${LAST_SYNC:0:7}" != "${UPSTREAM_COMMIT:0:7}" ]; then
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+          else
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create issue if update needed
+        if: steps.check.outputs.needs_update == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `[GitDiagram] Upstream update available (${context.payload.repository.name})`;
+            const body = `
+            ## GitDiagram Upstream Update Available
+
+            The upstream GitDiagram repository has new commits that may need to be synced.
+
+            ### Details
+
+            | Item | Value |
+            |------|-------|
+            | Upstream Commit | \`${{ steps.check.outputs.upstream_commit }}\` |
+            | Upstream Date | ${{ steps.check.outputs.upstream_date }} |
+            | Last Message | ${{ steps.check.outputs.upstream_message }} |
+            | Local Sync | \`${{ steps.check.outputs.last_sync }}\` |
+
+            ### Action Required
+
+            1. Review changes: [Compare View](https://github.com/ahmedkhaleel2004/gitdiagram/compare/${{ steps.check.outputs.last_sync }}...main)
+            2. Update \`packages/gitdiagram-core/src/prompts.ts\` if needed
+            3. Update \`packages/gitdiagram-core/UPSTREAM.md\` with new commit hash
+
+            ---
+            *This issue was automatically created by the upstream check workflow.*
+            `;
+
+            // Check if similar issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'upstream-sync'
+            });
+
+            const existingIssue = issues.data.find(issue =>
+              issue.title.includes('[GitDiagram]')
+            );
+
+            if (existingIssue) {
+              console.log('Issue already exists:', existingIssue.number);
+              // Update existing issue
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: `**Update**: New upstream commit detected.\n\n${body}`
+              });
+            } else {
+              // Create new issue
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['upstream-sync', 'gitdiagram']
+              });
+            }
+
+      - name: Summary
+        run: |
+          echo "## GitDiagram Upstream Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Upstream Commit | \`${{ steps.check.outputs.upstream_commit }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Local Sync | \`${{ steps.check.outputs.last_sync }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Needs Update | ${{ steps.check.outputs.needs_update }} |" >> $GITHUB_STEP_SUMMARY
