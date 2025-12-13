@@ -9,11 +9,11 @@
 
 ## 2. 프롬프트 포팅
 
-- [ ] 2.1 GitDiagram `prompts.py` 분석 및 TypeScript 변환
-- [ ] 2.2 `SYSTEM_FIRST_PROMPT` 포팅 (아키텍처 설명 생성)
-- [ ] 2.3 `SYSTEM_SECOND_PROMPT` 포팅 (컴포넌트 매핑)
-- [ ] 2.4 `SYSTEM_THIRD_PROMPT` 포팅 (Mermaid 생성)
-- [ ] 2.5 추가 프롬프트 포팅 (사용자 지시사항, 수정 등)
+- [x] 2.1 GitDiagram `prompts.py` 분석 및 TypeScript 변환
+- [x] 2.2 `SYSTEM_FIRST_PROMPT` 포팅 (아키텍처 설명 생성)
+- [x] 2.3 `SYSTEM_SECOND_PROMPT` 포팅 (컴포넌트 매핑)
+- [x] 2.4 `SYSTEM_THIRD_PROMPT` 포팅 (Mermaid 생성)
+- [x] 2.5 추가 프롬프트 포팅 (사용자 지시사항, 수정 등)
 
 ## 3. 핵심 로직 구현
 
