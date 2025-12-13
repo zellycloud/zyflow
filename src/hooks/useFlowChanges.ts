@@ -306,6 +306,7 @@ export type SelectedItem =
   | { type: 'standalone-tasks'; projectId: string }
   | { type: 'project-settings'; projectId: string }
   | { type: 'agent'; projectId: string; changeId?: string }
+  | { type: 'post-task'; projectId: string }
   | { type: 'settings' }
 
 export function useSelectedItem() {
@@ -364,6 +365,14 @@ export function useSelectedItem() {
             refetchType: 'active'
           })
         }
+        break
+
+      case 'post-task':
+        // Post-Task 페이지는 관련 데이터 refetch
+        queryClient.invalidateQueries({
+          queryKey: ['post-task'],
+          refetchType: 'active'
+        })
         break
 
       case 'settings':

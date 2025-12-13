@@ -6,6 +6,7 @@ import { StandaloneTasks } from './StandaloneTasks'
 import { SettingsPage } from '@/components/settings'
 import { ProjectSettings } from '@/components/settings/ProjectSettings'
 import { AgentPage } from '@/components/agent'
+import { PostTaskView } from '@/components/post-task'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { useSelectedData } from '@/hooks/useFlowChanges'
 
@@ -93,6 +94,13 @@ export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
           projectId={selectedItem.projectId}
           changeId={selectedItem.changeId}
           projectPath={selectedProject?.path}
+        />
+      )
+    case 'post-task':
+      return (
+        <PostTaskView
+          projectId={selectedItem.projectId}
+          projectPath={selectedProject?.path ?? ''}
         />
       )
     default:

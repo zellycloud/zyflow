@@ -11,6 +11,7 @@ import {
   Bot,
   ArrowDown,
   RefreshCw,
+  Sparkles,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -136,6 +137,19 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
 
   const handleSelectAgent = (projectId: string) => {
     const selectedItem: SelectedItem = { type: 'agent', projectId }
+
+    // 먼저 UI 업데이트 (즉시 반응)
+    onSelect(selectedItem)
+    selectItem(selectedItem)
+
+    // 프로젝트 활성화는 비동기로
+    if (projectId !== projectsData?.activeProjectId) {
+      activateProject.mutate(projectId)
+    }
+  }
+
+  const handleSelectPostTask = (projectId: string) => {
+    const selectedItem: SelectedItem = { type: 'post-task', projectId }
 
     // 먼저 UI 업데이트 (즉시 반응)
     onSelect(selectedItem)
@@ -315,6 +329,21 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                             >
                               <Bot className="size-3" />
                               <span>Agent</span>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          {/* Post-Task */}
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              onClick={() =>
+                                handleSelectPostTask(project.id)
+                              }
+                              isActive={
+                                selectedItem?.type === 'post-task' &&
+                                selectedItem.projectId === project.id
+                              }
+                            >
+                              <Sparkles className="size-3" />
+                              <span>Post-Task</span>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>
                           {/* Inbox */}

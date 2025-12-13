@@ -58,8 +58,8 @@ async function runTestsMultipleTimes(
     rawOutput += `\n=== Run ${i}/${repeatCount} ===\n`;
 
     const startTime = Date.now();
-    let passed: string[] = [];
-    let failed: string[] = [];
+    const passed: string[] = [];
+    const failed: string[] = [];
 
     try {
       const { stdout, stderr } = await execAsync(

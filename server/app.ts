@@ -36,6 +36,7 @@ import { getGlobalMultiWatcher } from './watcher.js'
 import { integrationsRouter, initIntegrationsDb } from './integrations/index.js'
 import { syncChangeTasksFromFile, syncChangeTasksForProject } from './sync.js'
 import { cliRoutes } from './cli-adapter/index.js'
+import { postTaskRouter } from './routes/post-task.js'
 const execAsync = promisify(exec)
 
 // Lazy load gitdiagram-core functions to avoid ESM/CJS issues
@@ -93,6 +94,9 @@ app.use('/api/integrations', integrationsRouter)
 
 // CLI Adapter API 라우터 등록
 app.use('/api/cli', cliRoutes)
+
+// Post-Task API 라우터 등록
+app.use('/api/post-task', postTaskRouter)
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
