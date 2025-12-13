@@ -36,8 +36,37 @@ import { getGlobalMultiWatcher } from './watcher.js'
 import { integrationsRouter, initIntegrationsDb } from './integrations/index.js'
 import { syncChangeTasksFromFile, syncChangeTasksForProject } from './sync.js'
 import { cliRoutes } from './cli-adapter/index.js'
-
 const execAsync = promisify(exec)
+
+// Lazy load gitdiagram-core functions to avoid ESM/CJS issues
+let gitdiagramCore: {
+  generateFileTree: typeof import('../packages/gitdiagram-core/src/file-tree').generateFileTree
+  readReadme: typeof import('../packages/gitdiagram-core/src/file-tree').readReadme
+  generateDiagram: typeof import('../packages/gitdiagram-core/src/generator').generateDiagram
+  createLLMAdapter: typeof import('../packages/gitdiagram-core/src/llm-adapter').createLLMAdapter
+  validateMermaidSyntax: typeof import('../packages/gitdiagram-core/src/mermaid-utils').validateMermaidSyntax
+  extractClickEvents: typeof import('../packages/gitdiagram-core/src/mermaid-utils').extractClickEvents
+} | null = null
+
+async function getGitdiagramCore() {
+  if (!gitdiagramCore) {
+    const [fileTree, generator, llmAdapter, mermaidUtils] = await Promise.all([
+      import('../packages/gitdiagram-core/src/file-tree.js'),
+      import('../packages/gitdiagram-core/src/generator.js'),
+      import('../packages/gitdiagram-core/src/llm-adapter.js'),
+      import('../packages/gitdiagram-core/src/mermaid-utils.js'),
+    ])
+    gitdiagramCore = {
+      generateFileTree: fileTree.generateFileTree,
+      readReadme: fileTree.readReadme,
+      generateDiagram: generator.generateDiagram,
+      createLLMAdapter: llmAdapter.createLLMAdapter,
+      validateMermaidSyntax: mermaidUtils.validateMermaidSyntax,
+      extractClickEvents: mermaidUtils.extractClickEvents,
+    }
+  }
+  return gitdiagramCore
+}
 
 // Store running Claude processes
 const runningTasks = new Map<
@@ -2623,12 +2652,10 @@ app.get('/api/diagram/context', async (req, res) => {
     const projectPath = req.query.path as string || project.path
     const maxDepth = parseInt(req.query.maxDepth as string) || 10
 
-    // Dynamic import of gitdiagram-core
-    const { generateFileTree, readReadme } = await import('../packages/gitdiagram-core/src/file-tree.js')
-
+    const core = await getGitdiagramCore()
     const [fileTree, readme] = await Promise.all([
-      generateFileTree(projectPath, { maxDepth }),
-      readReadme(projectPath),
+      core.generateFileTree(projectPath, { maxDepth }),
+      core.readReadme(projectPath),
     ])
 
     res.json({
@@ -2660,31 +2687,35 @@ app.post('/api/diagram/generate', async (req, res) => {
     const { instructions } = req.body
     const projectPath = req.body.projectPath || project.path
 
-    // Dynamic import of gitdiagram-core
-    const { generateFileTree, readReadme } = await import('../packages/gitdiagram-core/src/file-tree.js')
-    const { generateDiagram, createLLMAdapter } = await import('../packages/gitdiagram-core/src/index.js')
+    // Get gitdiagram-core functions
+    const core = await getGitdiagramCore()
 
-    // Get file tree and README
-    const [fileTree, readme] = await Promise.all([
-      generateFileTree(projectPath, { maxDepth: 8 }),
-      readReadme(projectPath),
-    ])
-
-    // Check for API key - priority: Claude > OpenAI > Gemini
+    // Check for API key - priority: Gemini > Claude > OpenAI (Gemini first as it's commonly available)
     let apiKey: string | undefined
     let provider: 'claude' | 'openai' | 'gemini'
 
-    if (process.env.ANTHROPIC_API_KEY) {
+    // Debug log for environment variables
+    console.log('[Diagram] Available API keys:', {
+      anthropic: !!process.env.ANTHROPIC_API_KEY,
+      openai: !!process.env.OPENAI_API_KEY,
+      google: !!process.env.GOOGLE_API_KEY,
+      gemini: !!process.env.GEMINI_API_KEY,
+    })
+
+    if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY) {
+      apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
+      provider = 'gemini'
+    } else if (process.env.ANTHROPIC_API_KEY) {
       apiKey = process.env.ANTHROPIC_API_KEY
       provider = 'claude'
     } else if (process.env.OPENAI_API_KEY) {
       apiKey = process.env.OPENAI_API_KEY
       provider = 'openai'
-    } else if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY) {
-      apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
-      provider = 'gemini'
     } else {
       // Return a generated diagram based on file structure analysis (no LLM)
+      const [fileTree] = await Promise.all([
+        core.generateFileTree(projectPath, { maxDepth: 8 }),
+      ])
       const simpleDiagram = generateSimpleDiagram(fileTree, project.name)
       return res.json({
         success: true,
@@ -2698,11 +2729,11 @@ app.post('/api/diagram/generate', async (req, res) => {
     }
 
     // Use LLM to generate diagram
-    const adapter = createLLMAdapter(provider, { apiKey })
+    console.log(`[Diagram] Using provider: ${provider}`)
+    const adapter = core.createLLMAdapter(provider, { apiKey })
 
-    const result = await generateDiagram(adapter, {
-      fileTree,
-      readme,
+    const result = await core.generateDiagram(projectPath, {
+      llm: adapter,
       instructions,
     })
 
@@ -2712,7 +2743,7 @@ app.post('/api/diagram/generate', async (req, res) => {
         mermaidCode: result.mermaidCode,
         projectPath,
         generated: 'llm',
-        stages: result.stages,
+        explanation: result.explanation,
       },
     })
   } catch (error) {
@@ -2794,10 +2825,9 @@ app.post('/api/diagram/validate', async (req, res) => {
       return res.status(400).json({ success: false, error: 'No code provided' })
     }
 
-    const { validateMermaidSyntax, extractClickEvents } = await import('../packages/gitdiagram-core/src/mermaid-utils.js')
-
-    const validation = validateMermaidSyntax(code)
-    const clickEvents = extractClickEvents(code)
+    const core = await getGitdiagramCore()
+    const validation = core.validateMermaidSyntax(code)
+    const clickEvents = core.extractClickEvents(code)
 
     res.json({
       success: true,
