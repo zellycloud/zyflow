@@ -33,21 +33,21 @@
 
 ## 5. 프론트엔드 컴포넌트
 
-- [ ] 5.1 `mermaid` 패키지 설치 및 설정
-- [ ] 5.2 `MermaidRenderer.tsx` - Mermaid 코드 렌더링
-- [ ] 5.3 `DiagramViewer.tsx` - 다이어그램 뷰어 (줌, 팬)
-- [ ] 5.4 API 엔드포인트 (`/api/diagram/generate`)
-- [ ] 5.5 프로젝트 대시보드에 다이어그램 탭 추가
+- [x] 5.1 `mermaid` 패키지 설치 및 설정
+- [x] 5.2 `MermaidRenderer.tsx` - Mermaid 코드 렌더링
+- [x] 5.3 `DiagramViewer.tsx` - 다이어그램 뷰어 (줌, 팬)
+- [x] 5.4 API 엔드포인트 (`/api/diagram/generate`)
+- [x] 5.5 프로젝트 대시보드에 다이어그램 탭 추가
 
 ## 6. 테스트 및 문서화
 
-- [ ] 6.1 프롬프트 포팅 검증 테스트 (원본과 결과 비교)
-- [ ] 6.2 MCP 도구 통합 테스트
-- [ ] 6.3 프론트엔드 컴포넌트 테스트
-- [ ] 6.4 사용 가이드 문서 작성
+- [x] 6.1 프롬프트 포팅 검증 테스트 (원본과 결과 비교)
+- [x] 6.2 MCP 도구 통합 테스트
+- [x] 6.3 프론트엔드 컴포넌트 테스트
+- [x] 6.4 사용 가이드 문서 작성
 
 ## 7. 업스트림 동기화 인프라
 
-- [ ] 7.1 GitDiagram 포크 생성
-- [ ] 7.2 `scripts/check-upstream.sh` 스크립트 작성
-- [ ] 7.3 GitHub Actions 워크플로우 (주간 업스트림 체크)
+- [x] 7.1 GitDiagram 포크 생성 (스킵 - 직접 업스트림 모니터링)
+- [x] 7.2 `scripts/check-upstream.sh` 스크립트 작성
+- [x] 7.3 GitHub Actions 워크플로우 (주간 업스트림 체크)
