@@ -183,9 +183,13 @@ export function TaskRunnerTab({ projectPath }: TaskRunnerTabProps) {
               <div className="flex items-center gap-2 p-2 rounded-lg hover:bg-muted/50">
                 <Checkbox
                   id={`cat-${category.id}`}
-                  checked={categorySelectionState[category.id] === 'all'}
-                  // @ts-expect-error indeterminate is valid but not typed
-                  indeterminate={categorySelectionState[category.id] === 'some'}
+                  checked={
+                    categorySelectionState[category.id] === 'all'
+                      ? true
+                      : categorySelectionState[category.id] === 'some'
+                        ? 'indeterminate'
+                        : false
+                  }
                   onCheckedChange={() => toggleAllInCategory(category)}
                 />
                 <Label
