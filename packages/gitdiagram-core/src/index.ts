@@ -45,6 +45,7 @@ export {
 export {
   ClaudeAdapter,
   OpenAIAdapter,
+  GeminiAdapter,
   createLLMAdapter,
   getApiKeyFromEnv,
   type LLMAdapter,

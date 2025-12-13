@@ -84,6 +84,71 @@ export class ClaudeAdapter implements LLMAdapter {
 }
 
 /**
+ * Google Gemini API Adapter
+ */
+export class GeminiAdapter implements LLMAdapter {
+  name = 'gemini';
+  private apiKey: string;
+  private model: string;
+
+  constructor(options: { apiKey: string; model?: string }) {
+    this.apiKey = options.apiKey;
+    this.model = options.model ?? 'gemini-2.0-flash';
+  }
+
+  async complete(
+    messages: LLMMessage[],
+    options: LLMCompletionOptions = {}
+  ): Promise<string> {
+    // Extract system message and combine with first user message
+    const systemMessage = messages.find((m) => m.role === 'system');
+    const nonSystemMessages = messages.filter((m) => m.role !== 'system');
+
+    // Gemini uses 'contents' format with 'parts'
+    const contents = nonSystemMessages.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }));
+
+    // Prepend system instruction to first user message if exists
+    if (systemMessage && contents.length > 0 && contents[0].role === 'user') {
+      contents[0].parts[0].text = `${systemMessage.content}\n\n${contents[0].parts[0].text}`;
+    }
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents,
+          generationConfig: {
+            maxOutputTokens: options.maxTokens ?? 4096,
+            temperature: options.temperature ?? 0.7,
+            stopSequences: options.stopSequences,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Gemini API error: ${response.status} - ${error}`);
+    }
+
+    const data = (await response.json()) as {
+      candidates?: Array<{
+        content?: { parts?: Array<{ text?: string }> };
+      }>;
+    };
+
+    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  }
+}
+
+/**
  * OpenAI API Adapter
  */
 export class OpenAIAdapter implements LLMAdapter {
@@ -136,7 +201,7 @@ export class OpenAIAdapter implements LLMAdapter {
  * Create an LLM adapter based on provider name
  */
 export function createLLMAdapter(
-  provider: 'claude' | 'openai',
+  provider: 'claude' | 'openai' | 'gemini',
   options: { apiKey: string; model?: string; baseUrl?: string }
 ): LLMAdapter {
   switch (provider) {
@@ -144,6 +209,8 @@ export function createLLMAdapter(
       return new ClaudeAdapter(options);
     case 'openai':
       return new OpenAIAdapter(options);
+    case 'gemini':
+      return new GeminiAdapter(options);
     default:
       throw new Error(`Unknown LLM provider: ${provider}`);
   }
@@ -152,7 +219,7 @@ export function createLLMAdapter(
 /**
  * Get API key from environment variable
  */
-export function getApiKeyFromEnv(provider: 'claude' | 'openai'): string | null {
+export function getApiKeyFromEnv(provider: 'claude' | 'openai' | 'gemini'): string | null {
   switch (provider) {
     case 'claude':
       return (
@@ -160,6 +227,8 @@ export function getApiKeyFromEnv(provider: 'claude' | 'openai'): string | null {
       );
     case 'openai':
       return process.env.OPENAI_API_KEY ?? null;
+    case 'gemini':
+      return process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY ?? null;
     default:
       return null;
   }

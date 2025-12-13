@@ -2670,11 +2670,20 @@ app.post('/api/diagram/generate', async (req, res) => {
       readReadme(projectPath),
     ])
 
-    // Check for API key
-    const apiKey = process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY
-    const provider = process.env.ANTHROPIC_API_KEY ? 'claude' : 'openai'
+    // Check for API key - priority: Claude > OpenAI > Gemini
+    let apiKey: string | undefined
+    let provider: 'claude' | 'openai' | 'gemini'
 
-    if (!apiKey) {
+    if (process.env.ANTHROPIC_API_KEY) {
+      apiKey = process.env.ANTHROPIC_API_KEY
+      provider = 'claude'
+    } else if (process.env.OPENAI_API_KEY) {
+      apiKey = process.env.OPENAI_API_KEY
+      provider = 'openai'
+    } else if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY) {
+      apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
+      provider = 'gemini'
+    } else {
       // Return a generated diagram based on file structure analysis (no LLM)
       const simpleDiagram = generateSimpleDiagram(fileTree, project.name)
       return res.json({
@@ -2689,7 +2698,7 @@ app.post('/api/diagram/generate', async (req, res) => {
     }
 
     // Use LLM to generate diagram
-    const adapter = createLLMAdapter(provider as 'claude' | 'openai', { apiKey })
+    const adapter = createLLMAdapter(provider, { apiKey })
 
     const result = await generateDiagram(adapter, {
       fileTree,
