@@ -17,11 +17,11 @@
 
 ## 3. 핵심 로직 구현
 
-- [ ] 3.1 `file-tree.ts` - 디렉토리 구조 추출 함수
-- [ ] 3.2 `generator.ts` - 3단계 AI 호출 로직
-- [ ] 3.3 LLM 어댑터 (Claude API / OpenAI API 추상화)
-- [ ] 3.4 Mermaid 문법 검증 및 클릭 이벤트 처리
-- [ ] 3.5 `index.ts` - 패키지 public API
+- [x] 3.1 `file-tree.ts` - 디렉토리 구조 추출 함수
+- [x] 3.2 `generator.ts` - 3단계 AI 호출 로직
+- [x] 3.3 LLM 어댑터 (Claude API / OpenAI API 추상화)
+- [x] 3.4 Mermaid 문법 검증 및 클릭 이벤트 처리
+- [x] 3.5 `index.ts` - 패키지 public API
 
 ## 4. MCP 도구 통합
 

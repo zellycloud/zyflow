@@ -3,6 +3,20 @@
  *
  * AI-powered repository architecture diagram generator
  * Based on GitDiagram by Ahmed Khaleel
+ *
+ * @example
+ * ```typescript
+ * import { DiagramGenerator, ClaudeAdapter } from '@zyflow/gitdiagram-core';
+ *
+ * const llm = new ClaudeAdapter({ apiKey: process.env.ANTHROPIC_API_KEY });
+ * const generator = new DiagramGenerator({ llm });
+ *
+ * const result = await generator.generate('/path/to/project', {
+ *   onProgress: (stage, message) => console.log(`[${stage}] ${message}`),
+ * });
+ *
+ * console.log(result.mermaidCode);
+ * ```
  */
 
 // Prompts
@@ -19,32 +33,45 @@ export {
   withAdditionalInstructions,
 } from './prompts';
 
-// Types (to be added)
-export interface DiagramGenerationOptions {
-  /** Project root path */
-  projectPath: string;
-  /** Optional custom instructions */
-  instructions?: string;
-  /** Maximum file tree depth */
-  maxDepth?: number;
-  /** Patterns to exclude from file tree */
-  excludePatterns?: string[];
-}
+// File Tree
+export {
+  generateFileTree,
+  readReadme,
+  getProjectContext,
+  type FileTreeOptions,
+} from './file-tree';
 
-export interface DiagramResult {
-  /** Generated Mermaid.js code */
-  mermaidCode: string;
-  /** Architecture explanation */
-  explanation: string;
-  /** Component to file/directory mappings */
-  componentMapping: Record<string, string>;
-}
+// LLM Adapter
+export {
+  ClaudeAdapter,
+  OpenAIAdapter,
+  createLLMAdapter,
+  getApiKeyFromEnv,
+  type LLMAdapter,
+  type LLMMessage,
+  type LLMCompletionOptions,
+} from './llm-adapter';
 
-export interface ModifyDiagramOptions {
-  /** Existing Mermaid.js diagram code */
-  diagram: string;
-  /** Original explanation */
-  explanation: string;
-  /** Modification instructions */
-  instructions: string;
-}
+// Generator
+export {
+  generateDiagram,
+  modifyDiagram,
+  DiagramGenerator,
+  type GeneratorOptions,
+  type GenerationStage,
+  type GenerationResult,
+  type ModifyResult,
+} from './generator';
+
+// Mermaid Utilities
+export {
+  validateMermaidSyntax,
+  extractClickEvents,
+  updateClickEvents,
+  pathsToGitHubUrls,
+  extractNodeIds,
+  ensureColorStyles,
+  formatMermaidCode,
+  type ClickEvent,
+  type ValidationResult,
+} from './mermaid-utils';
