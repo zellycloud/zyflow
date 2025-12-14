@@ -243,28 +243,33 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                       <SidebarMenuButton
                         onClick={() => handleSelectProject(project.id)}
                         isActive={isProjectSelected}
-                        className={cn(isProjectSelected && 'bg-primary/10')}
-                      >
-                        <CollapsibleTrigger asChild>
-                          <span
-                            className="flex items-center justify-center size-4 hover:bg-accent rounded"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                            }}
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="size-4" />
-                            ) : (
-                              <ChevronRight className="size-4" />
-                            )}
-                          </span>
-                        </CollapsibleTrigger>
-                        <FolderOpen className="size-4" />
-                        <span className="truncate font-medium">{project.name}</span>
-                        {projectChangeCount > 0 && (
-                          <SidebarMenuBadge>{projectChangeCount}</SidebarMenuBadge>
+                        className={cn(
+                          isProjectSelected && 'bg-primary/10',
+                          behindCount > 0 && 'flex-col items-start gap-0.5 h-auto py-1.5'
                         )}
-                        {/* Git behind 표시 + Pull 버튼 */}
+                      >
+                        <div className="flex items-center gap-1 w-full">
+                          <CollapsibleTrigger asChild>
+                            <span
+                              className="flex items-center justify-center size-4 hover:bg-accent rounded shrink-0"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                              }}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="size-4" />
+                              ) : (
+                                <ChevronRight className="size-4" />
+                              )}
+                            </span>
+                          </CollapsibleTrigger>
+                          <FolderOpen className="size-4 shrink-0" />
+                          <span className="truncate font-medium flex-1">{project.name}</span>
+                          {projectChangeCount > 0 && (
+                            <SidebarMenuBadge>{projectChangeCount}</SidebarMenuBadge>
+                          )}
+                        </div>
+                        {/* Git behind 표시 + Pull 버튼 (두 번째 줄) */}
                         {behindCount > 0 && (
                           <TooltipProvider>
                             <Tooltip>
@@ -273,7 +278,7 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                                   onClick={(e) => handlePullProject(e, project.id)}
                                   disabled={isPulling}
                                   className={cn(
-                                    "ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-xs",
+                                    "ml-5 flex items-center gap-1 px-1.5 py-0.5 rounded text-xs",
                                     "bg-blue-500/20 text-blue-600 dark:text-blue-400",
                                     "hover:bg-blue-500/30 transition-colors",
                                     isPulling && "opacity-50 cursor-not-allowed"
@@ -284,11 +289,11 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                                   ) : (
                                     <ArrowDown className="size-3" />
                                   )}
-                                  <span>{behindCount}</span>
+                                  <span>↓ {behindCount}개 새 커밋</span>
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent side="right">
-                                <p>{behindCount}개 커밋 뒤처짐 - 클릭하여 Pull</p>
+                                <p>클릭하여 Pull</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>

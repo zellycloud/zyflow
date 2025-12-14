@@ -79,6 +79,7 @@ export function useProjectPull() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['git', 'projects-sync-status'] })
       queryClient.invalidateQueries({ queryKey: ['git', 'status'] })
+      queryClient.invalidateQueries({ queryKey: ['git', 'remote-updates'] })
       // 프로젝트 데이터도 갱신
       queryClient.invalidateQueries({ queryKey: ['flow'] })
       queryClient.invalidateQueries({ queryKey: ['changes'] })
