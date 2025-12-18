@@ -1,305 +1,352 @@
-<!-- OPENSPEC:START -->
-# OpenSpec Instructions
+# Claude Code Configuration - SPARC Development Environment
 
-These instructions are for AI assistants working in this project.
+## 🚨 CRITICAL: CONCURRENT EXECUTION & FILE MANAGEMENT
 
-Always open `@/openspec/AGENTS.md` when the request:
-- Mentions planning or proposals (words like proposal, spec, change, plan)
-- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
-- Sounds ambiguous and you need the authoritative spec before coding
+**ABSOLUTE RULES**:
+1. ALL operations MUST be concurrent/parallel in a single message
+2. **NEVER save working files, text/mds and tests to the root folder**
+3. ALWAYS organize files in appropriate subdirectories
+4. **USE CLAUDE CODE'S TASK TOOL** for spawning agents concurrently, not just MCP
 
-Use `@/openspec/AGENTS.md` to learn:
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
+### ⚡ GOLDEN RULE: "1 MESSAGE = ALL RELATED OPERATIONS"
 
-Keep this managed block so 'openspec update' can refresh the instructions.
+**MANDATORY PATTERNS:**
+- **TodoWrite**: ALWAYS batch ALL todos in ONE call (5-10+ todos minimum)
+- **Task tool (Claude Code)**: ALWAYS spawn ALL agents in ONE message with full instructions
+- **File operations**: ALWAYS batch ALL reads/writes/edits in ONE message
+- **Bash commands**: ALWAYS batch ALL terminal operations in ONE message
+- **Memory operations**: ALWAYS batch ALL memory store/retrieve in ONE message
 
-<!-- OPENSPEC:END -->
+### 🎯 CRITICAL: Claude Code Task Tool for Agent Execution
 
-# ZyFlow 프로젝트 지침
-
-## 프로젝트 구조
-
+**Claude Code's Task tool is the PRIMARY way to spawn agents:**
+```javascript
+// ✅ CORRECT: Use Claude Code's Task tool for parallel agent execution
+[Single Message]:
+  Task("Research agent", "Analyze requirements and patterns...", "researcher")
+  Task("Coder agent", "Implement core features...", "coder")
+  Task("Tester agent", "Create comprehensive tests...", "tester")
+  Task("Reviewer agent", "Review code quality...", "reviewer")
+  Task("Architect agent", "Design system architecture...", "system-architect")
 ```
-zyflow/
-├── src/           # React 프론트엔드 (Vite + React 19 + TailwindCSS 4)
-├── server/        # Express API 서버
-├── mcp-server/    # MCP 서버 (Claude Code 통합)
-├── openspec/      # OpenSpec 변경 제안 및 스펙
-```
 
-## 개발 서버
+**MCP tools are ONLY for coordination setup:**
+- `mcp__claude-flow__swarm_init` - Initialize coordination topology
+- `mcp__claude-flow__agent_spawn` - Define agent types for coordination
+- `mcp__claude-flow__task_orchestrate` - Orchestrate high-level workflows
+
+### 📁 File Organization Rules
+
+**NEVER save to root folder. Use these directories:**
+- `/src` - Source code files
+- `/tests` - Test files
+- `/docs` - Documentation and markdown files
+- `/config` - Configuration files
+- `/scripts` - Utility scripts
+- `/examples` - Example code
+
+## Project Overview
+
+This project uses SPARC (Specification, Pseudocode, Architecture, Refinement, Completion) methodology with Claude-Flow orchestration for systematic Test-Driven Development.
+
+## SPARC Commands
+
+### Core Commands
+- `npx claude-flow sparc modes` - List available modes
+- `npx claude-flow sparc run <mode> "<task>"` - Execute specific mode
+- `npx claude-flow sparc tdd "<feature>"` - Run complete TDD workflow
+- `npx claude-flow sparc info <mode>` - Get mode details
+
+### Batchtools Commands
+- `npx claude-flow sparc batch <modes> "<task>"` - Parallel execution
+- `npx claude-flow sparc pipeline "<task>"` - Full pipeline processing
+- `npx claude-flow sparc concurrent <mode> "<tasks-file>"` - Multi-task processing
+
+### Build Commands
+- `npm run build` - Build project
+- `npm run test` - Run tests
+- `npm run lint` - Linting
+- `npm run typecheck` - Type checking
+
+## SPARC Workflow Phases
+
+1. **Specification** - Requirements analysis (`sparc run spec-pseudocode`)
+2. **Pseudocode** - Algorithm design (`sparc run spec-pseudocode`)
+3. **Architecture** - System design (`sparc run architect`)
+4. **Refinement** - TDD implementation (`sparc tdd`)
+5. **Completion** - Integration (`sparc run integration`)
+
+## Code Style & Best Practices
+
+- **Modular Design**: Files under 500 lines
+- **Environment Safety**: Never hardcode secrets
+- **Test-First**: Write tests before implementation
+- **Clean Architecture**: Separate concerns
+- **Documentation**: Keep updated
+
+## 🚀 Available Agents (54 Total)
+
+### Core Development
+`coder`, `reviewer`, `tester`, `planner`, `researcher`
+
+### Swarm Coordination
+`hierarchical-coordinator`, `mesh-coordinator`, `adaptive-coordinator`, `collective-intelligence-coordinator`, `swarm-memory-manager`
+
+### Consensus & Distributed
+`byzantine-coordinator`, `raft-manager`, `gossip-coordinator`, `consensus-builder`, `crdt-synchronizer`, `quorum-manager`, `security-manager`
+
+### Performance & Optimization
+`perf-analyzer`, `performance-benchmarker`, `task-orchestrator`, `memory-coordinator`, `smart-agent`
+
+### GitHub & Repository
+`github-modes`, `pr-manager`, `code-review-swarm`, `issue-tracker`, `release-manager`, `workflow-automation`, `project-board-sync`, `repo-architect`, `multi-repo-swarm`
+
+### SPARC Methodology
+`sparc-coord`, `sparc-coder`, `specification`, `pseudocode`, `architecture`, `refinement`
+
+### Specialized Development
+`backend-dev`, `mobile-dev`, `ml-developer`, `cicd-engineer`, `api-docs`, `system-architect`, `code-analyzer`, `base-template-generator`
+
+### Testing & Validation
+`tdd-london-swarm`, `production-validator`
+
+### Migration & Planning
+`migration-planner`, `swarm-init`
+
+## 🎯 Claude Code vs MCP Tools
+
+### Claude Code Handles ALL EXECUTION:
+- **Task tool**: Spawn and run agents concurrently for actual work
+- File operations (Read, Write, Edit, MultiEdit, Glob, Grep)
+- Code generation and programming
+- Bash commands and system operations
+- Implementation work
+- Project navigation and analysis
+- TodoWrite and task management
+- Git operations
+- Package management
+- Testing and debugging
+
+### MCP Tools ONLY COORDINATE:
+- Swarm initialization (topology setup)
+- Agent type definitions (coordination patterns)
+- Task orchestration (high-level planning)
+- Memory management
+- Neural features
+- Performance tracking
+- GitHub integration
+
+**KEY**: MCP coordinates the strategy, Claude Code's Task tool executes with real agents.
+
+## 🚀 Quick Setup
 
 ```bash
-# 프론트엔드 + API 서버 동시 실행
-npm run dev:all
-
-# 개별 실행
-npm run dev      # Vite (localhost:5173)
-npm run server   # Express API (localhost:3001)
+# Add MCP servers (Claude Flow required, others optional)
+claude mcp add claude-flow npx claude-flow@alpha mcp start
+claude mcp add ruv-swarm npx ruv-swarm mcp start  # Optional: Enhanced coordination
+claude mcp add flow-nexus npx flow-nexus@latest mcp start  # Optional: Cloud features
 ```
 
-## 코드 품질
+## MCP Tool Categories
 
-- ESLint + Prettier 사용
-- 코드 변경 후 `npm run lint` 실행
-- 테스트: `npm run test`
+### Coordination
+`swarm_init`, `agent_spawn`, `task_orchestrate`
 
-## MCP 서버 빌드
+### Monitoring
+`swarm_status`, `agent_list`, `agent_metrics`, `task_status`, `task_results`
 
+### Memory & Neural
+`memory_usage`, `neural_status`, `neural_train`, `neural_patterns`
+
+### GitHub Integration
+`github_swarm`, `repo_analyze`, `pr_enhance`, `issue_triage`, `code_review`
+
+### System
+`benchmark_run`, `features_detect`, `swarm_monitor`
+
+### Flow-Nexus MCP Tools (Optional Advanced Features)
+Flow-Nexus extends MCP capabilities with 70+ cloud-based orchestration tools:
+
+**Key MCP Tool Categories:**
+- **Swarm & Agents**: `swarm_init`, `swarm_scale`, `agent_spawn`, `task_orchestrate`
+- **Sandboxes**: `sandbox_create`, `sandbox_execute`, `sandbox_upload` (cloud execution)
+- **Templates**: `template_list`, `template_deploy` (pre-built project templates)
+- **Neural AI**: `neural_train`, `neural_patterns`, `seraphina_chat` (AI assistant)
+- **GitHub**: `github_repo_analyze`, `github_pr_manage` (repository management)
+- **Real-time**: `execution_stream_subscribe`, `realtime_subscribe` (live monitoring)
+- **Storage**: `storage_upload`, `storage_list` (cloud file management)
+
+**Authentication Required:**
+- Register: `mcp__flow-nexus__user_register` or `npx flow-nexus@latest register`
+- Login: `mcp__flow-nexus__user_login` or `npx flow-nexus@latest login`
+- Access 70+ specialized MCP tools for advanced orchestration
+
+## 🚀 Agent Execution Flow with Claude Code
+
+### The Correct Pattern:
+
+1. **Optional**: Use MCP tools to set up coordination topology
+2. **REQUIRED**: Use Claude Code's Task tool to spawn agents that do actual work
+3. **REQUIRED**: Each agent runs hooks for coordination
+4. **REQUIRED**: Batch all operations in single messages
+
+### Example Full-Stack Development:
+
+```javascript
+// Single message with all agent spawning via Claude Code's Task tool
+[Parallel Agent Execution]:
+  Task("Backend Developer", "Build REST API with Express. Use hooks for coordination.", "backend-dev")
+  Task("Frontend Developer", "Create React UI. Coordinate with backend via memory.", "coder")
+  Task("Database Architect", "Design PostgreSQL schema. Store schema in memory.", "code-analyzer")
+  Task("Test Engineer", "Write Jest tests. Check memory for API contracts.", "tester")
+  Task("DevOps Engineer", "Setup Docker and CI/CD. Document in memory.", "cicd-engineer")
+  Task("Security Auditor", "Review authentication. Report findings via hooks.", "reviewer")
+  
+  // All todos batched together
+  TodoWrite { todos: [...8-10 todos...] }
+  
+  // All file operations together
+  Write "backend/server.js"
+  Write "frontend/App.jsx"
+  Write "database/schema.sql"
+```
+
+## 📋 Agent Coordination Protocol
+
+### Every Agent Spawned via Task Tool MUST:
+
+**1️⃣ BEFORE Work:**
 ```bash
-npm run build:mcp
+npx claude-flow@alpha hooks pre-task --description "[task]"
+npx claude-flow@alpha hooks session-restore --session-id "swarm-[id]"
 ```
 
-`dist/mcp-server/index.js`가 생성되며, Claude Code에서 사용 가능
-
-## Task 관리 (칸반 보드)
-
-작업 내용을 칸반 보드에 등록하여 진행 상황을 추적합니다.
-
-### MCP 도구 사용 (권장)
-
-```
-task_create    - 새 태스크 생성 (ID: TASK-1, TASK-2, ... 순차 번호)
-task_list      - 태스크 목록 조회 (kanban: true로 상태별 그룹화)
-task_update    - 태스크 수정 (상태 변경 포함)
-task_search    - 태스크 검색 (includeArchived: true로 아카이브 포함)
-task_delete    - 태스크 삭제
-task_view      - 태스크 상세 조회
-task_archive   - 완료된 태스크를 아카이브로 이동
-task_unarchive - 아카이브된 태스크 복원 (done으로)
-```
-
-### 태스크 상태
-
-- `todo`: 대기 중
-- `in-progress`: 진행 중
-- `review`: 검토 중
-- `done`: 완료
-- `archived`: 아카이브됨 (칸반에서 숨김, 검색 시 includeArchived로 조회)
-
-### 우선순위
-
-- `high`: 긴급
-- `medium`: 보통 (기본값)
-- `low`: 낮음
-
-### 사용 예시
-
-```
-# 버그 수정 태스크 생성 (순차 번호 ID 자동 생성)
-task_create(title: "API 응답 시간 개선", priority: "high", tags: ["performance"])
-# → TASK-1 생성됨
-
-# 작업 시작 시 상태 변경
-task_update(id: "TASK-1", status: "in-progress")
-
-# 작업 완료 시
-task_update(id: "TASK-1", status: "done")
-
-# 완료된 작업 정리 (아카이브)
-task_archive(id: "TASK-1")
-
-# 아카이브된 작업 포함 검색
-task_search(query: "API", includeArchived: true)
-```
-
-### CLI 명령어 (대안)
-
+**2️⃣ DURING Work:**
 ```bash
-zy tasks add "태스크 제목" --priority high --tags bug,urgent
-zy tasks list --kanban
-zy tasks move TASK-ABC123 in-progress
-zy tasks search "검색어"
+npx claude-flow@alpha hooks post-edit --file "[file]" --memory-key "swarm/[agent]/[step]"
+npx claude-flow@alpha hooks notify --message "[what was done]"
 ```
 
-### 태스크 등록 가이드라인
-
-- **작은 단위**: OpenSpec이 필요 없는 작은 버그 수정, 리팩토링, 단순 작업에 사용
-- **명확한 제목**: 무엇을 해야 하는지 명확하게 작성
-- **적절한 태그**: `bug`, `refactor`, `feature`, `docs`, `test` 등 사용
-- **우선순위 설정**: 긴급한 버그는 `high`, 일반 작업은 `medium`
-
-## AI Agent 실행 (OpenSpec 자동화)
-
-ZyFlow는 LangGraph 기반 AI Agent를 통해 OpenSpec 변경 제안을 자동으로 실행할 수 있습니다.
-
-### Agent MCP 도구
-
-```
-zyflow_execute_change  - OpenSpec Change 실행 시작
-zyflow_get_agent_status - Agent 세션 상태 조회
-zyflow_stop_agent      - 실행 중인 Agent 중단
-zyflow_resume_agent    - 체크포인트에서 Agent 재개
-```
-
-### 사용 예시
-
-```
-# Change 실행 시작
-zyflow_execute_change(changeId: "add-feature-x", projectPath: "/path/to/project")
-# → session_id 반환
-
-# 상태 확인
-zyflow_get_agent_status(sessionId: "session-123")
-
-# 중단
-zyflow_stop_agent(sessionId: "session-123")
-
-# 재개
-zyflow_resume_agent(sessionId: "session-123")
-```
-
-### Python Agent 서버
-
-AI Agent는 별도의 Python FastAPI 서버에서 실행됩니다:
-
+**3️⃣ AFTER Work:**
 ```bash
-# Python Agent 서버 포함 전체 실행
-npm run dev:full
-
-# 개별 실행
-npm run py:server  # Python Agent 서버 (localhost:3002)
+npx claude-flow@alpha hooks post-task --task-id "[task]"
+npx claude-flow@alpha hooks session-end --export-metrics true
 ```
 
-### 지원 CLI
+## 🎯 Concurrent Execution Examples
 
-Agent UI에서 다양한 AI CLI를 선택하여 사용할 수 있습니다:
-- Claude Code (기본)
-- Gemini CLI
-- Qwen Code CLI
-- Kilo Code CLI
+### ✅ CORRECT WORKFLOW: MCP Coordinates, Claude Code Executes
 
-각 CLI는 ZyFlow MCP 서버와 연동되어 OpenSpec 태스크를 실행합니다.
+```javascript
+// Step 1: MCP tools set up coordination (optional, for complex tasks)
+[Single Message - Coordination Setup]:
+  mcp__claude-flow__swarm_init { topology: "mesh", maxAgents: 6 }
+  mcp__claude-flow__agent_spawn { type: "researcher" }
+  mcp__claude-flow__agent_spawn { type: "coder" }
+  mcp__claude-flow__agent_spawn { type: "tester" }
 
-## Post-Task Agent (자동 코드 품질 관리)
-
-Post-Task Agent는 작업 완료 후 자동으로 코드 품질 검사, 테스트, CI/CD 분석, 프로덕션 모니터링을 수행합니다.
-
-### MCP 도구
-
-```
-post_task_run          - Post-Task 작업 실행
-quarantine_list        - 격리된 파일 목록 조회
-quarantine_restore     - 격리된 파일 복구
-quarantine_delete      - 격리된 파일 삭제
-quarantine_stats       - 격리 시스템 통계
-post_task_setup_hooks  - Git hooks 설치/제거
-post_task_start_scheduler - 스케줄러 시작/중지
-post_task_event_listener  - 이벤트 리스너 시작/중지
-post_task_trigger_status  - 트리거 시스템 상태
-post_task_reports      - 실행 리포트 목록
-post_task_report_view  - 특정 리포트 조회
-```
-
-### 작업 카테고리
-
-| 카테고리 | 작업 | 설명 |
-|----------|------|------|
-| **code-quality** | lint-fix | ESLint 오류 수정 |
-| | type-check | TypeScript 타입 검사 |
-| | dead-code | 미사용 코드 감지 |
-| | todo-cleanup | TODO/FIXME 정리 |
-| | refactor-suggest | 리팩토링 제안 |
-| **testing** | test-fix | 실패 테스트 수정 |
-| | test-gen | 테스트 자동 생성 |
-| | e2e-expand | E2E 테스트 확장 |
-| | coverage-fix | 커버리지 개선 |
-| | snapshot-update | 스냅샷 업데이트 |
-| | flaky-detect | 불안정 테스트 감지 |
-| **ci-cd** | ci-fix | CI 실패 분석 |
-| | dep-audit | 의존성 보안 검사 |
-| | bundle-check | 번들 크기 분석 |
-| **production** | sentry-triage | Sentry 이슈 분석 |
-| | security-audit | 보안 로그 분석 |
-| | api-validate | API 스키마 검증 |
-
-### 사용 예시
-
-```
-# 전체 카테고리 실행
-post_task_run(category: "all")
-
-# 특정 카테고리 실행
-post_task_run(category: "code-quality")
-
-# 개별 작업 실행
-post_task_run(tasks: ["lint-fix", "type-check"])
-
-# CLI 및 모델 지정
-post_task_run(category: "testing", cli: "gemini", model: "balanced")
-
-# 드라이런 (실제 변경 없이 분석만)
-post_task_run(category: "code-quality", dryRun: true)
+// Step 2: Claude Code Task tool spawns ACTUAL agents that do the work
+[Single Message - Parallel Agent Execution]:
+  // Claude Code's Task tool spawns real agents concurrently
+  Task("Research agent", "Analyze API requirements and best practices. Check memory for prior decisions.", "researcher")
+  Task("Coder agent", "Implement REST endpoints with authentication. Coordinate via hooks.", "coder")
+  Task("Database agent", "Design and implement database schema. Store decisions in memory.", "code-analyzer")
+  Task("Tester agent", "Create comprehensive test suite with 90% coverage.", "tester")
+  Task("Reviewer agent", "Review code quality and security. Document findings.", "reviewer")
+  
+  // Batch ALL todos in ONE call
+  TodoWrite { todos: [
+    {id: "1", content: "Research API patterns", status: "in_progress", priority: "high"},
+    {id: "2", content: "Design database schema", status: "in_progress", priority: "high"},
+    {id: "3", content: "Implement authentication", status: "pending", priority: "high"},
+    {id: "4", content: "Build REST endpoints", status: "pending", priority: "high"},
+    {id: "5", content: "Write unit tests", status: "pending", priority: "medium"},
+    {id: "6", content: "Integration tests", status: "pending", priority: "medium"},
+    {id: "7", content: "API documentation", status: "pending", priority: "low"},
+    {id: "8", content: "Performance optimization", status: "pending", priority: "low"}
+  ]}
+  
+  // Parallel file operations
+  Bash "mkdir -p app/{src,tests,docs,config}"
+  Write "app/package.json"
+  Write "app/src/server.js"
+  Write "app/tests/server.test.js"
+  Write "app/docs/API.md"
 ```
 
-### Quarantine 시스템 (Dead Code 격리)
-
-미사용 코드는 즉시 삭제하지 않고 `.quarantine/` 폴더로 이동됩니다:
-
-- **0-14일**: 격리됨 (quarantined) - 쉽게 복구 가능
-- **14-30일**: 삭제 대기 (pending) - 경고 표시
-- **30일+**: 만료 (expired) - 삭제 권장
-
-```
-# 격리 파일 조회
-quarantine_list(status: "quarantined")
-
-# 파일 복구
-quarantine_restore(itemId: "abc123")
-
-# 파일 삭제
-quarantine_delete(itemId: "abc123")
+### ❌ WRONG (Multiple Messages):
+```javascript
+Message 1: mcp__claude-flow__swarm_init
+Message 2: Task("agent 1")
+Message 3: TodoWrite { todos: [single todo] }
+Message 4: Write "file.js"
+// This breaks parallel coordination!
 ```
 
-### 트리거 설정
+## Performance Benefits
 
-`.zyflow/triggers.json`에서 자동 실행을 설정할 수 있습니다:
+- **84.8% SWE-Bench solve rate**
+- **32.3% token reduction**
+- **2.8-4.4x speed improvement**
+- **27+ neural models**
 
-```json
-{
-  "hooks": {
-    "pre-commit": ["lint-fix", "type-check"],
-    "pre-push": ["test-fix"],
-    "post-merge": ["dep-audit", "dead-code"]
-  },
-  "schedule": [
-    { "cron": "0 9 * * *", "tasks": ["sentry-triage"] },
-    { "cron": "0 9 * * 1", "tasks": ["dead-code", "e2e-expand"] }
-  ],
-  "events": {
-    "ci-failure": ["ci-fix", "test-fix"],
-    "pr-created": ["lint-fix", "type-check", "test-gen"]
-  }
-}
-```
+## Hooks Integration
 
-```
-# Git hooks 설치
-post_task_setup_hooks(action: "install")
+### Pre-Operation
+- Auto-assign agents by file type
+- Validate commands for safety
+- Prepare resources automatically
+- Optimize topology by complexity
+- Cache searches
 
-# 스케줄러 시작
-post_task_start_scheduler(action: "start")
+### Post-Operation
+- Auto-format code
+- Train neural patterns
+- Update memory
+- Analyze performance
+- Track token usage
 
-# 이벤트 리스너 시작
-post_task_event_listener(action: "start")
+### Session Management
+- Generate summaries
+- Persist state
+- Track metrics
+- Restore context
+- Export workflows
 
-# 전체 트리거 상태 확인
-post_task_trigger_status()
-```
+## Advanced Features (v2.0.0)
 
-### 리포트 조회
+- 🚀 Automatic Topology Selection
+- ⚡ Parallel Execution (2.8-4.4x speed)
+- 🧠 Neural Training
+- 📊 Bottleneck Analysis
+- 🤖 Smart Auto-Spawning
+- 🛡️ Self-Healing Workflows
+- 💾 Cross-Session Memory
+- 🔗 GitHub Integration
 
-실행 결과는 `.zyflow/reports/post-task/`에 저장됩니다:
+## Integration Tips
 
-```
-# 최근 리포트 목록
-post_task_reports(limit: 10)
+1. Start with basic swarm init
+2. Scale agents gradually
+3. Use memory for context
+4. Monitor progress regularly
+5. Train patterns from success
+6. Enable hooks automation
+7. Use GitHub tools first
 
-# 특정 작업 리포트
-post_task_reports(taskType: "lint-fix")
+## Support
 
-# 리포트 상세 조회
-post_task_report_view(reportId: "2024-12-13T10-30-00_lint-fix")
-```
+- Documentation: https://github.com/ruvnet/claude-flow
+- Issues: https://github.com/ruvnet/claude-flow/issues
+- Flow-Nexus Platform: https://flow-nexus.ruv.io (registration required for cloud features)
+
+---
+
+Remember: **Claude Flow coordinates, Claude Code creates!**
+
+# important-instruction-reminders
+Do what has been asked; nothing more, nothing less.
+NEVER create files unless they're absolutely necessary for achieving your goal.
+ALWAYS prefer editing an existing file to creating a new one.
+NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
+Never save working files, text/mds and tests to the root folder.
