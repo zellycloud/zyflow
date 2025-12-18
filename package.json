@@ -19,7 +19,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "test:py": "cd py-agents && uv run pytest"
+    "test:py": "cd py-agents && uv run pytest",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:stop": "pm2 stop zyflow-server",
+    "pm2:restart": "pm2 restart zyflow-server",
+    "pm2:logs": "pm2 logs zyflow-server",
+    "pm2:status": "pm2 status",
+    "pm2:monit": "pm2 monit"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -54,9 +60,11 @@
     "lucide-react": "^0.554.0",
     "mermaid": "^11.12.2",
     "nanoid": "^5.1.6",
+    "node-pty": "^1.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^9.0.1",
+    "react-resizable-panels": "^4.0.3",
     "remark-gfm": "^4.0.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
