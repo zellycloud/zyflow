@@ -263,7 +263,7 @@ export function TaskExecutionDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="max-w-4xl max-h-[85vh] flex flex-col"
+        className="max-w-4xl max-h-[85vh] flex flex-col overflow-hidden"
         // 실행 중에는 X 버튼 숨김
         showCloseButton={execution.status !== 'running'}
         // 실행 중에는 ESC로 닫을 수 없게 함
@@ -297,8 +297,8 @@ export function TaskExecutionDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-[400px] max-h-[60vh] rounded-lg border bg-background/50 p-3">
-          <div ref={scrollRef} className="space-y-2">
+        <ScrollArea className="flex-1 min-h-0 h-[50vh] rounded-lg border bg-background/50 p-3">
+          <div ref={scrollRef} className="space-y-2 pr-4">
             {execution.messages.map((msg, i) => renderMessage(msg, i))}
 
             {execution.status === 'running' && execution.messages.length === 0 && (
