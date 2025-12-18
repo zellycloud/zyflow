@@ -244,3 +244,126 @@ export interface ExportToLocalResponse {
   zyflowPath: string
   exported: string[]
 }
+
+// =============================================
+// Archived Changes 타입
+// =============================================
+
+export interface ArchivedChange {
+  id: string
+  title: string
+  progress: number
+  totalTasks: number
+  completedTasks: number
+  archivedAt: string | null
+}
+
+export interface ArchivedChangesResponse {
+  changes: ArchivedChange[]
+}
+
+export interface ArchivedChangeDetail {
+  id: string
+  files: Record<string, string>
+}
+
+export interface ArchivedChangeDetailResponse {
+  id: string
+  files: Record<string, string>
+}
+
+// =============================================
+// claude-flow 실행 관련 타입
+// =============================================
+
+/** 실행 모드 */
+export type ClaudeFlowExecutionMode = 'full' | 'single' | 'analysis'
+
+/** swarm 전략 */
+export type ClaudeFlowStrategy = 'development' | 'research' | 'testing'
+
+/** 실행 상태 값 */
+export type ClaudeFlowStatusValue =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'stopped'
+
+/** 로그 타입 */
+export type ClaudeFlowLogType =
+  | 'info'
+  | 'tool_use'
+  | 'tool_result'
+  | 'error'
+  | 'assistant'
+  | 'system'
+  | 'progress'
+
+/** 실행 요청 */
+export interface ClaudeFlowExecutionRequest {
+  projectPath: string
+  changeId: string
+  taskId?: string
+  mode: ClaudeFlowExecutionMode
+  strategy?: ClaudeFlowStrategy
+  maxAgents?: number
+  timeout?: number
+}
+
+/** 로그 항목 */
+export interface ClaudeFlowLogEntry {
+  timestamp: string
+  type: ClaudeFlowLogType
+  content: string
+  metadata?: Record<string, unknown>
+}
+
+/** 실행 결과 */
+export interface ClaudeFlowExecutionResult {
+  completedTasks: number
+  totalTasks: number
+  modifiedFiles?: string[]
+  error?: string
+  exitCode?: number
+}
+
+/** 실행 상태 */
+export interface ClaudeFlowExecutionStatus {
+  id: string
+  request: ClaudeFlowExecutionRequest
+  status: ClaudeFlowStatusValue
+  startedAt: string
+  completedAt?: string
+  progress: number
+  currentTask?: string
+  logs: ClaudeFlowLogEntry[]
+  result?: ClaudeFlowExecutionResult
+}
+
+/** 히스토리 항목 */
+export interface ClaudeFlowHistoryItem {
+  id: string
+  changeId: string
+  mode: ClaudeFlowExecutionMode
+  status: ClaudeFlowStatusValue
+  startedAt: string
+  completedAt?: string
+  result?: ClaudeFlowExecutionResult
+}
+
+/** API 응답: 실행 시작 */
+export interface ClaudeFlowExecuteResponse {
+  executionId: string
+  message: string
+}
+
+/** API 응답: 상태 조회 */
+export interface ClaudeFlowStatusResponse {
+  execution: ClaudeFlowExecutionStatus
+}
+
+/** API 응답: 히스토리 */
+export interface ClaudeFlowHistoryResponse {
+  history: ClaudeFlowHistoryItem[]
+}

@@ -35,6 +35,7 @@ import { formatRelativeDate, formatDateTime } from '@/lib/utils'
 import { RemoteStatusBanner } from '@/components/git/RemoteStatusBanner'
 import { ConflictResolutionDialog, ConflictBanner } from '@/components/git/ConflictResolutionDialog'
 import type { Stage } from '@/types'
+import { ExecutionPanel } from '@/components/claude-flow'
 
 interface ChangeDetailProps {
   projectId: string
@@ -391,6 +392,14 @@ export function ChangeDetail({ projectId, changeId, onArchived }: ChangeDetailPr
           specPath={change.specPath}
         />
       </div>
+
+      {/* Claude Flow Execution Panel */}
+      {currentProject && (
+        <ExecutionPanel
+          changeId={changeId}
+          projectPath={currentProject.path}
+        />
+      )}
 
       {/* Git Workflow Dialogs */}
       <ChangeWorkflowDialog
