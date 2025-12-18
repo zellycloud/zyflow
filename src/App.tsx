@@ -28,6 +28,7 @@ export type SelectedItem =
   | { type: 'project-settings'; projectId: string }
   | { type: 'agent'; projectId: string; changeId?: string }
   | { type: 'post-task'; projectId: string }
+  | { type: 'archived'; projectId: string; archivedChangeId?: string }
   | { type: 'settings' }
   | null
 

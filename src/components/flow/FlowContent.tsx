@@ -7,6 +7,7 @@ import { SettingsPage } from '@/components/settings'
 import { ProjectSettings } from '@/components/settings/ProjectSettings'
 import { AgentPage } from '@/components/agent'
 import { PostTaskView } from '@/components/post-task'
+import { ArchivedChangesPage } from '@/components/dashboard/ArchivedChangesPage'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { useSelectedData } from '@/hooks/useFlowChanges'
 
@@ -101,6 +102,13 @@ export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
         <PostTaskView
           projectId={selectedItem.projectId}
           projectPath={selectedProject?.path ?? ''}
+        />
+      )
+    case 'archived':
+      return (
+        <ArchivedChangesPage
+          projectId={selectedItem.projectId}
+          initialArchivedChangeId={selectedItem.archivedChangeId}
         />
       )
     default:

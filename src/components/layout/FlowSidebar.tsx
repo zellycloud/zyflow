@@ -12,6 +12,7 @@ import {
   ArrowDown,
   RefreshCw,
   Sparkles,
+  Archive,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -150,6 +151,19 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
 
   const handleSelectPostTask = (projectId: string) => {
     const selectedItem: SelectedItem = { type: 'post-task', projectId }
+
+    // 먼저 UI 업데이트 (즉시 반응)
+    onSelect(selectedItem)
+    selectItem(selectedItem)
+
+    // 프로젝트 활성화는 비동기로
+    if (projectId !== projectsData?.activeProjectId) {
+      activateProject.mutate(projectId)
+    }
+  }
+
+  const handleSelectArchived = (projectId: string) => {
+    const selectedItem: SelectedItem = { type: 'archived', projectId }
 
     // 먼저 UI 업데이트 (즉시 반응)
     onSelect(selectedItem)
@@ -376,6 +390,21 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                             >
                               <ListTodo className="size-3" />
                               <span>Inbox</span>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          {/* Archive */}
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              onClick={() =>
+                                handleSelectArchived(project.id)
+                              }
+                              isActive={
+                                selectedItem?.type === 'archived' &&
+                                selectedItem.projectId === project.id
+                              }
+                            >
+                              <Archive className="size-3" />
+                              <span>Archive</span>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>
                           {/* Project Settings */}

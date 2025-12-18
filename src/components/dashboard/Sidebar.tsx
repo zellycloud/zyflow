@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Settings, FolderOpen, Plus, Trash2, Check, ChevronRight, ChevronDown } from 'lucide-react'
+import { Settings, FolderOpen, Plus, Trash2, Check, ChevronRight, ChevronDown, Archive, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Collapsible,
   CollapsibleContent,
@@ -16,17 +17,41 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ChangeList } from './ChangeList'
+import { ArchivedChangeList } from './ArchivedChangeList'
 import { useProjects, useAddProject, useActivateProject, useRemoveProject, useBrowseFolder } from '@/hooks/useProjects'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
+type ViewMode = 'active' | 'archived'
+
 interface SidebarProps {
   selectedChangeId: string | null
   onSelectChange: (id: string) => void
+  viewMode?: ViewMode
+  onViewModeChange?: (mode: ViewMode) => void
+  selectedArchivedId?: string | null
+  onSelectArchived?: (id: string) => void
 }
 
-export function Sidebar({ selectedChangeId, onSelectChange }: SidebarProps) {
+export function Sidebar({
+  selectedChangeId,
+  onSelectChange,
+  viewMode = 'active',
+  onViewModeChange,
+  selectedArchivedId,
+  onSelectArchived,
+}: SidebarProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [internalViewMode, setInternalViewMode] = useState<ViewMode>('active')
+
+  const currentViewMode = onViewModeChange ? viewMode : internalViewMode
+  const handleViewModeChange = (mode: ViewMode) => {
+    if (onViewModeChange) {
+      onViewModeChange(mode)
+    } else {
+      setInternalViewMode(mode)
+    }
+  }
 
   const { data, isLoading } = useProjects()
   const addProject = useAddProject()
@@ -135,10 +160,34 @@ export function Sidebar({ selectedChangeId, onSelectChange }: SidebarProps) {
         </DropdownMenu>
       </div>
 
-      {/* Change List */}
-      <div className="flex-1 overflow-hidden">
-        <ChangeList selectedId={selectedChangeId} onSelect={onSelectChange} />
-      </div>
+      {/* Change List with Tabs */}
+      <Tabs
+        value={currentViewMode}
+        onValueChange={(v) => handleViewModeChange(v as ViewMode)}
+        className="flex-1 flex flex-col overflow-hidden"
+      >
+        <div className="border-b px-2 pt-2">
+          <TabsList className="w-full h-8 bg-muted/50">
+            <TabsTrigger value="active" className="flex-1 gap-1 text-xs">
+              <FileText className="h-3 w-3" />
+              활성
+            </TabsTrigger>
+            <TabsTrigger value="archived" className="flex-1 gap-1 text-xs">
+              <Archive className="h-3 w-3" />
+              아카이브
+            </TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="active" className="flex-1 m-0 overflow-hidden">
+          <ChangeList selectedId={selectedChangeId} onSelect={onSelectChange} />
+        </TabsContent>
+        <TabsContent value="archived" className="flex-1 m-0 overflow-hidden">
+          <ArchivedChangeList
+            selectedId={selectedArchivedId ?? null}
+            onSelect={onSelectArchived ?? (() => {})}
+          />
+        </TabsContent>
+      </Tabs>
 
       <Separator />
 
