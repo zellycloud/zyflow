@@ -127,15 +127,21 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       }
 
       // StrictMode나 빠른 unmount/remount 시 연결 중인 소켓을 닫으면 에러 발생
-      // 연결이 확립된 후에만 정상 종료하도록 하거나, 에러를 무시
+      // 연결이 확립된 후에만 정상 종료
       if (wsRef.current) {
+        const ws = wsRef.current
         // 리스너 제거하여 불필요한 이벤트 방지
-        wsRef.current.onclose = null
-        wsRef.current.onerror = null
-        wsRef.current.onmessage = null
-        wsRef.current.onopen = null
-        
-        wsRef.current.close()
+        ws.onclose = null
+        ws.onerror = null
+        ws.onmessage = null
+        ws.onopen = null
+
+        // CONNECTING 상태면 open 후 close (에러 방지)
+        if (ws.readyState === WebSocket.CONNECTING) {
+          ws.addEventListener('open', () => ws.close(), { once: true })
+        } else if (ws.readyState === WebSocket.OPEN) {
+          ws.close()
+        }
         wsRef.current = null
       }
     }

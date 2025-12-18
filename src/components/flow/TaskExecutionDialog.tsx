@@ -43,12 +43,17 @@ export function TaskExecutionDialog({
   }, [open, autoStarted, execution.status, execute, changeId, taskId, taskTitle])
 
   // Reset state when dialog closes
+  // 실행 중이면 먼저 중지한 후 상태 초기화
   useEffect(() => {
     if (!open) {
       setAutoStarted(false)
+      // 실행 중이면 서버 프로세스도 중지
+      if (execution.status === 'running') {
+        stop()
+      }
       reset()
     }
-  }, [open, reset])
+  }, [open, reset, stop, execution.status])
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -70,6 +75,21 @@ export function TaskExecutionDialog({
 
   const handleStop = async () => {
     await stop()
+    // 중지 후 모달을 닫을 수 있도록 상태 변경
+  }
+
+  const handleStopAndClose = async () => {
+    await stop()
+    onOpenChange(false)
+  }
+
+  // 실행 중에는 외부 클릭/ESC로 닫을 수 없게 함
+  const handleOpenChange = (newOpen: boolean) => {
+    // 실행 중이면 닫기 방지
+    if (execution.status === 'running' && !newOpen) {
+      return
+    }
+    onOpenChange(newOpen)
   }
 
   const handleRetry = () => {
@@ -241,8 +261,29 @@ export function TaskExecutionDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent
+        className="max-w-4xl max-h-[85vh] flex flex-col"
+        // 실행 중에는 X 버튼 숨김
+        showCloseButton={execution.status !== 'running'}
+        // 실행 중에는 ESC로 닫을 수 없게 함
+        onEscapeKeyDown={(e) => {
+          if (execution.status === 'running') {
+            e.preventDefault()
+          }
+        }}
+        // 실행 중에는 외부 클릭으로 닫을 수 없게 함
+        onPointerDownOutside={(e) => {
+          if (execution.status === 'running') {
+            e.preventDefault()
+          }
+        }}
+        onInteractOutside={(e) => {
+          if (execution.status === 'running') {
+            e.preventDefault()
+          }
+        }}
+      >
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-2">
@@ -277,10 +318,16 @@ export function TaskExecutionDialog({
 
         <div className="flex justify-end gap-2 pt-4 border-t">
           {execution.status === 'running' && (
-            <Button variant="destructive" onClick={handleStop}>
-              <Square className="h-4 w-4 mr-2" />
-              중지
-            </Button>
+            <>
+              <Button variant="outline" onClick={handleStop}>
+                <Square className="h-4 w-4 mr-2" />
+                중지
+              </Button>
+              <Button variant="destructive" onClick={handleStopAndClose}>
+                <X className="h-4 w-4 mr-2" />
+                중지 후 닫기
+              </Button>
+            </>
           )}
           {(execution.status === 'completed' || execution.status === 'error') && (
             <>
