@@ -217,6 +217,56 @@ zyflow/
 - **MCP**: @modelcontextprotocol/sdk
 - **Testing**: Vitest, @testing-library/react, Playwright
 
+## Claude Code 통합 (Claude-Flow)
+
+ZyFlow는 Claude Code CLI와 통합되어 태스크를 자동으로 실행할 수 있습니다.
+
+### 주요 기능
+
+- **OpenSpec 기반 프롬프트 생성**: proposal.md, design.md, tasks.md를 자동으로 분석하여 컨텍스트 생성
+- **실시간 스트리밍**: SSE를 통해 Claude Code 실행 결과를 실시간으로 확인
+- **태스크 단위 실행**: 개별 태스크 선택하여 실행 가능
+- **실행 제어**: 실행 중 중지 및 재시작 지원
+
+### 사용 방법
+
+1. **웹 대시보드에서**:
+   - Changes 목록에서 특정 Change 선택
+   - Tasks 탭에서 실행할 태스크의 "실행" 버튼 클릭
+   - 실행 모달에서 진행 상황 실시간 확인
+
+2. **실행 모드**:
+   - `single`: 선택한 단일 태스크만 실행
+   - `full`: 미완료 태스크 전체 실행
+   - `analysis`: 코드 변경 없이 분석만 수행
+
+### 기술 스택
+
+- **Backend**: node-pty (TTY 에뮬레이션), stream-json 출력 파싱
+- **Frontend**: SSE (Server-Sent Events), React Query 연동
+- **프로세스 관리**: PM2
+
+### API 엔드포인트
+
+| 엔드포인트 | 설명 |
+|-----------|------|
+| `POST /api/claude/execute` | 태스크 실행 시작 (SSE 스트리밍) |
+| `GET /api/claude/status/:runId` | 실행 상태 조회 |
+| `POST /api/claude/stop/:runId` | 실행 중지 |
+| `GET /api/claude/logs/:changeId` | 실행 로그 조회 |
+
+### 프롬프트 빌더
+
+OpenSpecPromptBuilder가 다음 문서를 자동으로 로드합니다:
+
+- `CLAUDE.md`: 프로젝트 맥락 (요약 버전)
+- `openspec/changes/{id}/proposal.md`: 변경 제안 내용
+- `openspec/changes/{id}/design.md`: 설계 문서 (있는 경우)
+- `openspec/changes/{id}/tasks.md`: 태스크 목록 (미완료 항목 추출)
+- `openspec/changes/{id}/specs/`: 관련 스펙 파일 목록
+
+---
+
 ## 라이선스
 
 Private - Zellycloud

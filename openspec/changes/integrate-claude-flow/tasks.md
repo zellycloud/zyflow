@@ -57,5 +57,5 @@
 - [x] E2E 테스트 (실행 → 완료 흐름)
 
 ### 3.2 문서화
-- [ ] README에 claude-flow 통합 섹션 추가
-- [ ] API 문서 업데이트
+- [x] README에 claude-flow 통합 섹션 추가
+- [x] API 문서 업데이트
