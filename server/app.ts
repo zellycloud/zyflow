@@ -37,6 +37,9 @@ import { integrationsRouter, initIntegrationsDb } from './integrations/index.js'
 import { syncChangeTasksFromFile, syncChangeTasksForProject } from './sync.js'
 import { cliRoutes } from './cli-adapter/index.js'
 import { postTaskRouter } from './routes/post-task.js'
+import { claudeFlowRouter } from './claude-flow/index.js'
+import { OpenSpecPromptBuilder } from './claude-flow/prompt-builder.js'
+import * as pty from 'node-pty'
 const execAsync = promisify(exec)
 
 // Lazy load gitdiagram-core functions to avoid ESM/CJS issues
@@ -98,6 +101,9 @@ app.use('/api/cli', cliRoutes)
 // Post-Task API 라우터 등록
 app.use('/api/post-task', postTaskRouter)
 
+// Claude-Flow API 라우터 등록
+app.use('/api/claude-flow', claudeFlowRouter)
+
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -117,9 +123,14 @@ async function getProjectPaths() {
     return null
   }
   return {
+    projectPath: project.path,
     openspecDir: join(project.path, 'openspec', 'changes'),
     specsDir: join(project.path, 'openspec', 'specs'),
     plansDir: join(project.path, '.zyflow', 'plans'),
+    // Archive directories (three possible locations)
+    archiveDir: join(project.path, 'openspec', 'changes', 'archive'), // openspec/changes/archive/
+    legacyArchiveDir: join(project.path, 'openspec', 'archive'), // openspec/archive/
+    archivedDir: join(project.path, 'openspec', 'archived'), // openspec/archived/
   }
 }
 
@@ -712,6 +723,194 @@ app.get('/api/changes', async (_req, res) => {
   }
 })
 
+// GET /api/changes/archived - List all archived changes
+app.get('/api/changes/archived', async (_req, res) => {
+  try {
+    const paths = await getProjectPaths()
+    if (!paths) {
+      return res.json({ success: true, data: { changes: [] } })
+    }
+
+    const archivedChanges: Array<{
+      id: string
+      title: string
+      progress: number
+      totalTasks: number
+      completedTasks: number
+      archivedAt: string | null
+      source: 'archive' | 'archived'
+    }> = []
+
+    // Helper function to read archived change from a directory
+    async function readArchivedChange(
+      changeDir: string,
+      changeId: string,
+      source: 'archive' | 'archived'
+    ) {
+      // Read proposal.md for title
+      let title = changeId
+      try {
+        const proposalPath = join(changeDir, 'proposal.md')
+        const proposalContent = await readFile(proposalPath, 'utf-8')
+        const titleMatch = proposalContent.match(/^#\s+Change:\s+(.+)$/m)
+        if (titleMatch) {
+          title = titleMatch[1].trim()
+        }
+      } catch {
+        // No proposal.md, use directory name
+      }
+
+      // Read tasks.md for progress
+      let totalTasks = 0
+      let completedTasks = 0
+      try {
+        const tasksPath = join(changeDir, 'tasks.md')
+        const tasksContent = await readFile(tasksPath, 'utf-8')
+        const parsed = parseTasksFile(changeId, tasksContent)
+
+        for (const group of parsed.groups) {
+          totalTasks += group.tasks.length
+          completedTasks += group.tasks.filter((t) => t.completed).length
+        }
+      } catch {
+        // No tasks.md
+      }
+
+      const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+      // Get archived date from git or file stat
+      let archivedAt: string | null = null
+      try {
+        const { stat } = await import('fs/promises')
+        const proposalPath = join(changeDir, 'proposal.md')
+        const tasksPath = join(changeDir, 'tasks.md')
+        try {
+          const s = await stat(proposalPath)
+          archivedAt = s.mtime.toISOString()
+        } catch {
+          const s = await stat(tasksPath)
+          archivedAt = s.mtime.toISOString()
+        }
+      } catch {
+        archivedAt = null
+      }
+
+      return {
+        id: changeId,
+        title,
+        progress,
+        totalTasks,
+        completedTasks,
+        archivedAt,
+        source,
+      }
+    }
+
+    // Helper to read all changes from an archive directory
+    async function readFromArchiveDir(dir: string) {
+      try {
+        const entries = await readdir(dir, { withFileTypes: true })
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue
+          const changeDir = join(dir, entry.name)
+          const change = await readArchivedChange(changeDir, entry.name, 'archive')
+          archivedChanges.push(change)
+        }
+      } catch {
+        // Directory doesn't exist
+      }
+    }
+
+    // Read from all three archive locations
+    await readFromArchiveDir(paths.archiveDir) // openspec/changes/archive/
+    await readFromArchiveDir(paths.legacyArchiveDir) // openspec/archive/
+    await readFromArchiveDir(paths.archivedDir) // openspec/archived/
+
+    // Sort by archivedAt descending (newest first)
+    archivedChanges.sort((a, b) => {
+      if (!a.archivedAt && !b.archivedAt) return 0
+      if (!a.archivedAt) return 1
+      if (!b.archivedAt) return -1
+      return new Date(b.archivedAt).getTime() - new Date(a.archivedAt).getTime()
+    })
+
+    res.json({ success: true, data: { changes: archivedChanges } })
+  } catch (error) {
+    console.error('Error listing archived changes:', error)
+    res.status(500).json({ success: false, error: 'Failed to list archived changes' })
+  }
+})
+
+// GET /api/changes/archived/:id - Get archived change detail
+app.get('/api/changes/archived/:id', async (req, res) => {
+  try {
+    const paths = await getProjectPaths()
+    if (!paths) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const changeId = req.params.id
+    let changeDir: string | null = null
+
+    // Check all three archive locations
+    const archiveLocations = [
+      paths.archiveDir, // openspec/changes/archive/
+      paths.legacyArchiveDir, // openspec/archive/
+      paths.archivedDir, // openspec/archived/
+    ]
+
+    for (const archiveBase of archiveLocations) {
+      const candidatePath = join(archiveBase, changeId)
+      try {
+        await access(candidatePath)
+        changeDir = candidatePath
+        break
+      } catch {
+        // Not found in this location, try next
+      }
+    }
+
+    if (!changeDir) {
+      return res.status(404).json({ success: false, error: 'Archived change not found' })
+    }
+
+    // Read all files in the change directory
+    const files: Record<string, string> = {}
+    const entries = await readdir(changeDir, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith('.md')) {
+        const filePath = join(changeDir, entry.name)
+        const content = await readFile(filePath, 'utf-8')
+        files[entry.name] = content
+      }
+      // Also check specs subdirectory
+      if (entry.isDirectory() && entry.name === 'specs') {
+        const specsDir = join(changeDir, 'specs')
+        const specEntries = await readdir(specsDir, { withFileTypes: true })
+        for (const specEntry of specEntries) {
+          if (specEntry.isFile() && specEntry.name.endsWith('.md')) {
+            const specPath = join(specsDir, specEntry.name)
+            const content = await readFile(specPath, 'utf-8')
+            files[`specs/${specEntry.name}`] = content
+          }
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: changeId,
+        files,
+      },
+    })
+  } catch (error) {
+    console.error('Error getting archived change:', error)
+    res.status(500).json({ success: false, error: 'Failed to get archived change' })
+  }
+})
+
 // GET /api/changes/:id/tasks - Get tasks for a change
 app.get('/api/changes/:id/tasks', async (req, res) => {
   try {
@@ -963,8 +1162,32 @@ app.post('/api/claude/execute', async (req, res) => {
       return res.status(400).json({ success: false, error: 'No active project' })
     }
 
-    // Build the prompt for Claude
-    const prompt = `당신은 OpenSpec 프로젝트의 태스크를 실행하는 AI입니다.
+    // Build the prompt for Claude using OpenSpecPromptBuilder
+    // This provides full context: CLAUDE.md, proposal.md, design.md, tasks.md, specs/
+    let prompt: string
+    try {
+      const promptBuilder = new OpenSpecPromptBuilder(
+        project.path,
+        changeId,
+        'single', // 단일 태스크 모드
+        taskId,
+        taskTitle  // 태스크 제목으로도 검색 가능
+      )
+      prompt = await promptBuilder.build()
+
+      // 추가 컨텍스트가 있으면 append
+      if (context) {
+        prompt += `\n\n---\n\n## 추가 컨텍스트\n\n${context}`
+      }
+
+      // 태스크 제목 명시
+      prompt += `\n\n---\n\n**실행할 태스크**: ${taskTitle}`
+
+      console.log('[Claude Execute] Built prompt with OpenSpecPromptBuilder, length:', prompt.length)
+    } catch (buildError) {
+      console.error('[Claude Execute] Failed to build prompt:', buildError)
+      // 폴백: 기본 프롬프트 사용
+      prompt = `당신은 OpenSpec 프로젝트의 태스크를 실행하는 AI입니다.
 
 ## 현재 작업
 - Change: ${changeId}
@@ -981,6 +1204,7 @@ ${context || '추가 컨텍스트 없음'}
 4. 에러가 발생하면 명확하게 보고해주세요
 
 작업을 시작하세요.`
+    }
 
     // Set up SSE
     res.setHeader('Content-Type', 'text/event-stream')
@@ -994,28 +1218,32 @@ ${context || '추가 컨텍스트 없음'}
     // Send initial event
     res.write(`data: ${JSON.stringify({ type: 'start', runId, taskId, changeId })}\n\n`)
 
-    // Spawn Claude CLI process via 'expect' for pseudo-TTY support
-    // Claude CLI requires TTY to output stream-json properly
-    // Based on official docs: https://code.claude.com/docs/en/headless.md
-    const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/\$/g, '\\$')
-    const expectScript = `
-spawn /opt/homebrew/bin/claude -p --verbose --output-format stream-json --dangerously-skip-permissions "${escapedPrompt}"
-expect eof
-`
-    console.log('[Claude Execute] Running via expect with prompt length:', prompt.length)
+    // Spawn Claude CLI process using node-pty for real TTY support
+    // This enables stream-json output format which requires TTY
+    // Based on official docs: https://code.claude.com/docs/en/headless
+    console.log('[Claude Execute] Running with prompt length:', prompt.length)
     console.log('[Claude Execute] CWD:', project.path)
 
-    const claudeProcess = spawn('expect', ['-c', expectScript], {
+    // Save prompt to temp file
+    const tmpPromptPath = join('/tmp', `claude-prompt-${runId}.txt`)
+    await writeFile(tmpPromptPath, prompt, 'utf-8')
+
+    // Use node-pty to spawn with real TTY - enables stream-json output
+    const ptyProcess = pty.spawn('bash', [
+      '-c',
+      `cat '${tmpPromptPath}' | /opt/homebrew/bin/claude -p --verbose --output-format stream-json --dangerously-skip-permissions`
+    ], {
+      name: 'xterm-color',
+      cols: 200,
+      rows: 50,
       cwd: project.path,
-      env: { ...process.env },
-      shell: false,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env } as Record<string, string>,
     })
 
-    console.log('[Claude Execute] Process PID:', claudeProcess.pid)
+    console.log('[Claude Execute] PTY Process PID:', ptyProcess.pid)
 
     const taskState = {
-      process: claudeProcess,
+      process: ptyProcess,
       output: [] as string[],
       status: 'running' as 'running' | 'completed' | 'error',
       startedAt: new Date(),
@@ -1024,45 +1252,57 @@ expect eof
 
     let buffer = ''
 
-    claudeProcess.stdout.on('data', (data: Buffer) => {
-      const chunk = data.toString()
-      console.log('[Claude Execute] stdout chunk:', chunk.slice(0, 200))
-      buffer += chunk
+    ptyProcess.onData((data: string) => {
+      console.log('[Claude Execute] pty data:', data.slice(0, 200))
+      buffer += data
       const lines = buffer.split('\n')
       buffer = lines.pop() || ''
 
       for (const line of lines) {
         if (!line.trim()) continue
 
+        // Remove ANSI escape codes that PTY might add
+        const cleanLine = line.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim()
+        if (!cleanLine) continue
+
         try {
-          const parsed = JSON.parse(line)
-          taskState.output.push(line)
+          const parsed = JSON.parse(cleanLine)
+          taskState.output.push(cleanLine)
 
           // Forward to client
           res.write(`data: ${JSON.stringify({ type: 'output', data: parsed })}\n\n`)
+
+          // Check if this is the final result - terminate process
+          if (parsed.type === 'result') {
+            console.log('[Claude Execute] Result received, terminating process')
+            // Small delay to ensure the result is sent to client
+            setTimeout(() => {
+              try {
+                ptyProcess.kill()
+              } catch {
+                // Process might already be dead
+              }
+            }, 100)
+          }
         } catch {
           // Non-JSON output, send as text
-          res.write(`data: ${JSON.stringify({ type: 'text', content: line })}\n\n`)
+          res.write(`data: ${JSON.stringify({ type: 'text', content: cleanLine })}\n\n`)
         }
       }
     })
 
-    claudeProcess.stderr.on('data', (data: Buffer) => {
-      const text = data.toString()
-      console.log('[Claude Execute] stderr:', text)
-      res.write(`data: ${JSON.stringify({ type: 'stderr', content: text })}\n\n`)
-    })
-
-    claudeProcess.on('error', (err) => {
-      console.error('[Claude Execute] Process error:', err)
-      taskState.status = 'error'
-      res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`)
-      res.end()
-    })
-
-    claudeProcess.on('close', async (code) => {
+    // node-pty uses onExit instead of 'close' event
+    ptyProcess.onExit(async ({ exitCode: code }) => {
       const status = code === 0 ? 'completed' : 'error'
       taskState.status = status
+
+      // Clean up temp prompt file
+      try {
+        const { unlink } = await import('fs/promises')
+        await unlink(tmpPromptPath)
+      } catch {
+        // Ignore cleanup errors
+      }
 
       // Save execution log
       try {
@@ -1090,68 +1330,9 @@ expect eof
         console.error('Failed to save log:', err)
       }
 
-      // Auto-complete task on successful execution
-      let taskAutoCompleted = false
-      if (code === 0) {
-        try {
-          const tasksPath = join(paths!.openspecDir, changeId, 'tasks.md')
-          const content = await readFile(tasksPath, 'utf-8')
-
-          // Convert taskId to the format expected by toggleTaskInFile
-          // If taskId looks like a displayId (e.g., "1.1"), convert to "task-1-1"
-          // If it's already "task-X-X" format, use as-is
-          // If it's a pure numeric string (DB ID), look up display_id from DB
-          let taskIdForToggle = taskId
-          if (typeof taskId === 'string') {
-            if (taskId.startsWith('task-')) {
-              // Already in task-X-X format
-              taskIdForToggle = taskId
-            } else if (/^\d+(\.\d+)+$/.test(taskId)) {
-              // displayId format like "1.1" or "1.2.3" -> "task-1-1" or "task-1-2-3"
-              taskIdForToggle = `task-${taskId.replace(/\./g, '-')}`
-            } else if (/^\d+$/.test(taskId)) {
-              // Pure numeric string (DB ID) - look up display_id from DB
-              const sqlite = getSqlite()
-              const dbTask = sqlite.prepare(`SELECT display_id FROM tasks WHERE id = ?`).get(parseInt(taskId, 10)) as { display_id: string | null } | undefined
-              if (dbTask?.display_id) {
-                taskIdForToggle = `task-${dbTask.display_id.replace(/\./g, '-')}`
-                console.log(`[Claude Execute] Resolved DB ID ${taskId} to display_id: ${dbTask.display_id}`)
-              } else {
-                console.warn(`[Claude Execute] Cannot auto-complete: no display_id found for DB ID ${taskId}`)
-                throw new Error(`Cannot auto-complete: no display_id found for task ID ${taskId}`)
-              }
-            } else {
-              // Unknown format, try prefixing with task-
-              taskIdForToggle = `task-${taskId}`
-            }
-          } else if (typeof taskId === 'number') {
-            // Numeric type - look up display_id from DB
-            const sqlite = getSqlite()
-            const dbTask = sqlite.prepare(`SELECT display_id FROM tasks WHERE id = ?`).get(taskId) as { display_id: string | null } | undefined
-            if (dbTask?.display_id) {
-              taskIdForToggle = `task-${dbTask.display_id.replace(/\./g, '-')}`
-              console.log(`[Claude Execute] Resolved numeric ID ${taskId} to display_id: ${dbTask.display_id}`)
-            } else {
-              console.warn(`[Claude Execute] Cannot auto-complete: no display_id found for numeric ID ${taskId}`)
-              throw new Error(`Cannot auto-complete: no display_id found for numeric task ID ${taskId}`)
-            }
-          }
-
-          console.log(`[Claude Execute] Auto-completing task: ${taskId} -> ${taskIdForToggle}`)
-          const { newContent, task } = toggleTaskInFile(content, taskIdForToggle)
-
-          // toggleTaskInFile returns the NEW state after toggle
-          // If task.completed is true, it means it WAS uncompleted and is now completed
-          if (task.completed) {
-            await writeFile(tasksPath, newContent, 'utf-8')
-            taskAutoCompleted = true
-          }
-          // If it was already completed (task.completed would be false after toggle),
-          // we don't save the file
-        } catch (err) {
-          console.error('Failed to auto-complete task:', err)
-        }
-      }
+      // Auto-complete task on successful execution is disabled for now
+      // The task completion should be done by Claude itself via tasks.md update
+      const taskAutoCompleted = false
 
       res.write(
         `data: ${JSON.stringify({
@@ -1168,16 +1349,10 @@ expect eof
       setTimeout(() => runningTasks.delete(runId), 5 * 60 * 1000)
     })
 
-    claudeProcess.on('error', (err) => {
-      taskState.status = 'error'
-      res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`)
-      res.end()
-    })
-
     // Handle client disconnect
     req.on('close', () => {
       if (taskState.status === 'running') {
-        claudeProcess.kill('SIGTERM')
+        ptyProcess.kill()
       }
     })
   } catch (error) {
