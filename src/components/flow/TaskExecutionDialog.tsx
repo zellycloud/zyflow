@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Play, Square, X, CheckCircle2, XCircle, Loader2, Terminal } from 'lucide-react'
+import { Play, Square, X, CheckCircle2, XCircle, Loader2, Terminal, History, Zap, Sparkles, Crown } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -10,8 +10,22 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useClaude, type ClaudeMessage } from '@/hooks/useClaude'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { useClaude, type ClaudeMessage, type ClaudeModel } from '@/hooks/useClaude'
+import { ExecutionHistoryDialog } from './ExecutionHistoryDialog'
 import { cn } from '@/lib/utils'
+
+const MODEL_OPTIONS: { value: ClaudeModel; label: string; description: string; icon: typeof Zap }[] = [
+  { value: 'haiku', label: 'Haiku', description: '빠르고 저렴 (단순 태스크)', icon: Zap },
+  { value: 'sonnet', label: 'Sonnet', description: '균형 잡힌 성능 (권장)', icon: Sparkles },
+  { value: 'opus', label: 'Opus', description: '최고 품질 (복잡한 태스크)', icon: Crown },
+]
 
 interface TaskExecutionDialogProps {
   open: boolean
@@ -31,22 +45,16 @@ export function TaskExecutionDialog({
   onComplete,
 }: TaskExecutionDialogProps) {
   const { execution, execute, stop, reset } = useClaude()
-  const [autoStarted, setAutoStarted] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [selectedModel, setSelectedModel] = useState<ClaudeModel>('sonnet')
+  const [hasStarted, setHasStarted] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-
-  // Auto-start execution when dialog opens
-  useEffect(() => {
-    if (open && !autoStarted && execution.status === 'idle') {
-      setAutoStarted(true)
-      execute({ changeId, taskId, taskTitle })
-    }
-  }, [open, autoStarted, execution.status, execute, changeId, taskId, taskTitle])
 
   // Reset state when dialog closes
   // 실행 중이면 먼저 중지한 후 상태 초기화
   useEffect(() => {
     if (!open) {
-      setAutoStarted(false)
+      setHasStarted(false)
       // 실행 중이면 서버 프로세스도 중지
       if (execution.status === 'running') {
         stop()
@@ -54,6 +62,11 @@ export function TaskExecutionDialog({
       reset()
     }
   }, [open, reset, stop, execution.status])
+
+  const handleStart = () => {
+    setHasStarted(true)
+    execute({ changeId, taskId, taskTitle, model: selectedModel })
+  }
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -94,7 +107,8 @@ export function TaskExecutionDialog({
 
   const handleRetry = () => {
     reset()
-    execute({ changeId, taskId, taskTitle })
+    setHasStarted(true)
+    execute({ changeId, taskId, taskTitle, model: selectedModel })
   }
 
   const renderMessage = (msg: ClaudeMessage, index: number) => {
@@ -297,58 +311,140 @@ export function TaskExecutionDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 h-[50vh] rounded-lg border bg-background/50 p-3">
-          <div ref={scrollRef} className="space-y-2 pr-4">
-            {execution.messages.map((msg, i) => renderMessage(msg, i))}
+        {/* 모델 선택 화면 (실행 전) */}
+        {!hasStarted && execution.status === 'idle' && (
+          <div className="flex-1 flex flex-col items-center justify-center py-8 space-y-6">
+            <div className="text-center space-y-2">
+              <h3 className="text-lg font-medium">모델 선택</h3>
+              <p className="text-sm text-muted-foreground">
+                태스크 복잡도에 맞는 모델을 선택하세요
+              </p>
+            </div>
 
-            {execution.status === 'running' && execution.messages.length === 0 && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Claude Code 실행 준비 중...</span>
+            <div className="w-full max-w-sm space-y-3">
+              {MODEL_OPTIONS.map((option) => {
+                const Icon = option.icon
+                const isSelected = selectedModel === option.value
+                return (
+                  <button
+                    key={option.value}
+                    onClick={() => setSelectedModel(option.value)}
+                    className={cn(
+                      'w-full p-4 rounded-lg border-2 text-left transition-all',
+                      isSelected
+                        ? 'border-primary bg-primary/5'
+                        : 'border-muted hover:border-muted-foreground/50'
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon className={cn(
+                        'h-5 w-5',
+                        isSelected ? 'text-primary' : 'text-muted-foreground'
+                      )} />
+                      <div className="flex-1">
+                        <div className="font-medium">{option.label}</div>
+                        <div className="text-xs text-muted-foreground">{option.description}</div>
+                      </div>
+                      {isSelected && (
+                        <CheckCircle2 className="h-5 w-5 text-primary" />
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
+            <Button onClick={handleStart} size="lg" className="mt-4">
+              <Play className="h-4 w-4 mr-2" />
+              실행 시작
+            </Button>
+          </div>
+        )}
+
+        {/* 실행 로그 화면 (실행 중/후) */}
+        {(hasStarted || execution.status !== 'idle') && (
+          <ScrollArea className="flex-1 min-h-0 h-[50vh] rounded-lg border bg-background/50 p-3">
+            <div ref={scrollRef} className="space-y-2 pr-4">
+              {/* 선택된 모델 표시 */}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2 pb-2 border-b">
+                {(() => {
+                  const modelOption = MODEL_OPTIONS.find(m => m.value === selectedModel)
+                  const Icon = modelOption?.icon || Sparkles
+                  return (
+                    <>
+                      <Icon className="h-3 w-3" />
+                      <span>모델: {modelOption?.label || selectedModel}</span>
+                    </>
+                  )
+                })()}
               </div>
+
+              {execution.messages.map((msg, i) => renderMessage(msg, i))}
+
+              {execution.status === 'running' && execution.messages.length === 0 && (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Claude Code 실행 준비 중...</span>
+                </div>
+              )}
+
+              {execution.error && execution.status === 'error' && (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-500">
+                  {execution.error}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        )}
+
+        <div className="flex justify-between gap-2 pt-4 border-t">
+          <Button variant="ghost" size="sm" onClick={() => setShowHistory(true)}>
+            <History className="h-4 w-4 mr-2" />
+            실행 기록
+          </Button>
+
+          <div className="flex gap-2">
+            {execution.status === 'running' && (
+              <>
+                <Button variant="outline" onClick={handleStop}>
+                  <Square className="h-4 w-4 mr-2" />
+                  중지
+                </Button>
+                <Button variant="destructive" onClick={handleStopAndClose}>
+                  <X className="h-4 w-4 mr-2" />
+                  중지 후 닫기
+                </Button>
+              </>
             )}
-
-            {execution.error && execution.status === 'error' && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-500">
-                {execution.error}
-              </div>
+            {(execution.status === 'completed' || execution.status === 'error') && (
+              <>
+                <Button variant="outline" onClick={handleRetry}>
+                  <Play className="h-4 w-4 mr-2" />
+                  다시 실행
+                </Button>
+                <Button onClick={() => onOpenChange(false)}>
+                  <X className="h-4 w-4 mr-2" />
+                  닫기
+                </Button>
+              </>
+            )}
+            {execution.status === 'idle' && !hasStarted && (
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                취소
+              </Button>
             )}
           </div>
-        </ScrollArea>
-
-        <div className="flex justify-end gap-2 pt-4 border-t">
-          {execution.status === 'running' && (
-            <>
-              <Button variant="outline" onClick={handleStop}>
-                <Square className="h-4 w-4 mr-2" />
-                중지
-              </Button>
-              <Button variant="destructive" onClick={handleStopAndClose}>
-                <X className="h-4 w-4 mr-2" />
-                중지 후 닫기
-              </Button>
-            </>
-          )}
-          {(execution.status === 'completed' || execution.status === 'error') && (
-            <>
-              <Button variant="outline" onClick={handleRetry}>
-                <Play className="h-4 w-4 mr-2" />
-                다시 실행
-              </Button>
-              <Button onClick={() => onOpenChange(false)}>
-                <X className="h-4 w-4 mr-2" />
-                닫기
-              </Button>
-            </>
-          )}
-          {execution.status === 'idle' && (
-            <Button onClick={() => onOpenChange(false)}>
-              <X className="h-4 w-4 mr-2" />
-              닫기
-            </Button>
-          )}
         </div>
       </DialogContent>
+
+      {/* History Dialog */}
+      <ExecutionHistoryDialog
+        open={showHistory}
+        onOpenChange={setShowHistory}
+        changeId={changeId}
+        taskId={taskId}
+        taskTitle={taskTitle}
+      />
     </Dialog>
   )
 }

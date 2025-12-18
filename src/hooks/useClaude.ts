@@ -25,6 +25,8 @@ export interface ClaudeExecution {
   error: string | null
 }
 
+export type ClaudeModel = 'haiku' | 'sonnet' | 'opus'
+
 export function useClaude() {
   const [execution, setExecution] = useState<ClaudeExecution>({
     runId: null,
@@ -41,6 +43,7 @@ export function useClaude() {
       taskId: string
       taskTitle: string
       context?: string
+      model?: ClaudeModel
     }) => {
       // Abort any existing execution
       if (abortControllerRef.current) {

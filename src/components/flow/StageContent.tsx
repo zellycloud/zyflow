@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileText, Plus, Loader2, Play } from 'lucide-react'
+import { FileText, Plus, Loader2, Play, History } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/tooltip'
 import { useUpdateFlowTask, useProposalContent, useDesignContent, useChangeSpec } from '@/hooks/useFlowChanges'
 import { TaskExecutionDialog } from './TaskExecutionDialog'
+import { ExecutionHistoryDialog } from './ExecutionHistoryDialog'
 import type { FlowTask, Stage } from '@/types'
 import { STAGE_CONFIG } from '@/constants/stages'
 import { cn } from '@/lib/utils'
@@ -37,6 +38,7 @@ interface StageContentProps {
 export function StageContent({ changeId, stage, tasks }: StageContentProps) {
   const updateTask = useUpdateFlowTask()
   const [executingTask, setExecutingTask] = useState<FlowTask | null>(null)
+  const [historyTask, setHistoryTask] = useState<FlowTask | null>(null)
 
   // Proposal 내용 가져오기 (Changes 탭용)
   const { data: proposalContent, isLoading: proposalLoading } = useProposalContent(
@@ -279,7 +281,7 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
                             <TableHead>태스크</TableHead>
                             <TableHead className="w-20 text-center">우선순위</TableHead>
                             <TableHead className="w-20 text-center">상태</TableHead>
-                            <TableHead className="w-16 text-center">실행</TableHead>
+                            <TableHead className="w-24 text-center">작업</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -331,22 +333,39 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
                               </TableCell>
                               <TableCell className="text-center">
                                 <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7"
-                                        disabled={task.status === 'done'}
-                                        onClick={() => setExecutingTask(task)}
-                                      >
-                                        <Play className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      {task.status === 'done' ? '이미 완료됨' : 'Claude Code로 실행'}
-                                    </TooltipContent>
-                                  </Tooltip>
+                                  <div className="flex items-center justify-center gap-1">
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7"
+                                          disabled={task.status === 'done'}
+                                          onClick={() => setExecutingTask(task)}
+                                        >
+                                          <Play className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        {task.status === 'done' ? '이미 완료됨' : 'Claude Code로 실행'}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7"
+                                          onClick={() => setHistoryTask(task)}
+                                        >
+                                          <History className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        실행 기록 보기
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </div>
                                 </TooltipProvider>
                               </TableCell>
                             </TableRow>
@@ -388,6 +407,21 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
             // Refresh task status after completion
             updateTask.mutateAsync({ id: executingTask.id, status: 'done' })
           }}
+        />
+      )}
+
+      {/* Execution History Dialog */}
+      {historyTask && (
+        <ExecutionHistoryDialog
+          open={!!historyTask}
+          onOpenChange={(open) => !open && setHistoryTask(null)}
+          changeId={changeId}
+          taskId={
+            historyTask.displayId
+              ? `task-${historyTask.displayId.replace(/\./g, '-')}`
+              : String(historyTask.id)
+          }
+          taskTitle={historyTask.title}
         />
       )}
     </div>

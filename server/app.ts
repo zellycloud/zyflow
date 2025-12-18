@@ -1156,7 +1156,8 @@ app.post('/api/claude/execute', async (req, res) => {
       return res.status(400).json({ success: false, error: 'No active project' })
     }
 
-    const { changeId, taskId, taskTitle, context } = req.body
+    const { changeId, taskId, taskTitle, context, model } = req.body
+    // model: 'haiku' | 'sonnet' | 'opus' (default: sonnet)
     const project = await getActiveProject()
     if (!project) {
       return res.status(400).json({ success: false, error: 'No active project' })
@@ -1228,10 +1229,17 @@ ${context || '추가 컨텍스트 없음'}
     const tmpPromptPath = join('/tmp', `claude-prompt-${runId}.txt`)
     await writeFile(tmpPromptPath, prompt, 'utf-8')
 
+    // Build model argument
+    const modelArg = model && ['haiku', 'sonnet', 'opus'].includes(model)
+      ? `--model ${model}`
+      : ''
+
+    console.log('[Claude Execute] Using model:', model || 'default (sonnet)')
+
     // Use node-pty to spawn with real TTY - enables stream-json output
     const ptyProcess = pty.spawn('bash', [
       '-c',
-      `cat '${tmpPromptPath}' | /opt/homebrew/bin/claude -p --verbose --output-format stream-json --dangerously-skip-permissions`
+      `cat '${tmpPromptPath}' | /opt/homebrew/bin/claude -p --verbose --output-format stream-json --dangerously-skip-permissions ${modelArg}`
     ], {
       name: 'xterm-color',
       cols: 200,
