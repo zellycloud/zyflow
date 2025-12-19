@@ -101,7 +101,6 @@ export function ExecutionPanel({
   }
 
   const selectedMode = MODE_OPTIONS.find(m => m.value === mode)
-  const ModeIcon = selectedMode?.icon || Zap
 
   return (
     <Card className="border-zinc-800 bg-zinc-900/50">

@@ -10,7 +10,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import {
   useCreateEnvironment,
@@ -49,7 +48,7 @@ export function EnvironmentDialog({
       setServerUrl(environment.serverUrl ?? '');
       setDatabaseUrl(''); // 암호화되어 있으므로 빈 값으로 시작
       setVariables(
-        Object.entries(environment.variables).map(([key, value]) => ({
+        Object.entries(environment.variables).map(([key]) => ({
           key,
           value: '', // 마스킹된 값이므로 빈 값으로 시작
         }))

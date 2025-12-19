@@ -4,7 +4,6 @@
 
 import { cn } from '@/lib/utils'
 import { Progress } from '@/components/ui/progress'
-import { Badge } from '@/components/ui/badge'
 import {
   Clock,
   CheckCircle2,

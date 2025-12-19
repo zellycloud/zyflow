@@ -10,7 +10,6 @@ import {
   ChevronDown,
   ChevronUp,
   Trash2,
-  Filter,
 } from 'lucide-react'
 import type { ClaudeFlowLogEntry, ClaudeFlowLogType } from '@/types'
 

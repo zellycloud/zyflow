@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@/test/test-utils'
+import { render, screen } from '@/test/test-utils'
 import { StageContent } from './StageContent'
-import type { FlowTask, Stage } from '@/types'
+import type { FlowTask } from '@/types'
 
 // Mock the hooks
 vi.mock('@/hooks/useFlowChanges', () => ({
