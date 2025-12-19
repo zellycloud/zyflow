@@ -26,6 +26,7 @@ import {
   Zap,
   Search,
   ListTodo,
+  RotateCcw,
 } from 'lucide-react'
 import { useClaudeFlowExecution } from '@/hooks/useClaudeFlowExecution'
 import { LogViewer } from './LogViewer'
@@ -235,17 +236,29 @@ export function ExecutionPanel({
               </Button>
             )}
 
-            {/* 완료 후 새 실행 버튼 */}
+            {/* 완료/실패 후 버튼들 */}
             {!isRunning && (
-              <Button
-                onClick={() => {
-                  clearLogs()
-                }}
-                variant="outline"
-                className="w-full"
-              >
-                새 실행 준비
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => {
+                    clearLogs()
+                    handleExecute()
+                  }}
+                  className="flex-1"
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  다시 실행
+                </Button>
+                <Button
+                  onClick={() => {
+                    clearLogs()
+                  }}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  새 실행 준비
+                </Button>
+              </div>
             )}
           </>
         )}
