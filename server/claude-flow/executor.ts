@@ -6,6 +6,9 @@
 import { spawn, type ChildProcess } from 'child_process'
 import { randomUUID } from 'crypto'
 import { EventEmitter } from 'events'
+import { writeFile, unlink } from 'fs/promises'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import { OpenSpecPromptBuilder } from './prompt-builder.js'
 import type {
   ExecutionRequest,
@@ -114,33 +117,45 @@ export class ClaudeFlowExecutor {
     this.updateStatus(executionId, 'running')
     this.addLog(executionId, 'system', 'claude-flow 프로세스 시작...')
 
+    // 프롬프트를 임시 파일로 저장 (쉘 이스케이프 문제 방지)
+    const promptFile = join(tmpdir(), `claude-flow-prompt-${executionId}.txt`)
+    // 래퍼 스크립트 생성
+    const scriptFile = join(tmpdir(), `claude-flow-runner-${executionId}.sh`)
+
     try {
-      // claude-flow swarm 명령 실행
-      const args = [
-        'claude-flow@alpha',
-        'swarm',
-        prompt,
-        '--claude',
-        '--stream-json',
-      ]
+      await writeFile(promptFile, prompt, 'utf-8')
+
+      // 래퍼 스크립트 생성 - 프롬프트를 안전하게 전달
+      const scriptArgs: string[] = ['--claude', '--stream-json']
 
       // 전략 설정
       if (instance.status.request.strategy) {
-        args.push('--strategy', instance.status.request.strategy)
+        scriptArgs.push('--strategy', instance.status.request.strategy)
       }
 
       // 최대 에이전트 수
       if (instance.status.request.maxAgents) {
-        args.push('--max-agents', String(instance.status.request.maxAgents))
+        scriptArgs.push('--max-agents', String(instance.status.request.maxAgents))
       }
 
-      const proc = spawn('npx', args, {
+      const scriptContent = `#!/bin/bash
+PROMPT=$(cat "${promptFile}")
+exec npx claude-flow@alpha swarm "$PROMPT" ${scriptArgs.join(' ')}
+`
+      await writeFile(scriptFile, scriptContent, { mode: 0o755 })
+
+      const proc = spawn('bash', [scriptFile], {
         cwd: instance.status.request.projectPath,
         env: {
           ...process.env,
           FORCE_COLOR: '0',
         },
-        shell: true,
+      })
+
+      // 프로세스 종료 시 임시 파일 정리
+      proc.on('close', () => {
+        unlink(promptFile).catch(() => {})
+        unlink(scriptFile).catch(() => {})
       })
 
       instance.process = proc

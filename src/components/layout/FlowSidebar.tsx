@@ -288,14 +288,21 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <button
+                                <div
+                                  role="button"
+                                  tabIndex={isPulling ? -1 : 0}
                                   onClick={(e) => handlePullProject(e, project.id)}
-                                  disabled={isPulling}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault()
+                                      handlePullProject(e as unknown as React.MouseEvent, project.id)
+                                    }
+                                  }}
                                   className={cn(
-                                    "ml-5 flex items-center gap-1 px-1.5 py-0.5 rounded text-xs",
+                                    "ml-5 flex items-center gap-1 px-1.5 py-0.5 rounded text-xs cursor-pointer",
                                     "bg-blue-500/20 text-blue-600 dark:text-blue-400",
                                     "hover:bg-blue-500/30 transition-colors",
-                                    isPulling && "opacity-50 cursor-not-allowed"
+                                    isPulling && "opacity-50 cursor-not-allowed pointer-events-none"
                                   )}
                                 >
                                   {isPulling ? (
@@ -304,7 +311,7 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                                     <ArrowDown className="size-3" />
                                   )}
                                   <span>↓ {behindCount}개 새 커밋</span>
-                                </button>
+                                </div>
                               </TooltipTrigger>
                               <TooltipContent side="right">
                                 <p>클릭하여 Pull</p>
