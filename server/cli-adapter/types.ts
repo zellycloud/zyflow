@@ -92,7 +92,7 @@ export interface CLIInput {
 }
 
 export interface StartCLIRequest {
-  /** CLI profile ID */
+  /** CLI profile ID (provider) */
   profileId: string
   /** Change ID to execute */
   changeId: string
@@ -100,10 +100,12 @@ export interface StartCLIRequest {
   projectPath?: string
   /** Initial prompt */
   initialPrompt?: string
-  /** Model override */
+  /** Model override (e.g., 'sonnet', 'opus', 'gemini-2.5-pro') */
   model?: string
   /** Additional arguments */
   extraArgs?: string[]
+  /** Task ID (optional, for tracking) */
+  taskId?: string
 }
 
 export interface StartCLIResponse {

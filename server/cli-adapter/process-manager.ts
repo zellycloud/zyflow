@@ -87,6 +87,7 @@ export class CLIProcessManager extends EventEmitter {
     profile: CLIProfile,
     changeId: string,
     initialPrompt?: string,
+    model?: string,
     extraArgs?: string[]
   ): string[] {
     const args = [...profile.args]
@@ -99,7 +100,32 @@ export class CLIProcessManager extends EventEmitter {
       }
     }
 
-    // Add extra args
+    // Add model specification (Provider-specific)
+    if (model) {
+      switch (profile.type) {
+        case 'claude':
+          args.push('--model', model)
+          break
+        case 'gemini':
+          args.push('--model', model)
+          break
+        case 'codex':
+          args.push('--model', model)
+          break
+        case 'qwen':
+          args.push('--model', model)
+          break
+        case 'kilo':
+          args.push('--model', model)
+          break
+        case 'opencode':
+          args.push('--model', model)
+          break
+        // Custom CLIs may use different flags
+      }
+    }
+
+    // Add extra args (may include additional model args from caller)
     if (extraArgs) {
       args.push(...extraArgs)
     }
@@ -112,6 +138,13 @@ export class CLIProcessManager extends EventEmitter {
           args.push('-p', initialPrompt)
           break
         case 'gemini':
+          args.push('--prompt', initialPrompt)
+          break
+        case 'codex':
+          // Codex CLI uses write --task for prompts
+          args.push('write', '--task', initialPrompt)
+          break
+        case 'qwen':
           args.push('--prompt', initialPrompt)
           break
         default:
@@ -151,6 +184,7 @@ export class CLIProcessManager extends EventEmitter {
       profile,
       request.changeId,
       request.initialPrompt,
+      request.model,
       request.extraArgs
     )
 
