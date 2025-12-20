@@ -18,6 +18,7 @@ import type {
   ClaudeFlowStatusResponse,
   ClaudeFlowHistoryResponse,
 } from '@/types'
+import type { AIProvider } from '@/types/ai'
 
 // =============================================
 // Swarm 전용 타입
@@ -48,6 +49,10 @@ export interface SwarmExecution {
   currentTask?: string
   logs: ClaudeFlowLogEntry[]
   error: string | null
+  /** AI Provider (v2) */
+  provider?: AIProvider
+  /** 모델 (v2) */
+  model?: string
 }
 
 /** Swarm 실행 요청 파라미터 */
@@ -58,6 +63,10 @@ export interface SwarmExecuteParams {
   mode?: SwarmMode
   strategy?: SwarmStrategy
   maxAgents?: number
+  /** AI Provider (v2 - 다중 Provider 지원) */
+  provider?: AIProvider
+  /** 모델 (v2 - 다중 Provider 지원) */
+  model?: string
 }
 
 // =============================================
@@ -126,6 +135,8 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
     progress: 0,
     logs: [],
     error: null,
+    provider: undefined,
+    model: undefined,
   })
 
   const [isRunning, setIsRunning] = useState(false)
@@ -213,6 +224,8 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
       progress: 0,
       logs: [],
       error: null,
+      provider: params.provider,
+      model: params.model,
     }))
 
     try {
@@ -226,6 +239,8 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
           mode: params.mode ?? 'full',
           strategy: params.strategy ?? 'development',
           maxAgents: params.maxAgents ?? 5,
+          provider: params.provider,
+          model: params.model,
         }),
       })
 
@@ -358,6 +373,8 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
       progress: 0,
       logs: [],
       error: null,
+      provider: undefined,
+      model: undefined,
     })
     setIsRunning(false)
     setError(null)

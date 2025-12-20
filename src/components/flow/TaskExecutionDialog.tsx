@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Play, Square, X, CheckCircle2, XCircle, Loader2, Terminal, History, Zap, Sparkles, Crown, Users, Settings2, AlertCircle } from 'lucide-react'
+import { Play, Square, X, CheckCircle2, XCircle, Loader2, Terminal, History, Zap, Sparkles, Crown, Users, Settings2, AlertCircle, Lightbulb } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,12 @@ import { useSwarm, type SwarmStrategy } from '@/hooks/useSwarm'
 import type { ClaudeModel } from '@/hooks/useClaude'
 import { ExecutionHistoryDialog } from './ExecutionHistoryDialog'
 import { cn } from '@/lib/utils'
+import {
+  classifyTask,
+  getTaskRecommendation,
+  getTaskTypeInfo,
+  type TaskRecommendation
+} from '@/utils/task-routing'
 
 // =============================================
 // 타입 및 상수
@@ -73,6 +79,13 @@ export function TaskExecutionDialog({
   const swarm = useSwarm()
   const [strategy, setStrategy] = useState<SwarmStrategy>('development')
   const [maxAgents, setMaxAgents] = useState(5)
+  // v2: Swarm용 Provider 선택
+  const [swarmProvider, setSwarmProvider] = useState<string>('claude')
+  const [swarmModel, setSwarmModel] = useState<string>('sonnet')
+
+  // v2: 자동 추천
+  const [recommendation, setRecommendation] = useState<TaskRecommendation | null>(null)
+  const [showRecommendation, setShowRecommendation] = useState(true)
 
   // 공통 상태
   const [showHistory, setShowHistory] = useState(false)
@@ -95,11 +108,34 @@ export function TaskExecutionDialog({
           if (firstAvailable) {
             setSelectedProvider(firstAvailable.id)
             setSelectedModel(firstAvailable.selectedModel || firstAvailable.availableModels[0] || '')
+            // Swarm용 Provider도 설정
+            setSwarmProvider(firstAvailable.id)
+            setSwarmModel(firstAvailable.selectedModel || firstAvailable.availableModels[0] || '')
+          }
+
+          // v2: 자동 추천 계산
+          const availableProviderIds = data
+            .filter(p => p.enabled && p.available)
+            .map(p => p.id) as any[]
+          const rec = getTaskRecommendation(taskTitle, undefined, availableProviderIds)
+          setRecommendation(rec)
+
+          // 추천에 따른 기본값 설정
+          if (rec.mode === 'single') {
+            setExecutionMode('single')
+            setSelectedProvider(rec.provider)
+            setSelectedModel(rec.model)
+          } else {
+            setExecutionMode('swarm')
+            setSwarmProvider(rec.provider)
+            setSwarmModel(rec.model)
+            if (rec.strategy) setStrategy(rec.strategy)
+            if (rec.maxAgents) setMaxAgents(rec.maxAgents)
           }
         })
         .finally(() => setLoadingProviders(false))
     }
-  }, [open, providers.length])
+  }, [open, providers.length, taskTitle])
 
   // 다이얼로그 닫힐 때 상태 초기화
   useEffect(() => {
@@ -142,6 +178,32 @@ export function TaskExecutionDialog({
     }
   }, [providers])
 
+  // Swarm용 Provider 선택
+  const handleSwarmProviderSelect = useCallback((providerId: string) => {
+    setSwarmProvider(providerId)
+    const provider = providers.find(p => p.id === providerId)
+    if (provider) {
+      setSwarmModel(provider.selectedModel || provider.availableModels[0] || '')
+    }
+  }, [providers])
+
+  // 자동 추천 적용
+  const applyRecommendation = useCallback(() => {
+    if (!recommendation) return
+
+    if (recommendation.mode === 'single') {
+      setExecutionMode('single')
+      setSelectedProvider(recommendation.provider)
+      setSelectedModel(recommendation.model)
+    } else {
+      setExecutionMode('swarm')
+      setSwarmProvider(recommendation.provider)
+      setSwarmModel(recommendation.model)
+      if (recommendation.strategy) setStrategy(recommendation.strategy)
+      if (recommendation.maxAgents) setMaxAgents(recommendation.maxAgents)
+    }
+  }, [recommendation])
+
   // 실행 핸들러
   const handleStart = async () => {
     setHasStarted(true)
@@ -162,6 +224,8 @@ export function TaskExecutionDialog({
         mode: 'single',
         strategy,
         maxAgents,
+        provider: swarmProvider as any,
+        model: swarmModel,
       })
     }
   }
@@ -481,6 +545,52 @@ export function TaskExecutionDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {/* v2: 자동 추천 배너 */}
+        {!hasStarted && currentStatus === 'idle' && recommendation && showRecommendation && (
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-2">
+            <div className="flex items-start gap-2">
+              <Lightbulb className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                    자동 추천 ({getTaskTypeInfo(taskTitle).emoji} {getTaskTypeInfo(taskTitle).label})
+                  </span>
+                  <button
+                    onClick={() => setShowRecommendation(false)}
+                    className="text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 text-xs"
+                  >
+                    숨기기
+                  </button>
+                </div>
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                  {recommendation.reason}
+                </p>
+                <div className="flex items-center gap-2 mt-2">
+                  <Badge variant="outline" className="text-xs border-amber-300 dark:border-amber-700">
+                    {recommendation.mode === 'single' ? '단일 실행' : 'Swarm 실행'}
+                  </Badge>
+                  <Badge variant="outline" className="text-xs border-amber-300 dark:border-amber-700">
+                    {recommendation.provider} / {recommendation.model || 'default'}
+                  </Badge>
+                  {recommendation.strategy && (
+                    <Badge variant="outline" className="text-xs border-amber-300 dark:border-amber-700">
+                      {recommendation.strategy}
+                    </Badge>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={applyRecommendation}
+                    className="ml-auto h-6 text-xs border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900"
+                  >
+                    적용
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 실행 모드 선택 (실행 전) */}
         {!hasStarted && currentStatus === 'idle' && (
           <Tabs value={executionMode} onValueChange={(v) => setExecutionMode(v as ExecutionMode)} className="flex-1 flex flex-col">
@@ -524,6 +634,82 @@ export function TaskExecutionDialog({
             {/* Swarm 실행 설정 */}
             <TabsContent value="swarm" className="flex-1 overflow-auto mt-4">
               <div className="space-y-6">
+                {/* v2: Swarm Provider 선택 */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Provider 선택 (v2)</label>
+                  {loadingProviders ? (
+                    <div className="flex items-center gap-2 text-muted-foreground py-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Provider 목록 로드 중...</span>
+                    </div>
+                  ) : (
+                    <div className="grid gap-2">
+                      {providers.filter(p => p.enabled).map((provider) => {
+                        const isSelected = swarmProvider === provider.id
+                        const isDisabled = !provider.available
+                        return (
+                          <button
+                            key={provider.id}
+                            onClick={() => !isDisabled && handleSwarmProviderSelect(provider.id)}
+                            disabled={isDisabled}
+                            className={cn(
+                              'w-full p-2 rounded-lg border text-left transition-all',
+                              isDisabled && 'opacity-50 cursor-not-allowed',
+                              isSelected && !isDisabled
+                                ? 'border-primary bg-primary/5'
+                                : 'border-muted hover:border-muted-foreground/50'
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>{provider.icon}</span>
+                              <span className="flex-1 text-sm">{provider.name}</span>
+                              {!provider.available && (
+                                <Badge variant="outline" className="text-[10px] py-0">미설치</Badge>
+                              )}
+                              {isSelected && provider.available && (
+                                <CheckCircle2 className="h-4 w-4 text-primary" />
+                              )}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Swarm용 모델 선택 */}
+                {swarmProvider && (() => {
+                  const provider = providers.find(p => p.id === swarmProvider)
+                  if (!provider || provider.availableModels.length === 0) return null
+                  return (
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">모델 선택</label>
+                      <div className="grid gap-1">
+                        {provider.availableModels.map((model) => {
+                          const isSelected = swarmModel === model
+                          return (
+                            <button
+                              key={model}
+                              onClick={() => setSwarmModel(model)}
+                              className={cn(
+                                'w-full p-2 rounded border text-left text-sm transition-all',
+                                isSelected
+                                  ? 'border-primary bg-primary/5'
+                                  : 'border-muted hover:border-muted-foreground/50'
+                              )}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-mono text-xs">{model}</span>
+                                {isSelected && <CheckCircle2 className="h-3 w-3 text-primary" />}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 <div>
                   <label className="text-sm font-medium mb-2 block">Strategy 선택</label>
                   <div className="grid gap-2">
@@ -578,6 +764,8 @@ export function TaskExecutionDialog({
                     <span className="font-medium">Swarm 설정 요약</span>
                   </div>
                   <ul className="text-xs space-y-1 text-muted-foreground">
+                    <li>Provider: <span className="text-foreground">{providers.find(p => p.id === swarmProvider)?.name || swarmProvider}</span></li>
+                    <li>Model: <span className="text-foreground">{swarmModel}</span></li>
                     <li>Strategy: <span className="text-foreground">{strategy}</span></li>
                     <li>Max Agents: <span className="text-foreground">{maxAgents}</span></li>
                     <li>Mode: <span className="text-foreground">single task</span></li>
@@ -604,8 +792,8 @@ export function TaskExecutionDialog({
                   </>
                 ) : (
                   <>
-                    <Users className="h-4 w-4" />
-                    <span>Swarm ({strategy}) / {maxAgents} agents</span>
+                    <span className="text-lg">{providers.find(p => p.id === swarmProvider)?.icon || '🐝'}</span>
+                    <span>Swarm ({strategy}) / {providers.find(p => p.id === swarmProvider)?.name || swarmProvider} / {maxAgents} agents</span>
                   </>
                 )}
               </div>
