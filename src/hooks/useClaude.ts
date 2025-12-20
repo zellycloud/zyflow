@@ -1,5 +1,29 @@
-import { useState, useCallback, useRef } from 'react'
+/**
+ * Claude Code 실행 훅 (하위 호환 래퍼)
+ * @module hooks/useClaude
+ *
+ * 기존 useClaude 인터페이스를 유지하면서 내부적으로 useAI를 사용
+ * 새로운 코드에서는 useAI 직접 사용 권장
+ */
 
+import { useCallback } from 'react'
+import { useAI } from './useAI'
+import type { AIMessage } from '@/types/ai'
+
+// =============================================
+// 하위 호환 타입 (기존 인터페이스 유지)
+// =============================================
+
+/**
+ * Claude 모델 타입 (하위 호환)
+ * @deprecated useAI와 함께 AIProvider 타입 사용 권장
+ */
+export type ClaudeModel = 'haiku' | 'sonnet' | 'opus'
+
+/**
+ * Claude 메시지 타입 (하위 호환)
+ * @deprecated useAI와 함께 AIMessage 타입 사용 권장
+ */
 export interface ClaudeMessage {
   type: 'start' | 'output' | 'text' | 'stderr' | 'complete' | 'error'
   runId?: string
@@ -18,6 +42,10 @@ export interface ClaudeMessage {
   message?: string
 }
 
+/**
+ * Claude 실행 상태 (하위 호환)
+ * @deprecated useAI와 함께 AIExecution 타입 사용 권장
+ */
 export interface ClaudeExecution {
   runId: string | null
   status: 'idle' | 'running' | 'completed' | 'error'
@@ -25,18 +53,31 @@ export interface ClaudeExecution {
   error: string | null
 }
 
-export type ClaudeModel = 'haiku' | 'sonnet' | 'opus'
+// =============================================
+// 훅 구현
+// =============================================
 
+/**
+ * Claude Code 실행 훅 (하위 호환 래퍼)
+ *
+ * 기존 코드와의 호환성을 위해 유지됩니다.
+ * 새로운 코드에서는 useAI 훅을 직접 사용하세요.
+ *
+ * @example
+ * // 기존 사용법 (계속 동작)
+ * const { execution, execute, stop, reset } = useClaude()
+ * execute({ changeId, taskId, taskTitle, model: 'sonnet' })
+ *
+ * // 권장 사용법 (새 코드)
+ * const { execution, execute, stop, reset } = useAI()
+ * execute({ provider: 'claude', model: 'sonnet', changeId, taskId, taskTitle })
+ */
 export function useClaude() {
-  const [execution, setExecution] = useState<ClaudeExecution>({
-    runId: null,
-    status: 'idle',
-    messages: [],
-    error: null,
-  })
+  const ai = useAI()
 
-  const abortControllerRef = useRef<AbortController | null>(null)
-
+  /**
+   * Claude 실행 (하위 호환)
+   */
   const execute = useCallback(
     async (params: {
       changeId: string
@@ -45,126 +86,45 @@ export function useClaude() {
       context?: string
       model?: ClaudeModel
     }) => {
-      // Abort any existing execution
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort()
-      }
-
-      abortControllerRef.current = new AbortController()
-
-      setExecution({
-        runId: null,
-        status: 'running',
-        messages: [],
-        error: null,
+      return ai.execute({
+        provider: 'claude',
+        model: params.model || 'sonnet',
+        changeId: params.changeId,
+        taskId: params.taskId,
+        taskTitle: params.taskTitle,
+        context: params.context,
       })
-
-      try {
-        const response = await fetch('/api/claude/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(params),
-          signal: abortControllerRef.current.signal,
-        })
-
-        if (!response.ok) {
-          throw new Error(`HTTP error: ${response.status}`)
-        }
-
-        const reader = response.body?.getReader()
-        if (!reader) {
-          throw new Error('No response body')
-        }
-
-        const decoder = new TextDecoder()
-        let buffer = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6)) as ClaudeMessage
-
-                setExecution((prev) => ({
-                  ...prev,
-                  runId: data.runId || prev.runId,
-                  messages: [...prev.messages, data],
-                  status:
-                    data.type === 'complete'
-                      ? data.status === 'completed'
-                        ? 'completed'
-                        : 'error'
-                      : data.type === 'error'
-                        ? 'error'
-                        : 'running',
-                  error: data.type === 'error' ? data.message || 'Unknown error' : prev.error,
-                }))
-              } catch {
-                // Skip invalid JSON
-              }
-            }
-          }
-        }
-      } catch (error) {
-        if ((error as Error).name === 'AbortError') {
-          setExecution((prev) => ({
-            ...prev,
-            status: 'idle',
-            error: 'Cancelled',
-          }))
-        } else {
-          setExecution((prev) => ({
-            ...prev,
-            status: 'error',
-            error: (error as Error).message,
-          }))
-        }
-      }
     },
-    []
+    [ai]
   )
 
-  const stop = useCallback(async () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-    }
-
-    if (execution.runId) {
-      try {
-        await fetch(`/api/claude/stop/${execution.runId}`, {
-          method: 'POST',
-        })
-      } catch {
-        // Ignore errors
-      }
-    }
-
-    setExecution((prev) => ({
-      ...prev,
-      status: 'idle',
+  // AIMessage를 ClaudeMessage로 변환
+  const convertMessages = (messages: AIMessage[]): ClaudeMessage[] => {
+    return messages.map((msg) => ({
+      type: msg.type as ClaudeMessage['type'],
+      runId: msg.runId,
+      taskId: msg.taskId,
+      changeId: msg.changeId,
+      data: msg.data,
+      content: msg.content,
+      status: msg.status,
+      exitCode: msg.exitCode,
+      message: msg.message,
     }))
-  }, [execution.runId])
+  }
 
-  const reset = useCallback(() => {
-    setExecution({
-      runId: null,
-      status: 'idle',
-      messages: [],
-      error: null,
-    })
-  }, [])
+  // 하위 호환 실행 상태 반환
+  const execution: ClaudeExecution = {
+    runId: ai.execution.runId,
+    status: ai.execution.status,
+    messages: convertMessages(ai.execution.messages),
+    error: ai.execution.error,
+  }
 
   return {
     execution,
     execute,
-    stop,
-    reset,
+    stop: ai.stop,
+    reset: ai.reset,
   }
 }
