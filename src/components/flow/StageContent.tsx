@@ -336,15 +336,15 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
                           {hasPendingTasks && (
                             <button
                               onClick={() => handleToggleGroupSelect(pendingTaskIds)}
-                              className="hover:bg-muted rounded p-0.5 transition-colors"
+                              className="hover:bg-blue-50 dark:hover:bg-blue-950 rounded p-0.5 transition-colors"
                               title={selectState === 'all' ? '전체 해제' : '전체 선택'}
                             >
                               {selectState === 'all' ? (
-                                <CheckSquare className="h-4 w-4 text-primary" />
+                                <CheckSquare className="h-4 w-4 text-blue-500" />
                               ) : selectState === 'some' ? (
-                                <MinusSquare className="h-4 w-4 text-primary" />
+                                <MinusSquare className="h-4 w-4 text-blue-400" />
                               ) : (
-                                <Square className="h-4 w-4 text-muted-foreground" />
+                                <Square className="h-4 w-4 text-blue-300" />
                               )}
                             </button>
                           )}
@@ -387,25 +387,27 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
                               key={task.id}
                               className={cn(
                                 task.status === 'done' && 'bg-muted/30',
-                                selectedTaskIds.has(task.id) && 'bg-primary/5'
+                                selectedTaskIds.has(task.id) && 'bg-blue-50 dark:bg-blue-950/30'
                               )}
                             >
-                              {/* 선택 체크박스 */}
+                              {/* 선택 체크박스 (파란색 계열) */}
                               <TableCell>
                                 {task.status !== 'done' ? (
                                   <Checkbox
                                     checked={selectedTaskIds.has(task.id)}
                                     onCheckedChange={() => handleToggleSelect(task.id)}
+                                    className="border-blue-400 data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500"
                                   />
                                 ) : (
                                   <span className="text-muted-foreground text-xs">-</span>
                                 )}
                               </TableCell>
-                              {/* 완료 체크박스 */}
+                              {/* 완료 체크박스 (기본 초록색) */}
                               <TableCell>
                                 <Checkbox
                                   checked={task.status === 'done'}
                                   onCheckedChange={() => handleToggleTask(task)}
+                                  className="border-green-400 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
                                 />
                               </TableCell>
                               <TableCell className="text-xs text-muted-foreground font-mono">
