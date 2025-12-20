@@ -169,14 +169,29 @@ export interface SSEEvent {
 // claude-flow 출력 파싱 타입
 // =============================================
 
-/** claude-flow stream-json 출력 형식 */
+/** Claude Code stream-json 출력 형식 */
 export interface ClaudeFlowOutput {
-  type: 'assistant' | 'tool_use' | 'tool_result' | 'error' | 'system'
+  type: 'assistant' | 'tool_use' | 'tool_result' | 'error' | 'system' | 'user' | 'result'
+  /** 메시지 텍스트 */
   message?: string
+  /** subtype (예: 'text' for assistant) */
+  subtype?: string
+  /** 도구 이름 */
   name?: string
+  /** 도구 입력 */
   input?: Record<string, unknown>
+  /** 결과 내용 */
   content?: string
+  /** 에러 메시지 */
   error?: string
+  /** 총 비용 (USD) - result 타입용 */
+  total_cost_usd?: number
+  /** 실행 시간 (ms) - result 타입용 */
+  duration_ms?: number
+  /** API 호출 시간 (ms) - result 타입용 */
+  duration_api_ms?: number
+  /** 세션 ID */
+  session_id?: string
 }
 
 // =============================================

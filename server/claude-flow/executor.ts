@@ -104,7 +104,8 @@ export class ClaudeFlowExecutor {
   }
 
   /**
-   * claude-flow 프로세스 시작
+   * Claude Code 프로세스 직접 시작 (Swarm/단일 모드 공통)
+   * - claude-flow swarm 대신 Claude Code를 직접 실행하여 실시간 로그 표시
    */
   private async startProcess(
     executionId: string,
@@ -114,8 +115,11 @@ export class ClaudeFlowExecutor {
     const instance = this.executions.get(executionId)
     if (!instance) return
 
+    const mode = instance.status.request.mode
+    const isSwarmMode = mode === 'full' || mode === 'analysis'
+
     this.updateStatus(executionId, 'running')
-    this.addLog(executionId, 'system', 'claude-flow 프로세스 시작...')
+    this.addLog(executionId, 'system', `Claude Code 실행 중... (${isSwarmMode ? 'Swarm' : '단일'} 모드)`)
 
     // 프롬프트를 임시 파일로 저장 (쉘 이스케이프 문제 방지)
     const promptFile = join(tmpdir(), `claude-flow-prompt-${executionId}.txt`)
@@ -123,54 +127,57 @@ export class ClaudeFlowExecutor {
     const scriptFile = join(tmpdir(), `claude-flow-runner-${executionId}.sh`)
 
     try {
-      await writeFile(promptFile, prompt, 'utf-8')
+      // Swarm 모드인 경우 프롬프트에 멀티에이전트 지시 추가
+      let finalPrompt = prompt
+      if (isSwarmMode) {
+        const swarmInstructions = `
+## Swarm 실행 모드
 
-      // 래퍼 스크립트 생성 - 프롬프트를 안전하게 전달
-      const scriptArgs: string[] = ['--stream-json']
+이 태스크는 **Swarm 멀티에이전트 모드**로 실행됩니다.
+- 전략: ${instance.status.request.strategy || 'development'}
+- 최대 에이전트: ${instance.status.request.maxAgents || 5}
 
-      // Provider 설정 (기본: claude)
+### 실행 지침
+1. 태스크를 분석하고 하위 태스크로 분해하세요.
+2. 가능한 경우 Task 도구를 사용하여 병렬로 에이전트를 생성하세요.
+3. 각 에이전트에게 명확한 책임을 부여하세요.
+4. 모든 작업 완료 후 결과를 종합하세요.
+
+---
+
+`
+        finalPrompt = swarmInstructions + prompt
+      }
+
+      await writeFile(promptFile, finalPrompt, 'utf-8')
+
+      // Claude Code 직접 실행 (claude-flow swarm 대신)
+      // 이렇게 하면 단일 실행과 동일한 JSON 스트림 출력을 받을 수 있음
+      const scriptArgs: string[] = [
+        '--output-format', 'stream-json',
+        '--dangerously-skip-permissions',
+        '--max-tokens', '16000',
+      ]
+
+      // 모델 설정 (Provider에 따라)
       const provider = instance.status.request.provider || 'claude'
-      switch (provider) {
-        case 'claude':
-          scriptArgs.push('--claude')
-          break
-        case 'gemini':
-          scriptArgs.push('--gemini')
-          break
-        case 'codex':
-          scriptArgs.push('--codex')
-          break
-        case 'qwen':
-          scriptArgs.push('--qwen')
-          break
-        case 'kilo':
-          scriptArgs.push('--kilo')
-          break
-        case 'opencode':
-          scriptArgs.push('--opencode')
-          break
-        default:
-          scriptArgs.push('--claude')
-      }
+      const model = instance.status.request.model
 
-      // 모델 설정
-      if (instance.status.request.model) {
-        scriptArgs.push('--model', instance.status.request.model)
-      }
-
-      // 전략 설정
-      if (instance.status.request.strategy) {
-        scriptArgs.push('--strategy', instance.status.request.strategy)
-      }
-
-      // 최대 에이전트 수
-      if (instance.status.request.maxAgents) {
-        scriptArgs.push('--max-agents', String(instance.status.request.maxAgents))
+      if (provider === 'claude' && model) {
+        // Claude 모델 매핑
+        const modelMap: Record<string, string> = {
+          'opus': 'claude-opus-4-5-20251101',
+          'sonnet': 'claude-sonnet-4-20250514',
+          'haiku': 'claude-3-5-haiku-20241022',
+        }
+        const fullModel = modelMap[model] || model
+        scriptArgs.push('--model', fullModel)
       }
 
       const scriptContent = `#!/bin/bash
 PROMPT=$(cat "${promptFile}")
-exec npx claude-flow@alpha swarm "$PROMPT" ${scriptArgs.join(' ')} < /dev/null
+cd "${instance.status.request.projectPath}"
+exec claude $PROMPT ${scriptArgs.join(' ')}
 `
       await writeFile(scriptFile, scriptContent, { mode: 0o755 })
 
@@ -266,7 +273,7 @@ exec npx claude-flow@alpha swarm "$PROMPT" ${scriptArgs.join(' ')} < /dev/null
   }
 
   /**
-   * claude-flow 출력 파싱
+   * Claude Code JSON 출력 파싱
    */
   private parseOutput(executionId: string, line: string): void {
     // 먼저 JSON 파싱 시도
@@ -279,19 +286,35 @@ exec npx claude-flow@alpha swarm "$PROMPT" ${scriptArgs.join(' ')} < /dev/null
       switch (output.type) {
         case 'assistant':
           logType = 'assistant'
-          content = output.message ?? ''
+          // subtype이 'text'인 경우 실제 응답 텍스트
+          if (output.subtype === 'text') {
+            content = output.message ?? ''
+          } else {
+            content = output.message ?? ''
+          }
+          break
+        case 'user':
+          // 사용자 입력 (프롬프트) - 스킵하거나 짧게 표시
+          logType = 'info'
+          content = '[프롬프트 전송됨]'
           break
         case 'tool_use':
           logType = 'tool_use'
-          content = `Tool: ${output.name}`
+          content = `🔧 Tool: ${output.name}`
           this.addLog(executionId, logType, content, {
             name: output.name,
             input: output.input,
           })
+          // 진행률 증가
+          this.incrementProgress(executionId)
           return
         case 'tool_result':
           logType = 'tool_result'
-          content = output.content?.substring(0, 500) ?? ''
+          // 결과를 적절히 잘라서 표시
+          const resultContent = output.content ?? ''
+          content = resultContent.length > 500
+            ? resultContent.substring(0, 500) + '...'
+            : resultContent
           break
         case 'error':
           logType = 'error'
@@ -300,6 +323,12 @@ exec npx claude-flow@alpha swarm "$PROMPT" ${scriptArgs.join(' ')} < /dev/null
         case 'system':
           logType = 'system'
           content = output.message ?? ''
+          break
+        case 'result':
+          // 실행 완료
+          logType = 'system'
+          content = `✅ 실행 완료 (비용: $${output.total_cost_usd?.toFixed(4) ?? '?'}, 시간: ${((output.duration_ms ?? 0) / 1000).toFixed(1)}초)`
+          this.updateProgress(executionId, 100)
           break
         default:
           content = line
@@ -312,7 +341,7 @@ exec npx claude-flow@alpha swarm "$PROMPT" ${scriptArgs.join(' ')} < /dev/null
       // 진행률 업데이트 (태스크 완료 감지)
       if (
         output.type === 'tool_result' &&
-        output.content?.includes('체크박스')
+        (output.content?.includes('체크박스') || output.content?.includes('완료') || output.content?.includes('done'))
       ) {
         this.incrementProgress(executionId)
       }

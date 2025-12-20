@@ -22,7 +22,6 @@ import {
   getTaskTypeInfo,
   type TaskRecommendation
 } from '@/utils/task-routing'
-
 // =============================================
 // 타입 및 상수
 // =============================================
@@ -92,7 +91,9 @@ export function TaskExecutionDialog({
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // 현재 실행 상태 (모드에 따라 다름)
-  const currentStatus = executionMode === 'single' ? ai.execution.status : swarm.execution.status
+  const currentStatus = executionMode === 'single'
+    ? ai.execution.status
+    : swarm.execution.status
   const isRunning = currentStatus === 'running'
 
   // Provider 목록 로드
