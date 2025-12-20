@@ -126,7 +126,37 @@ export class ClaudeFlowExecutor {
       await writeFile(promptFile, prompt, 'utf-8')
 
       // 래퍼 스크립트 생성 - 프롬프트를 안전하게 전달
-      const scriptArgs: string[] = ['--claude', '--stream-json']
+      const scriptArgs: string[] = ['--stream-json']
+
+      // Provider 설정 (기본: claude)
+      const provider = instance.status.request.provider || 'claude'
+      switch (provider) {
+        case 'claude':
+          scriptArgs.push('--claude')
+          break
+        case 'gemini':
+          scriptArgs.push('--gemini')
+          break
+        case 'codex':
+          scriptArgs.push('--codex')
+          break
+        case 'qwen':
+          scriptArgs.push('--qwen')
+          break
+        case 'kilo':
+          scriptArgs.push('--kilo')
+          break
+        case 'opencode':
+          scriptArgs.push('--opencode')
+          break
+        default:
+          scriptArgs.push('--claude')
+      }
+
+      // 모델 설정
+      if (instance.status.request.model) {
+        scriptArgs.push('--model', instance.status.request.model)
+      }
 
       // 전략 설정
       if (instance.status.request.strategy) {
@@ -140,7 +170,7 @@ export class ClaudeFlowExecutor {
 
       const scriptContent = `#!/bin/bash
 PROMPT=$(cat "${promptFile}")
-exec npx claude-flow@alpha swarm "$PROMPT" ${scriptArgs.join(' ')}
+exec npx claude-flow@alpha swarm "$PROMPT" ${scriptArgs.join(' ')} < /dev/null
 `
       await writeFile(scriptFile, scriptContent, { mode: 0o755 })
 
@@ -150,7 +180,11 @@ exec npx claude-flow@alpha swarm "$PROMPT" ${scriptArgs.join(' ')}
           ...process.env,
           FORCE_COLOR: '0',
         },
+        stdio: ['pipe', 'pipe', 'pipe'],
       })
+
+      // stdin을 즉시 닫아서 대화형 입력 대기 방지
+      proc.stdin?.end()
 
       // 프로세스 종료 시 임시 파일 정리
       proc.on('close', () => {
@@ -169,7 +203,12 @@ exec npx claude-flow@alpha swarm "$PROMPT" ${scriptArgs.join(' ')}
       // stdout 처리
       let buffer = ''
       proc.stdout?.on('data', (data: Buffer) => {
-        buffer += data.toString()
+        const text = data.toString()
+        buffer += text
+
+        // 디버그: raw output 기록
+        console.log('[claude-flow stdout]', text.substring(0, 200))
+
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
 
@@ -230,6 +269,7 @@ exec npx claude-flow@alpha swarm "$PROMPT" ${scriptArgs.join(' ')}
    * claude-flow 출력 파싱
    */
   private parseOutput(executionId: string, line: string): void {
+    // 먼저 JSON 파싱 시도
     try {
       const output: ClaudeFlowOutput = JSON.parse(line)
 
@@ -277,11 +317,58 @@ exec npx claude-flow@alpha swarm "$PROMPT" ${scriptArgs.join(' ')}
         this.incrementProgress(executionId)
       }
     } catch {
-      // JSON 파싱 실패시 일반 로그로 처리
-      if (line.trim()) {
-        this.addLog(executionId, 'info', line)
+      // JSON 파싱 실패시 일반 텍스트로 처리
+      if (!line.trim()) return
+
+      // 텍스트 출력에서 상태 감지
+      const trimmedLine = line.trim()
+
+      // 시스템 메시지 감지
+      if (trimmedLine.startsWith('🐝') || trimmedLine.startsWith('📋') ||
+          trimmedLine.startsWith('🎯') || trimmedLine.startsWith('🏗') ||
+          trimmedLine.startsWith('🤖') || trimmedLine.startsWith('🚀') ||
+          trimmedLine.startsWith('✓') || trimmedLine.startsWith('💡') ||
+          trimmedLine.startsWith('🛑') || trimmedLine.startsWith('⚠')) {
+        this.addLog(executionId, 'system', trimmedLine)
+
+        // 진행 단계별 progress 업데이트
+        if (trimmedLine.includes('Launching')) {
+          this.updateProgress(executionId, 10)
+        } else if (trimmedLine.includes('launched')) {
+          this.updateProgress(executionId, 30)
+        } else if (trimmedLine.includes('completed successfully')) {
+          this.updateProgress(executionId, 100)
+        }
+        return
       }
+
+      // 에러 메시지 감지
+      if (trimmedLine.startsWith('❌') || trimmedLine.toLowerCase().includes('error')) {
+        this.addLog(executionId, 'error', trimmedLine)
+        return
+      }
+
+      // 진행 메시지 (Done! 등)
+      if (trimmedLine.startsWith('Done!') || trimmedLine.includes('완료')) {
+        this.addLog(executionId, 'assistant', trimmedLine)
+        this.updateProgress(executionId, 90)
+        return
+      }
+
+      // 일반 출력
+      this.addLog(executionId, 'info', trimmedLine)
     }
+  }
+
+  /**
+   * 진행률 설정
+   */
+  private updateProgress(executionId: string, progress: number): void {
+    const instance = this.executions.get(executionId)
+    if (!instance) return
+
+    instance.status.progress = Math.max(instance.status.progress, progress)
+    instance.emitter.emit('progress', instance.status.progress)
   }
 
   /**
