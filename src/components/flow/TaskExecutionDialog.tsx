@@ -18,7 +18,6 @@ import type { ClaudeModel } from '@/hooks/useClaude'
 import { ExecutionHistoryDialog } from './ExecutionHistoryDialog'
 import { cn } from '@/lib/utils'
 import {
-  classifyTask,
   getTaskRecommendation,
   getTaskTypeInfo,
   type TaskRecommendation
