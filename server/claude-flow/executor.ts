@@ -175,9 +175,8 @@ export class ClaudeFlowExecutor {
       }
 
       const scriptContent = `#!/bin/bash
-PROMPT=$(cat "${promptFile}")
 cd "${instance.status.request.projectPath}"
-exec claude $PROMPT ${scriptArgs.join(' ')}
+exec claude -p "${promptFile}" ${scriptArgs.join(' ')}
 `
       await writeFile(scriptFile, scriptContent, { mode: 0o755 })
 
