@@ -23,7 +23,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import {
   Select,
@@ -33,9 +33,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, GripVertical, Terminal } from 'lucide-react'
+import { Label } from '@/components/ui/label'
+import { Slider } from '@/components/ui/slider'
+import { Loader2, GripVertical, Terminal, Users, Zap, CheckCheck, Trophy, Vote } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import type { ConsensusStrategy } from '@/types/ai'
 
 interface CLIProfile {
   id: string
@@ -57,9 +60,18 @@ interface CLISetting {
   order?: number
 }
 
+interface ConsensusSettings {
+  enabled: boolean
+  strategy: ConsensusStrategy
+  threshold: number
+  timeout: number
+  autoDetect: boolean
+}
+
 interface CLISettingsResponse {
   profiles: CLIProfile[]
   settings: Record<string, CLISetting>
+  consensus?: ConsensusSettings
 }
 
 interface SortableCLIItemProps {
@@ -157,10 +169,53 @@ function SortableCLIItem({ profile, settings, onToggle, onModelChange }: Sortabl
   )
 }
 
+/** Consensus 전략 정보 */
+const CONSENSUS_STRATEGIES: Array<{
+  id: ConsensusStrategy
+  name: string
+  description: string
+  icon: React.ReactNode
+}> = [
+  {
+    id: 'majority',
+    name: '다수결',
+    description: '가장 많이 나온 결과를 채택합니다',
+    icon: <Vote className="h-4 w-4" />
+  },
+  {
+    id: 'weighted',
+    name: '가중 투표',
+    description: 'Provider별 신뢰도 기반으로 선택합니다',
+    icon: <Trophy className="h-4 w-4" />
+  },
+  {
+    id: 'unanimous',
+    name: '만장일치',
+    description: '모든 AI가 동의해야 채택됩니다',
+    icon: <CheckCheck className="h-4 w-4" />
+  },
+  {
+    id: 'best-of-n',
+    name: '최고 품질',
+    description: 'N개 중 가장 높은 품질을 선택합니다',
+    icon: <Zap className="h-4 w-4" />
+  }
+]
+
+/** 기본 Consensus 설정 */
+const DEFAULT_CONSENSUS_SETTINGS: ConsensusSettings = {
+  enabled: false,
+  strategy: 'majority',
+  threshold: 0.6,
+  timeout: 120000,
+  autoDetect: true
+}
+
 export function CLISettings() {
   const queryClient = useQueryClient()
   const [localSettings, setLocalSettings] = useState<Record<string, CLISetting>>({})
   const [orderedProfileIds, setOrderedProfileIds] = useState<string[]>([])
+  const [consensusSettings, setConsensusSettings] = useState<ConsensusSettings>(DEFAULT_CONSENSUS_SETTINGS)
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -191,6 +246,11 @@ export function CLISettings() {
         return orderA - orderB
       })
       setOrderedProfileIds(sorted.map(p => p.id))
+
+      // Initialize consensus settings
+      if (data.consensus) {
+        setConsensusSettings(data.consensus)
+      }
     } else if (data?.profiles) {
       // Initialize with all enabled if no settings exist
       const initialSettings: Record<string, CLISetting> = {}
@@ -208,11 +268,11 @@ export function CLISettings() {
 
   // Save settings mutation
   const saveMutation = useMutation({
-    mutationFn: async (settings: Record<string, CLISetting>) => {
+    mutationFn: async (payload: { settings?: Record<string, CLISetting>; consensus?: ConsensusSettings }) => {
       const res = await fetch('http://localhost:3001/api/cli/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) throw new Error('Failed to save CLI settings')
       return res.json()
@@ -233,7 +293,7 @@ export function CLISettings() {
       [profileId]: { ...localSettings[profileId], enabled },
     }
     setLocalSettings(newSettings)
-    saveMutation.mutate(newSettings)
+    saveMutation.mutate({ settings: newSettings })
   }
 
   const handleModelChange = (profileId: string, model: string) => {
@@ -242,7 +302,7 @@ export function CLISettings() {
       [profileId]: { ...localSettings[profileId], selectedModel: model },
     }
     setLocalSettings(newSettings)
-    saveMutation.mutate(newSettings)
+    saveMutation.mutate({ settings: newSettings })
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -261,9 +321,18 @@ export function CLISettings() {
         newSettings[id] = { ...newSettings[id], order: index }
       })
       setLocalSettings(newSettings)
-      saveMutation.mutate(newSettings)
+      saveMutation.mutate({ settings: newSettings })
     }
   }
+
+  const handleConsensusChange = (updates: Partial<ConsensusSettings>) => {
+    const newConsensus = { ...consensusSettings, ...updates }
+    setConsensusSettings(newConsensus)
+    saveMutation.mutate({ consensus: newConsensus })
+  }
+
+  // Get enabled providers for consensus
+  const enabledProviders = orderedProfileIds.filter(id => localSettings[id]?.enabled !== false)
 
   if (isLoading) {
     return (
@@ -333,6 +402,120 @@ export function CLISettings() {
           </CardContent>
         </Card>
       )}
+
+      {/* Consensus Settings Section */}
+      <Card className="mt-6">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              <CardTitle className="text-base">다중 AI 합의 (Consensus)</CardTitle>
+            </div>
+            <Switch
+              checked={consensusSettings.enabled}
+              onCheckedChange={(enabled) => handleConsensusChange({ enabled })}
+            />
+          </div>
+          <CardDescription className="text-xs">
+            여러 AI 모델의 결과를 비교하여 가장 적합한 답변을 선택합니다
+          </CardDescription>
+        </CardHeader>
+
+        {consensusSettings.enabled && (
+          <CardContent className="space-y-4 pt-0">
+            {/* Auto-detect toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm">자동 감지</Label>
+                <p className="text-xs text-muted-foreground">
+                  태스크 유형에 따라 자동으로 Consensus 사용 결정
+                </p>
+              </div>
+              <Switch
+                checked={consensusSettings.autoDetect}
+                onCheckedChange={(autoDetect) => handleConsensusChange({ autoDetect })}
+              />
+            </div>
+
+            {/* Strategy selection */}
+            <div className="space-y-2">
+              <Label className="text-sm">합의 전략</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {CONSENSUS_STRATEGIES.map((strategy) => (
+                  <button
+                    key={strategy.id}
+                    onClick={() => handleConsensusChange({ strategy: strategy.id })}
+                    className={cn(
+                      'flex items-start gap-2 p-2 rounded-lg border text-left text-xs transition-colors',
+                      consensusSettings.strategy === strategy.id
+                        ? 'border-primary bg-primary/5'
+                        : 'hover:bg-accent'
+                    )}
+                  >
+                    <span className="text-primary mt-0.5">{strategy.icon}</span>
+                    <div>
+                      <div className="font-medium">{strategy.name}</div>
+                      <div className="text-muted-foreground">{strategy.description}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Threshold slider */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">합의 임계값</Label>
+                <span className="text-xs text-muted-foreground">
+                  {Math.round(consensusSettings.threshold * 100)}%
+                </span>
+              </div>
+              <Slider
+                value={[consensusSettings.threshold * 100]}
+                onValueChange={([value]) => handleConsensusChange({ threshold: value / 100 })}
+                min={30}
+                max={100}
+                step={5}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                결과가 채택되기 위한 최소 일치 비율
+              </p>
+            </div>
+
+            {/* Timeout setting */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">타임아웃</Label>
+                <span className="text-xs text-muted-foreground">
+                  {consensusSettings.timeout / 1000}초
+                </span>
+              </div>
+              <Slider
+                value={[consensusSettings.timeout / 1000]}
+                onValueChange={([value]) => handleConsensusChange({ timeout: value * 1000 })}
+                min={30}
+                max={300}
+                step={10}
+                className="w-full"
+              />
+            </div>
+
+            {/* Enabled providers info */}
+            <div className="pt-2 border-t">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Users className="h-3 w-3" />
+                <span>활성화된 Provider: {enabledProviders.length}개</span>
+              </div>
+              {enabledProviders.length < 2 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  Consensus를 사용하려면 최소 2개의 Provider가 필요합니다
+                </p>
+              )}
+            </div>
+          </CardContent>
+        )}
+      </Card>
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Play, Square, X, CheckCircle2, XCircle, Loader2, Terminal, History, Zap, Sparkles, Crown, Users, Settings2, AlertCircle, Lightbulb } from 'lucide-react'
+import { Play, Square, X, CheckCircle2, XCircle, Loader2, Terminal, History, Zap, Sparkles, Crown, Users, Settings2, AlertCircle, Lightbulb, Handshake, Trophy, Clock, Percent } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,10 @@ import {
   getTaskTypeInfo,
   type TaskRecommendation
 } from '@/utils/task-routing'
+import type { AIProvider, ConsensusStrategy, ConsensusConfig, ProviderResult } from '@/types/ai'
+import { PROVIDER_ICONS } from '@/types/ai'
+import { Switch } from '@/components/ui/switch'
+
 // =============================================
 // 타입 및 상수
 // =============================================
@@ -38,6 +42,13 @@ const STRATEGY_OPTIONS: { value: SwarmStrategy; label: string; description: stri
   { value: 'development', label: 'Development', description: '코드 구현 중심 (권장)' },
   { value: 'research', label: 'Research', description: '분석 및 조사 중심' },
   { value: 'testing', label: 'Testing', description: '테스트 및 검증 중심' },
+]
+
+const CONSENSUS_STRATEGY_OPTIONS: { value: ConsensusStrategy; label: string; description: string; icon: string }[] = [
+  { value: 'majority', label: '다수결', description: '가장 많이 선택된 결과 채택', icon: '🗳️' },
+  { value: 'weighted', label: '가중 투표', description: 'Provider별 신뢰도 기반', icon: '⚖️' },
+  { value: 'best-of-n', label: 'Best-of-N', description: 'N개 중 최고 품질 선택', icon: '🏆' },
+  { value: 'unanimous', label: '만장일치', description: '모든 AI가 동의해야 함', icon: '🤝' },
 ]
 
 interface TaskExecutionDialogProps {
@@ -80,6 +91,12 @@ export function TaskExecutionDialog({
   // v2: Swarm용 Provider 선택
   const [swarmProvider, setSwarmProvider] = useState<string>('claude')
   const [swarmModel, setSwarmModel] = useState<string>('sonnet')
+
+  // v2: Consensus 설정
+  const [consensusEnabled, setConsensusEnabled] = useState(false)
+  const [consensusStrategy, setConsensusStrategy] = useState<ConsensusStrategy>('majority')
+  const [consensusProviders, setConsensusProviders] = useState<Set<string>>(new Set())
+  const [consensusThreshold, setConsensusThreshold] = useState(0.7)
 
   // v2: 자동 추천
   const [recommendation, setRecommendation] = useState<TaskRecommendation | null>(null)
@@ -204,6 +221,19 @@ export function TaskExecutionDialog({
     }
   }, [recommendation])
 
+  // Consensus Provider 토글
+  const handleToggleConsensusProvider = useCallback((providerId: string) => {
+    setConsensusProviders(prev => {
+      const next = new Set(prev)
+      if (next.has(providerId)) {
+        next.delete(providerId)
+      } else {
+        next.add(providerId)
+      }
+      return next
+    })
+  }, [])
+
   // 실행 핸들러
   const handleStart = async () => {
     setHasStarted(true)
@@ -217,6 +247,16 @@ export function TaskExecutionDialog({
         taskTitle,
       })
     } else {
+      // Consensus 설정 구성
+      const consensusConfig: ConsensusConfig | undefined = consensusEnabled && consensusProviders.size >= 2
+        ? {
+            strategy: consensusStrategy,
+            providers: Array.from(consensusProviders) as AIProvider[],
+            threshold: consensusThreshold,
+            timeout: 5 * 60 * 1000, // 5분
+          }
+        : undefined
+
       await swarm.execute({
         projectPath: projectPath || process.cwd?.() || '',
         changeId,
@@ -226,6 +266,7 @@ export function TaskExecutionDialog({
         maxAgents,
         provider: swarmProvider as any,
         model: swarmModel,
+        consensus: consensusConfig,
       })
     }
   }
@@ -606,8 +647,9 @@ export function TaskExecutionDialog({
             </TabsList>
 
             {/* 단일 실행 설정 */}
-            <TabsContent value="single" className="flex-1 overflow-auto mt-4">
-              <div className="space-y-4">
+            <TabsContent value="single" className="flex-1 mt-4">
+              <ScrollArea className="h-[40vh]">
+              <div className="space-y-4 pr-4">
                 <div>
                   <label className="text-sm font-medium mb-2 block">Provider 선택</label>
                   {loadingProviders ? (
@@ -629,11 +671,13 @@ export function TaskExecutionDialog({
 
                 {selectedProvider && renderModelSelection()}
               </div>
+              </ScrollArea>
             </TabsContent>
 
             {/* Swarm 실행 설정 */}
-            <TabsContent value="swarm" className="flex-1 overflow-auto mt-4">
-              <div className="space-y-6">
+            <TabsContent value="swarm" className="flex-1 mt-4">
+              <ScrollArea className="h-[40vh]">
+              <div className="space-y-6 pr-4">
                 {/* v2: Swarm Provider 선택 */}
                 <div>
                   <label className="text-sm font-medium mb-2 block">Provider 선택 (v2)</label>
@@ -758,6 +802,109 @@ export function TaskExecutionDialog({
                   </div>
                 </div>
 
+                {/* v2: Consensus 설정 섹션 */}
+                <div className="border rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Handshake className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">다중 AI 합의 (Consensus)</span>
+                    </div>
+                    <Switch
+                      checked={consensusEnabled}
+                      onCheckedChange={setConsensusEnabled}
+                    />
+                  </div>
+
+                  {consensusEnabled && (
+                    <div className="space-y-4 pt-2 border-t">
+                      {/* Consensus Provider 선택 */}
+                      <div>
+                        <label className="text-xs font-medium mb-2 block text-muted-foreground">
+                          합의에 참여할 Provider 선택 (최소 2개)
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {providers.filter(p => p.enabled && p.available).map((provider) => {
+                            const isSelected = consensusProviders.has(provider.id)
+                            return (
+                              <button
+                                key={provider.id}
+                                onClick={() => handleToggleConsensusProvider(provider.id)}
+                                className={cn(
+                                  'p-2 rounded border text-left text-xs transition-all',
+                                  isSelected
+                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/30'
+                                    : 'border-muted hover:border-muted-foreground/50'
+                                )}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span>{provider.icon}</span>
+                                  <span className="flex-1">{provider.name}</span>
+                                  {isSelected && <CheckCircle2 className="h-3 w-3 text-purple-500" />}
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                        {consensusProviders.size < 2 && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                            Consensus를 사용하려면 최소 2개의 Provider가 필요합니다
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Consensus 전략 */}
+                      <div>
+                        <label className="text-xs font-medium mb-2 block text-muted-foreground">합의 전략</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {CONSENSUS_STRATEGY_OPTIONS.map((option) => {
+                            const isSelected = consensusStrategy === option.value
+                            return (
+                              <button
+                                key={option.value}
+                                onClick={() => setConsensusStrategy(option.value)}
+                                className={cn(
+                                  'p-2 rounded border text-left text-xs transition-all',
+                                  isSelected
+                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/30'
+                                    : 'border-muted hover:border-muted-foreground/50'
+                                )}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span>{option.icon}</span>
+                                  <div className="flex-1">
+                                    <div className="font-medium">{option.label}</div>
+                                    <div className="text-[10px] text-muted-foreground">{option.description}</div>
+                                  </div>
+                                  {isSelected && <CheckCircle2 className="h-3 w-3 text-purple-500" />}
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+
+                      {/* 합의 임계값 */}
+                      <div>
+                        <label className="text-xs font-medium mb-2 block flex items-center justify-between text-muted-foreground">
+                          <span>합의 임계값</span>
+                          <span className="text-foreground">{Math.round(consensusThreshold * 100)}%</span>
+                        </label>
+                        <Slider
+                          value={[consensusThreshold * 100]}
+                          onValueChange={([value]) => setConsensusThreshold(value / 100)}
+                          min={50}
+                          max={100}
+                          step={5}
+                        />
+                        <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                          <span>50% (낮음)</span>
+                          <span>100% (엄격)</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="bg-muted/50 rounded-lg p-3 text-sm">
                   <div className="flex items-center gap-2 text-muted-foreground mb-1">
                     <Settings2 className="h-4 w-4" />
@@ -769,9 +916,15 @@ export function TaskExecutionDialog({
                     <li>Strategy: <span className="text-foreground">{strategy}</span></li>
                     <li>Max Agents: <span className="text-foreground">{maxAgents}</span></li>
                     <li>Mode: <span className="text-foreground">single task</span></li>
+                    {consensusEnabled && consensusProviders.size >= 2 && (
+                      <li className="text-purple-600 dark:text-purple-400">
+                        Consensus: <span className="text-foreground">{consensusStrategy} ({consensusProviders.size} providers)</span>
+                      </li>
+                    )}
                   </ul>
                 </div>
               </div>
+              </ScrollArea>
             </TabsContent>
           </Tabs>
         )}
@@ -861,6 +1014,123 @@ export function TaskExecutionDialog({
                   {swarm.error && swarm.execution.status === 'failed' && (
                     <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-500">
                       {swarm.error}
+                    </div>
+                  )}
+
+                  {/* Consensus 결과 표시 */}
+                  {swarm.execution.consensusResult && (
+                    <div className="mt-4 pt-4 border-t space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Handshake className="h-4 w-4 text-purple-500" />
+                        <span className="text-sm font-medium">Consensus 결과</span>
+                        <Badge
+                          variant={swarm.execution.consensusResult.success ? 'default' : 'destructive'}
+                          className={swarm.execution.consensusResult.success ? 'bg-green-500' : ''}
+                        >
+                          {swarm.execution.consensusResult.success ? '합의 성공' : '합의 실패'}
+                        </Badge>
+                      </div>
+
+                      {/* 합의 요약 */}
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div className="bg-muted/50 rounded p-2 text-center">
+                          <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+                            <Percent className="h-3 w-3" />
+                            <span>합의율</span>
+                          </div>
+                          <span className="font-medium text-foreground">
+                            {Math.round(swarm.execution.consensusResult.agreement * 100)}%
+                          </span>
+                        </div>
+                        <div className="bg-muted/50 rounded p-2 text-center">
+                          <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+                            <Trophy className="h-3 w-3" />
+                            <span>신뢰도</span>
+                          </div>
+                          <span className="font-medium text-foreground">
+                            {Math.round(swarm.execution.consensusResult.confidence * 100)}%
+                          </span>
+                        </div>
+                        <div className="bg-muted/50 rounded p-2 text-center">
+                          <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+                            <Clock className="h-3 w-3" />
+                            <span>평균 시간</span>
+                          </div>
+                          <span className="font-medium text-foreground">
+                            {(swarm.execution.consensusResult.metadata.averageDuration / 1000).toFixed(1)}s
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Provider별 결과 */}
+                      <div className="space-y-2">
+                        <span className="text-xs text-muted-foreground">Provider별 결과</span>
+                        {swarm.execution.consensusResult.providerResults.map((result: ProviderResult, i: number) => {
+                          const isWinner = result.output === swarm.execution.consensusResult?.finalOutput
+                          return (
+                            <div
+                              key={i}
+                              className={cn(
+                                'border rounded-lg p-2 text-xs',
+                                isWinner && 'border-purple-500 bg-purple-50 dark:bg-purple-950/30',
+                                !result.success && 'border-red-300 bg-red-50 dark:bg-red-950/30'
+                              )}
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-2">
+                                  <span>{PROVIDER_ICONS[result.provider] || '🤖'}</span>
+                                  <span className="font-medium">{result.provider}</span>
+                                  {result.model && (
+                                    <span className="text-muted-foreground">/ {result.model}</span>
+                                  )}
+                                  {isWinner && (
+                                    <Badge className="bg-purple-500 text-[10px] px-1 py-0">
+                                      <Trophy className="h-2.5 w-2.5 mr-0.5" />
+                                      채택
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {result.confidence !== undefined && (
+                                    <span className="text-muted-foreground">
+                                      {Math.round(result.confidence * 100)}%
+                                    </span>
+                                  )}
+                                  <span className="text-muted-foreground">
+                                    {(result.duration / 1000).toFixed(1)}s
+                                  </span>
+                                  {result.success ? (
+                                    <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                  ) : (
+                                    <XCircle className="h-3 w-3 text-red-500" />
+                                  )}
+                                </div>
+                              </div>
+                              {result.error && (
+                                <div className="text-red-500 text-[10px] mt-1">
+                                  오류: {result.error}
+                                </div>
+                              )}
+                              {result.success && result.output && (
+                                <div className="mt-1 pt-1 border-t text-[10px] text-muted-foreground max-h-20 overflow-y-auto">
+                                  <pre className="whitespace-pre-wrap font-mono">
+                                    {result.output.length > 200
+                                      ? `${result.output.substring(0, 200)}...`
+                                      : result.output}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* 전략 정보 */}
+                      <div className="text-xs text-muted-foreground">
+                        전략: <span className="text-foreground font-medium">{swarm.execution.consensusResult.strategy}</span>
+                        {' | '}
+                        성공: <span className="text-foreground">{swarm.execution.consensusResult.metadata.successfulProviders}/{swarm.execution.consensusResult.metadata.totalProviders}</span>
+                      </div>
                     </div>
                   )}
                 </>

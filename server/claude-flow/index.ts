@@ -5,12 +5,16 @@
 
 import { Router, type Request, type Response } from 'express'
 import { claudeFlowExecutor } from './executor.js'
+import { getAvailableProviders } from './consensus.js'
 import type {
   ExecutionRequest,
   ExecuteResponse,
   StatusResponse,
   StopResponse,
   HistoryResponse,
+  ConsensusConfig,
+  ConsensusResult,
+  AIProvider,
 } from './types.js'
 
 export const claudeFlowRouter = Router()
@@ -43,6 +47,7 @@ claudeFlowRouter.post('/execute', async (req: Request, res: Response) => {
       timeout: body.timeout,
       provider: body.provider,
       model: body.model,
+      consensus: body.consensus as ConsensusConfig | undefined,
     }
 
     const executionId = await claudeFlowExecutor.execute(request)
@@ -188,7 +193,130 @@ claudeFlowRouter.get('/history', (req: Request, res: Response) => {
   res.json(response)
 })
 
+/**
+ * GET /api/claude-flow/consensus/:id
+ * Consensus 결과 조회
+ */
+claudeFlowRouter.get('/consensus/:id', (req: Request, res: Response) => {
+  const { id } = req.params
+
+  const consensusResult = claudeFlowExecutor.getConsensusResult(id)
+
+  if (!consensusResult) {
+    // 실행은 있지만 consensus 결과가 없는 경우
+    const status = claudeFlowExecutor.getStatus(id)
+    if (!status) {
+      res.status(404).json({ error: 'Execution not found' })
+      return
+    }
+
+    // 일반 실행인 경우
+    res.json({
+      success: false,
+      message: 'This execution is not a consensus execution',
+      executionStatus: status.status
+    })
+    return
+  }
+
+  res.json({
+    success: true,
+    consensus: consensusResult
+  })
+})
+
+/**
+ * GET /api/claude-flow/providers
+ * 사용 가능한 AI Provider 목록 조회
+ */
+claudeFlowRouter.get('/providers', async (_req: Request, res: Response) => {
+  try {
+    const availableProviders = await getAvailableProviders()
+
+    // 전체 Provider 목록과 사용 가능 여부
+    const allProviders: AIProvider[] = ['claude', 'gemini', 'codex', 'qwen', 'kilo', 'opencode', 'custom']
+
+    const providers = allProviders.map(provider => ({
+      id: provider,
+      name: getProviderDisplayName(provider),
+      available: availableProviders.includes(provider),
+      icon: getProviderIcon(provider)
+    }))
+
+    res.json({
+      success: true,
+      providers,
+      availableCount: availableProviders.length
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    res.status(500).json({
+      success: false,
+      error: message
+    })
+  }
+})
+
+/**
+ * POST /api/claude-flow/providers/check
+ * 특정 Provider 사용 가능 여부 확인
+ */
+claudeFlowRouter.post('/providers/check', async (req: Request, res: Response) => {
+  try {
+    const { provider } = req.body
+
+    if (!provider) {
+      res.status(400).json({ error: 'provider is required' })
+      return
+    }
+
+    const availableProviders = await getAvailableProviders()
+    const available = availableProviders.includes(provider)
+
+    res.json({
+      success: true,
+      provider,
+      available
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    res.status(500).json({
+      success: false,
+      error: message
+    })
+  }
+})
+
+// Provider 표시 이름 헬퍼
+function getProviderDisplayName(provider: AIProvider): string {
+  const names: Record<AIProvider, string> = {
+    claude: 'Claude (Anthropic)',
+    gemini: 'Gemini (Google)',
+    codex: 'Codex (OpenAI)',
+    qwen: 'Qwen (Alibaba)',
+    kilo: 'Kilo Code',
+    opencode: 'OpenCode',
+    custom: 'Custom CLI'
+  }
+  return names[provider]
+}
+
+// Provider 아이콘 헬퍼
+function getProviderIcon(provider: AIProvider): string {
+  const icons: Record<AIProvider, string> = {
+    claude: '🤖',
+    gemini: '💎',
+    codex: '🧠',
+    qwen: '🌟',
+    kilo: '⚡',
+    opencode: '🔓',
+    custom: '🔧'
+  }
+  return icons[provider]
+}
+
 // 타입 및 유틸리티 re-export
 export * from './types.js'
 export { claudeFlowExecutor } from './executor.js'
 export { OpenSpecPromptBuilder } from './prompt-builder.js'
+export { ConsensusExecutor, createConsensusExecutor, getAvailableProviders } from './consensus.js'

@@ -10,6 +10,7 @@ import { writeFile, unlink } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { OpenSpecPromptBuilder } from './prompt-builder.js'
+import { ConsensusExecutor, type ConsensusExecutionOptions } from './consensus.js'
 import type {
   ExecutionRequest,
   ExecutionStatus,
@@ -19,6 +20,7 @@ import type {
   ClaudeFlowOutput,
   ExecutionResult,
   ExecutionHistoryItem,
+  ConsensusResult,
 } from './types.js'
 
 /** 기본 타임아웃 (30분) */
@@ -35,6 +37,8 @@ interface ExecutionInstance {
   process: ChildProcess | null
   emitter: EventEmitter
   timeoutId?: NodeJS.Timeout
+  /** Consensus 실행 결과 (consensus 모드에서만) */
+  consensusResult?: ConsensusResult
 }
 
 /**
@@ -97,15 +101,186 @@ export class ClaudeFlowExecutor {
 
     this.executions.set(executionId, instance)
 
-    // 비동기로 프로세스 시작
-    setImmediate(() => this.startProcess(executionId, prompt, timeout))
+    // Consensus 모드인 경우 별도 처리
+    if (request.consensus && request.consensus.providers.length > 1) {
+      setImmediate(() => this.startConsensusExecution(executionId, prompt, request))
+    } else {
+      // 비동기로 프로세스 시작
+      setImmediate(() => this.startProcess(executionId, prompt, timeout))
+    }
 
     return executionId
   }
 
   /**
-   * Claude Code 프로세스 직접 시작 (Swarm/단일 모드 공통)
-   * - claude-flow swarm 대신 Claude Code를 직접 실행하여 실시간 로그 표시
+   * Consensus 모드 실행 (다중 Provider 병렬 실행)
+   */
+  private async startConsensusExecution(
+    executionId: string,
+    prompt: string,
+    request: ExecutionRequest
+  ): Promise<void> {
+    const instance = this.executions.get(executionId)
+    if (!instance || !request.consensus) return
+
+    this.updateStatus(executionId, 'running')
+    this.addLog(
+      executionId,
+      'system',
+      `🤝 Consensus 모드 시작 - ${request.consensus.providers.length}개 Provider 병렬 실행`
+    )
+    this.addLog(
+      executionId,
+      'info',
+      `전략: ${request.consensus.strategy}, Providers: ${request.consensus.providers.join(', ')}`
+    )
+
+    try {
+      const consensusExecutor = new ConsensusExecutor(request.consensus)
+
+      const options: ConsensusExecutionOptions = {
+        projectPath: request.projectPath,
+        onProgress: (provider, status, result) => {
+          if (status === 'started') {
+            this.addLog(executionId, 'system', `⏳ ${provider} 시작...`)
+          } else if (status === 'completed') {
+            this.addLog(executionId, 'assistant', `✅ ${provider} 완료 (${(result?.duration ?? 0) / 1000}초)`)
+            this.incrementProgress(executionId)
+          } else if (status === 'failed') {
+            this.addLog(executionId, 'error', `❌ ${provider} 실패: ${result?.error}`)
+          }
+        }
+      }
+
+      // Consensus 실행
+      const result = await consensusExecutor.execute(prompt, options)
+
+      instance.consensusResult = result
+
+      // 결과 로깅
+      this.addLog(
+        executionId,
+        'system',
+        `🎯 Consensus 완료 - 합의율: ${(result.agreement * 100).toFixed(1)}%, 신뢰도: ${(result.confidence * 100).toFixed(1)}%`
+      )
+
+      // 최종 출력 로깅
+      if (result.success && result.finalOutput) {
+        this.addLog(executionId, 'assistant', result.finalOutput)
+      }
+
+      // 실행 결과 설정
+      instance.status.result = {
+        completedTasks: result.metadata.successfulProviders,
+        totalTasks: result.metadata.totalProviders,
+        exitCode: result.success ? 0 : 1,
+        error: result.success ? undefined : '합의 실패'
+      }
+
+      this.updateProgress(executionId, 100)
+      this.updateStatus(executionId, result.success ? 'completed' : 'failed')
+
+      // 히스토리에 추가
+      this.addToHistory(instance.status)
+
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.addLog(executionId, 'error', `Consensus 실행 실패: ${message}`)
+      instance.status.result = {
+        completedTasks: 0,
+        totalTasks: request.consensus.providers.length,
+        error: message
+      }
+      this.updateStatus(executionId, 'failed')
+      this.addToHistory(instance.status)
+    }
+  }
+
+  /**
+   * Provider별 CLI 명령어 및 인자 생성
+   */
+  private buildProviderCommand(
+    provider: string,
+    model?: string
+  ): { command: string; args: string[] } {
+    switch (provider) {
+      case 'claude':
+        // Claude Code CLI
+        const claudeArgs = [
+          '--print',
+          '--verbose',
+          '--output-format', 'stream-json',
+          '--dangerously-skip-permissions',
+        ]
+        if (model) {
+          // Claude 모델 매핑
+          const modelMap: Record<string, string> = {
+            'opus': 'claude-opus-4-5-20251101',
+            'sonnet': 'claude-sonnet-4-20250514',
+            'haiku': 'claude-3-5-haiku-20241022',
+          }
+          const fullModel = modelMap[model] || model
+          claudeArgs.push('--model', fullModel)
+        }
+        return { command: 'claude', args: claudeArgs }
+
+      case 'gemini':
+        // Gemini CLI
+        const geminiArgs: string[] = []
+        if (model) {
+          geminiArgs.push('--model', model)
+        }
+        return { command: 'gemini', args: geminiArgs }
+
+      case 'qwen':
+        // Qwen Code CLI
+        const qwenArgs: string[] = []
+        if (model) {
+          qwenArgs.push('--model', model)
+        }
+        return { command: 'qwen', args: qwenArgs }
+
+      case 'kilo':
+        // Kilo Code CLI
+        const kiloArgs: string[] = []
+        if (model) {
+          kiloArgs.push('--model', model)
+        }
+        return { command: 'kilo', args: kiloArgs }
+
+      case 'opencode':
+        // OpenCode CLI
+        const opencodeArgs: string[] = []
+        if (model) {
+          opencodeArgs.push('--model', model)
+        }
+        return { command: 'opencode', args: opencodeArgs }
+
+      case 'codex':
+        // Codex CLI
+        const codexArgs: string[] = []
+        if (model) {
+          codexArgs.push('--model', model)
+        }
+        return { command: 'codex', args: codexArgs }
+
+      default:
+        // 기본값: Claude
+        return {
+          command: 'claude',
+          args: [
+            '--print',
+            '--verbose',
+            '--output-format', 'stream-json',
+            '--dangerously-skip-permissions',
+          ]
+        }
+    }
+  }
+
+  /**
+   * AI Provider CLI 프로세스 시작 (Swarm/단일 모드 공통)
+   * - 다중 Provider 지원: claude, gemini, qwen, kilo, opencode, codex
    */
   private async startProcess(
     executionId: string,
@@ -117,9 +292,15 @@ export class ClaudeFlowExecutor {
 
     const mode = instance.status.request.mode
     const isSwarmMode = mode === 'full' || mode === 'analysis'
+    const provider = instance.status.request.provider || 'claude'
+    const model = instance.status.request.model
 
     this.updateStatus(executionId, 'running')
-    this.addLog(executionId, 'system', `Claude Code 실행 중... (${isSwarmMode ? 'Swarm' : '단일'} 모드)`)
+    this.addLog(
+      executionId,
+      'system',
+      `${provider.toUpperCase()} 실행 중... (${isSwarmMode ? 'Swarm' : '단일'} 모드)${model ? ` - 모델: ${model}` : ''}`
+    )
 
     // 프롬프트를 임시 파일로 저장 (쉘 이스케이프 문제 방지)
     const promptFile = join(tmpdir(), `claude-flow-prompt-${executionId}.txt`)
@@ -134,6 +315,7 @@ export class ClaudeFlowExecutor {
 ## Swarm 실행 모드
 
 이 태스크는 **Swarm 멀티에이전트 모드**로 실행됩니다.
+- Provider: ${provider}
 - 전략: ${instance.status.request.strategy || 'development'}
 - 최대 에이전트: ${instance.status.request.maxAgents || 5}
 
@@ -151,34 +333,13 @@ export class ClaudeFlowExecutor {
 
       await writeFile(promptFile, finalPrompt, 'utf-8')
 
-      // Claude Code 직접 실행 (claude-flow swarm 대신)
-      // --print 모드에서 stream-json 사용 시 --verbose 필요
-      const scriptArgs: string[] = [
-        '--print',
-        '--verbose',
-        '--output-format', 'stream-json',
-        '--dangerously-skip-permissions',
-      ]
-
-      // 모델 설정 (Provider에 따라)
-      const provider = instance.status.request.provider || 'claude'
-      const model = instance.status.request.model
-
-      if (provider === 'claude' && model) {
-        // Claude 모델 매핑
-        const modelMap: Record<string, string> = {
-          'opus': 'claude-opus-4-5-20251101',
-          'sonnet': 'claude-sonnet-4-20250514',
-          'haiku': 'claude-3-5-haiku-20241022',
-        }
-        const fullModel = modelMap[model] || model
-        scriptArgs.push('--model', fullModel)
-      }
+      // Provider별 CLI 명령어 및 인자 생성
+      const { command, args } = this.buildProviderCommand(provider, model)
 
       // 프롬프트를 쉘에서 안전하게 전달하기 위해 heredoc 사용
       const scriptContent = `#!/bin/bash
 cd "${instance.status.request.projectPath}"
-exec claude ${scriptArgs.join(' ')} < "${promptFile}"
+exec ${command} ${args.join(' ')} < "${promptFile}"
 `
       await writeFile(scriptFile, scriptContent, { mode: 0o755 })
 
@@ -274,9 +435,29 @@ exec claude ${scriptArgs.join(' ')} < "${promptFile}"
   }
 
   /**
-   * Claude Code JSON 출력 파싱
+   * Provider별 출력 파싱
+   * - Claude: stream-json 형식 (JSON)
+   * - 기타 Provider: 일반 텍스트 (향후 확장 가능)
    */
   private parseOutput(executionId: string, line: string): void {
+    const instance = this.executions.get(executionId)
+    if (!instance) return
+
+    const provider = instance.status.request.provider || 'claude'
+
+    // Claude의 경우 JSON 파싱
+    if (provider === 'claude') {
+      this.parseClaudeOutput(executionId, line)
+    } else {
+      // 다른 Provider는 일반 텍스트 처리
+      this.parseTextOutput(executionId, line)
+    }
+  }
+
+  /**
+   * Claude Code JSON 출력 파싱
+   */
+  private parseClaudeOutput(executionId: string, line: string): void {
     // 먼저 JSON 파싱 시도
     try {
       const output: ClaudeFlowOutput = JSON.parse(line)
@@ -346,6 +527,22 @@ exec claude ${scriptArgs.join(' ')} < "${promptFile}"
       ) {
         this.incrementProgress(executionId)
       }
+    } catch {
+      // JSON 파싱 실패시 일반 텍스트로 처리
+      this.parseTextOutput(executionId, line)
+    }
+  }
+
+  /**
+   * 일반 텍스트 출력 파싱 (비-Claude Provider용)
+   */
+  private parseTextOutput(executionId: string, line: string): void {
+    // 먼저 JSON 파싱 시도 (Provider가 JSON을 출력할 수도 있음)
+    try {
+      const output: ClaudeFlowOutput = JSON.parse(line)
+      // JSON인 경우 Claude와 동일한 처리
+      this.parseClaudeOutput(executionId, line)
+      return
     } catch {
       // JSON 파싱 실패시 일반 텍스트로 처리
       if (!line.trim()) return
@@ -519,6 +716,14 @@ exec claude ${scriptArgs.join(' ')} < "${promptFile}"
   subscribe(executionId: string): EventEmitter | null {
     const instance = this.executions.get(executionId)
     return instance?.emitter ?? null
+  }
+
+  /**
+   * Consensus 결과 조회
+   */
+  getConsensusResult(executionId: string): ConsensusResult | null {
+    const instance = this.executions.get(executionId)
+    return instance?.consensusResult ?? null
   }
 
   /**

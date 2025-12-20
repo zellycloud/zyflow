@@ -183,6 +183,86 @@ router.get('/profiles/:id/check', async (req: Request, res: Response) => {
 })
 
 /**
+ * POST /api/cli/test
+ * Test CLI availability
+ */
+router.post('/test', async (req: Request, res: Response) => {
+  try {
+    const { command, args = [] } = req.body
+
+    if (!command) {
+      return res.status(400).json({
+        available: false,
+        error: 'Missing required field: command',
+      })
+    }
+
+    // Import spawn for CLI testing
+    const { spawn } = await import('child_process')
+    const { promisify } = await import('util')
+
+    // Test CLI availability by running version or help command
+    const testResult = await new Promise<{ available: boolean; version?: string; error?: string }>((resolve) => {
+      const proc = spawn(command, [...args, '--version'], {
+        shell: true,
+        stdio: 'pipe',
+      })
+
+      let output = ''
+      let errorOutput = ''
+
+      proc.stdout?.on('data', (data) => {
+        output += data.toString()
+      })
+
+      proc.stderr?.on('data', (data) => {
+        errorOutput += data.toString()
+      })
+
+      const timeout = setTimeout(() => {
+        proc.kill()
+        resolve({
+          available: false,
+          error: 'Command timeout',
+        })
+      }, 5000)
+
+      proc.on('close', (code) => {
+        clearTimeout(timeout)
+        if (code === 0 || output || errorOutput) {
+          // CLI exists and responded
+          const version = output.trim() || errorOutput.trim()
+          resolve({
+            available: true,
+            version: version.split('\n')[0] || 'unknown',
+          })
+        } else {
+          resolve({
+            available: false,
+            error: `Command not found or exited with code ${code}`,
+          })
+        }
+      })
+
+      proc.on('error', (err) => {
+        clearTimeout(timeout)
+        resolve({
+          available: false,
+          error: err.message,
+        })
+      })
+    })
+
+    res.json(testResult)
+  } catch (error) {
+    res.status(500).json({
+      available: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    })
+  }
+})
+
+/**
  * GET /api/cli/settings
  * Get CLI settings (enabled/disabled status and selected models)
  */

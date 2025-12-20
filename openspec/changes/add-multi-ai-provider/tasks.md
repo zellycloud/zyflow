@@ -186,7 +186,22 @@
 
 ### 선택 항목 (v2)
 
-- [ ] Swarm에 다중 Provider 지원
-- [ ] 태스크 유형별 자동 라우팅
-- [ ] Consensus 패턴 (다중 AI 합의)
-- [ ] 커스텀 CLI 추가 UI
+- [x] Swarm에 다중 Provider 지원
+  - consensus.ts에 실제 CLI 실행 구현
+  - executor.ts에 consensus 모드 통합
+  - 다중 Provider 병렬 실행 지원
+
+- [x] 태스크 유형별 자동 라우팅
+  - task-routing.ts에 shouldUseConsensus, getAutoRouting 추가
+  - 태스크 복잡도 분석 (0-100점)
+  - 단일/Swarm/Consensus 모드 자동 선택
+
+- [x] Consensus 패턴 (다중 AI 합의)
+  - 4가지 전략 구현 (majority, weighted, unanimous, best-of-n)
+  - Jaccard 유사도 기반 결과 비교
+  - API 엔드포인트 추가 (/api/claude-flow/consensus, /providers)
+
+- [x] 커스텀 CLI 추가 UI
+  - CustomCLIDialog에 템플릿 선택 기능 추가 (Ollama, LlamaCpp 등)
+  - CLISettings에 Consensus 설정 UI 추가
+  - 전략 선택, 임계값, 타임아웃 설정

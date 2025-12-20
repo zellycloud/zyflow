@@ -132,3 +132,60 @@ export const DEFAULT_MODELS: Record<AIProvider, string> = {
   opencode: '',
   custom: '',
 }
+
+// =============================================
+// Consensus 타입
+// =============================================
+
+/** Consensus 전략 */
+export type ConsensusStrategy =
+  | 'majority'     // 다수결 (가장 많이 나온 결과 채택)
+  | 'weighted'     // 가중 투표 (Provider별 신뢰도 기반)
+  | 'unanimous'    // 만장일치 (모든 AI가 동의해야 함)
+  | 'best-of-n'    // N개 중 최고 품질 선택
+
+/** Consensus 설정 */
+export interface ConsensusConfig {
+  strategy: ConsensusStrategy
+  providers: AIProvider[]
+  /** 가중치 (weighted 전략용) */
+  weights?: Partial<Record<AIProvider, number>>
+  /** 최소 합의 비율 (0-1) */
+  threshold?: number
+  /** 타임아웃 (ms) */
+  timeout?: number
+}
+
+/** 개별 Provider 결과 */
+export interface ProviderResult {
+  provider: AIProvider
+  model?: string
+  success: boolean
+  output: string
+  confidence?: number
+  duration: number
+  error?: string
+}
+
+/** Consensus 결과 */
+export interface ConsensusResult {
+  success: boolean
+  strategy: ConsensusStrategy
+  finalOutput: string
+  confidence: number
+  providerResults: ProviderResult[]
+  agreement: number
+  metadata: {
+    totalProviders: number
+    successfulProviders: number
+    averageDuration: number
+  }
+}
+
+/** Consensus 추천 정보 */
+export interface ConsensusRecommendation {
+  shouldUseConsensus: boolean
+  strategy: ConsensusStrategy
+  providers: AIProvider[]
+  reason: string
+}

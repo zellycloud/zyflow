@@ -18,7 +18,7 @@ import type {
   ClaudeFlowStatusResponse,
   ClaudeFlowHistoryResponse,
 } from '@/types'
-import type { AIProvider } from '@/types/ai'
+import type { AIProvider, ConsensusConfig, ConsensusResult } from '@/types/ai'
 
 // =============================================
 // Swarm 전용 타입
@@ -53,6 +53,8 @@ export interface SwarmExecution {
   provider?: AIProvider
   /** 모델 (v2) */
   model?: string
+  /** Consensus 결과 (v2) */
+  consensusResult?: ConsensusResult
 }
 
 /** Swarm 실행 요청 파라미터 */
@@ -67,6 +69,8 @@ export interface SwarmExecuteParams {
   provider?: AIProvider
   /** 모델 (v2 - 다중 Provider 지원) */
   model?: string
+  /** Consensus 설정 (v2 - 다중 AI 합의) */
+  consensus?: ConsensusConfig
 }
 
 // =============================================
@@ -137,6 +141,7 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
     error: null,
     provider: undefined,
     model: undefined,
+    consensusResult: undefined,
   })
 
   const [isRunning, setIsRunning] = useState(false)
@@ -165,6 +170,11 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
     eventSource.addEventListener('progress', (event) => {
       const { progress } = JSON.parse(event.data)
       setExecution(prev => ({ ...prev, progress }))
+    })
+
+    eventSource.addEventListener('consensus', (event) => {
+      const consensusResult: ConsensusResult = JSON.parse(event.data)
+      setExecution(prev => ({ ...prev, consensusResult }))
     })
 
     eventSource.addEventListener('status', (event) => {
@@ -241,6 +251,7 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
           maxAgents: params.maxAgents ?? 5,
           provider: params.provider,
           model: params.model,
+          consensus: params.consensus,
         }),
       })
 
@@ -375,6 +386,7 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
       error: null,
       provider: undefined,
       model: undefined,
+      consensusResult: undefined,
     })
     setIsRunning(false)
     setError(null)
