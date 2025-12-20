@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { FileText, Plus, Loader2, Play, History } from 'lucide-react'
+import { useState, useMemo, useCallback } from 'react'
+import { FileText, Plus, Loader2, Play, History, CheckSquare, Square, MinusSquare } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
@@ -40,6 +40,12 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
   const [executingTask, setExecutingTask] = useState<FlowTask | null>(null)
   const [historyTask, setHistoryTask] = useState<FlowTask | null>(null)
 
+  // 선택된 태스크 ID 관리
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(new Set())
+
+  // 다중 태스크 실행 다이얼로그 상태
+  const [executingMultiple, setExecutingMultiple] = useState(false)
+
   // Proposal 내용 가져오기 (Changes 탭용)
   const { data: proposalContent, isLoading: proposalLoading } = useProposalContent(
     stage === 'changes' ? changeId : null
@@ -59,6 +65,49 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
     const newStatus = task.status === 'done' ? 'todo' : 'done'
     await updateTask.mutateAsync({ id: task.id, status: newStatus })
   }
+
+  // 태스크 선택 토글
+  const handleToggleSelect = useCallback((taskId: number) => {
+    setSelectedTaskIds(prev => {
+      const next = new Set(prev)
+      if (next.has(taskId)) {
+        next.delete(taskId)
+      } else {
+        next.add(taskId)
+      }
+      return next
+    })
+  }, [])
+
+  // 그룹 전체 선택/해제 (Sub Section 단위)
+  const handleToggleGroupSelect = useCallback((taskIds: number[]) => {
+    setSelectedTaskIds(prev => {
+      const allSelected = taskIds.every(id => prev.has(id))
+      const next = new Set(prev)
+      if (allSelected) {
+        // 모두 선택됨 -> 모두 해제
+        taskIds.forEach(id => next.delete(id))
+      } else {
+        // 일부 또는 없음 -> 모두 선택
+        taskIds.forEach(id => next.add(id))
+      }
+      return next
+    })
+  }, [])
+
+  // 그룹 선택 상태 확인 (all/some/none)
+  const getGroupSelectState = useCallback((taskIds: number[]): 'all' | 'some' | 'none' => {
+    const selectedCount = taskIds.filter(id => selectedTaskIds.has(id)).length
+    if (selectedCount === 0) return 'none'
+    if (selectedCount === taskIds.length) return 'all'
+    return 'some'
+  }, [selectedTaskIds])
+
+  // 선택된 태스크 목록
+  const selectedTasks = useMemo(() =>
+    tasks.filter(t => selectedTaskIds.has(t.id)),
+    [tasks, selectedTaskIds]
+  )
 
   // Spec 탭: specs/{spec-id}/spec.md (기능 명세서)
   if (stage === 'spec') {
@@ -231,10 +280,23 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
             {tasks.filter((t) => t.status === 'done').length}/{tasks.length}
           </Badge>
         </div>
-        <Button variant="outline" size="sm">
-          <Plus className="h-4 w-4 mr-2" />
-          추가
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* 선택된 태스크가 있을 때 실행 버튼 표시 */}
+          {selectedTaskIds.size > 0 && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setExecutingMultiple(true)}
+            >
+              <Play className="h-4 w-4 mr-2" />
+              선택 실행 ({selectedTaskIds.size}개)
+            </Button>
+          )}
+          <Button variant="outline" size="sm">
+            <Plus className="h-4 w-4 mr-2" />
+            추가
+          </Button>
+        </div>
       </div>
 
       {/* Task Content */}
@@ -261,22 +323,57 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
               <div className="space-y-4">
                 {major.subSections.map((sub) => (
                   <div key={`${major.majorOrder}-${sub.subOrder}`} className="space-y-2">
-                    {/* Sub Section Header (### 1.1 소제목) */}
-                    {showSubHeaders && (
-                      <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                        <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                          {major.majorOrder}.{sub.subOrder}
-                        </span>
-                        {sub.groupTitle}
-                      </h3>
-                    )}
+                    {/* Sub Section Header (### 1.1 소제목) with Group Select */}
+                    {showSubHeaders && (() => {
+                      const pendingTaskIds = sub.tasks
+                        .filter(t => t.status !== 'done')
+                        .map(t => t.id)
+                      const selectState = getGroupSelectState(pendingTaskIds)
+                      const hasPendingTasks = pendingTaskIds.length > 0
+
+                      return (
+                        <div className="flex items-center gap-2">
+                          {hasPendingTasks && (
+                            <button
+                              onClick={() => handleToggleGroupSelect(pendingTaskIds)}
+                              className="hover:bg-muted rounded p-0.5 transition-colors"
+                              title={selectState === 'all' ? '전체 해제' : '전체 선택'}
+                            >
+                              {selectState === 'all' ? (
+                                <CheckSquare className="h-4 w-4 text-primary" />
+                              ) : selectState === 'some' ? (
+                                <MinusSquare className="h-4 w-4 text-primary" />
+                              ) : (
+                                <Square className="h-4 w-4 text-muted-foreground" />
+                              )}
+                            </button>
+                          )}
+                          <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                            <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                              {major.majorOrder}.{sub.subOrder}
+                            </span>
+                            {sub.groupTitle}
+                            {hasPendingTasks && (
+                              <span className="text-xs text-muted-foreground">
+                                ({pendingTaskIds.length}개)
+                              </span>
+                            )}
+                          </h3>
+                        </div>
+                      )
+                    })()}
 
                     {/* Tasks Table */}
                     <div className="rounded-md border">
                       <Table>
                         <TableHeader>
                           <TableRow className="hover:bg-transparent">
-                            <TableHead className="w-10"></TableHead>
+                            <TableHead className="w-10">
+                              <span className="sr-only">선택</span>
+                            </TableHead>
+                            <TableHead className="w-10">
+                              <span className="sr-only">완료</span>
+                            </TableHead>
                             <TableHead className="w-16">#</TableHead>
                             <TableHead>태스크</TableHead>
                             <TableHead className="w-20 text-center">우선순위</TableHead>
@@ -288,8 +385,23 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
                           {sub.tasks.map((task) => (
                             <TableRow
                               key={task.id}
-                              className={cn(task.status === 'done' && 'bg-muted/30')}
+                              className={cn(
+                                task.status === 'done' && 'bg-muted/30',
+                                selectedTaskIds.has(task.id) && 'bg-primary/5'
+                              )}
                             >
+                              {/* 선택 체크박스 */}
+                              <TableCell>
+                                {task.status !== 'done' ? (
+                                  <Checkbox
+                                    checked={selectedTaskIds.has(task.id)}
+                                    onCheckedChange={() => handleToggleSelect(task.id)}
+                                  />
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">-</span>
+                                )}
+                              </TableCell>
+                              {/* 완료 체크박스 */}
                               <TableCell>
                                 <Checkbox
                                   checked={task.status === 'done'}
@@ -422,6 +534,36 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
               : String(historyTask.id)
           }
           taskTitle={historyTask.title}
+        />
+      )}
+
+      {/* Multiple Tasks Execution Dialog */}
+      {executingMultiple && selectedTasks.length > 0 && (
+        <TaskExecutionDialog
+          open={executingMultiple}
+          onOpenChange={(open) => {
+            if (!open) {
+              setExecutingMultiple(false)
+              setSelectedTaskIds(new Set()) // 선택 초기화
+            }
+          }}
+          changeId={changeId}
+          taskId={selectedTasks.map(t =>
+            t.displayId
+              ? `task-${t.displayId.replace(/\./g, '-')}`
+              : String(t.id)
+          ).join(',')}
+          taskTitle={
+            selectedTasks.length === 1
+              ? selectedTasks[0].title
+              : `선택된 ${selectedTasks.length}개 태스크`
+          }
+          onComplete={() => {
+            // 완료된 태스크들 상태 업데이트
+            selectedTasks.forEach(task => {
+              updateTask.mutateAsync({ id: task.id, status: 'done' })
+            })
+          }}
         />
       )}
     </div>
