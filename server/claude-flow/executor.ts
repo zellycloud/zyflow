@@ -156,7 +156,6 @@ export class ClaudeFlowExecutor {
       const scriptArgs: string[] = [
         '--output-format', 'stream-json',
         '--dangerously-skip-permissions',
-        '--max-tokens', '16000',
       ]
 
       // 모델 설정 (Provider에 따라)
