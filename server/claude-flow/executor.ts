@@ -152,8 +152,10 @@ export class ClaudeFlowExecutor {
       await writeFile(promptFile, finalPrompt, 'utf-8')
 
       // Claude Code 직접 실행 (claude-flow swarm 대신)
-      // 이렇게 하면 단일 실행과 동일한 JSON 스트림 출력을 받을 수 있음
+      // --print 모드에서 stream-json 사용 시 --verbose 필요
       const scriptArgs: string[] = [
+        '--print',
+        '--verbose',
         '--output-format', 'stream-json',
         '--dangerously-skip-permissions',
       ]
@@ -173,9 +175,10 @@ export class ClaudeFlowExecutor {
         scriptArgs.push('--model', fullModel)
       }
 
+      // 프롬프트를 쉘에서 안전하게 전달하기 위해 heredoc 사용
       const scriptContent = `#!/bin/bash
 cd "${instance.status.request.projectPath}"
-exec claude -p "${promptFile}" ${scriptArgs.join(' ')}
+exec claude ${scriptArgs.join(' ')} < "${promptFile}"
 `
       await writeFile(scriptFile, scriptContent, { mode: 0o755 })
 
