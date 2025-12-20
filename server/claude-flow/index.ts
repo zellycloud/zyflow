@@ -41,6 +41,8 @@ claudeFlowRouter.post('/execute', async (req: Request, res: Response) => {
       strategy: body.strategy,
       maxAgents: body.maxAgents,
       timeout: body.timeout,
+      provider: body.provider,
+      model: body.model,
     }
 
     const executionId = await claudeFlowExecutor.execute(request)

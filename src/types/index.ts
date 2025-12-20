@@ -300,6 +300,9 @@ export type ClaudeFlowLogType =
   | 'system'
   | 'progress'
 
+/** AI Provider 타입 (claude-flow Swarm 용) */
+export type ClaudeFlowAIProvider = 'claude' | 'gemini' | 'codex' | 'qwen' | 'kilo' | 'opencode' | 'custom'
+
 /** 실행 요청 */
 export interface ClaudeFlowExecutionRequest {
   projectPath: string
@@ -309,6 +312,10 @@ export interface ClaudeFlowExecutionRequest {
   strategy?: ClaudeFlowStrategy
   maxAgents?: number
   timeout?: number
+  /** AI Provider (v2 - 다중 Provider 지원) */
+  provider?: ClaudeFlowAIProvider
+  /** 모델 (v2 - 다중 Provider 지원) */
+  model?: string
 }
 
 /** 로그 항목 */

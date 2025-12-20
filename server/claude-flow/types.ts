@@ -13,6 +13,9 @@ export type ExecutionMode = 'full' | 'single' | 'analysis'
 /** swarm 전략 */
 export type SwarmStrategy = 'development' | 'research' | 'testing'
 
+/** AI Provider 타입 */
+export type AIProvider = 'claude' | 'gemini' | 'codex' | 'qwen' | 'kilo' | 'opencode' | 'custom'
+
 /** 실행 요청 */
 export interface ExecutionRequest {
   /** 프로젝트 경로 */
@@ -29,6 +32,10 @@ export interface ExecutionRequest {
   maxAgents?: number
   /** 타임아웃 ms (기본: 30분) */
   timeout?: number
+  /** AI Provider (기본: claude) */
+  provider?: AIProvider
+  /** 모델 (Provider별 기본값 사용) */
+  model?: string
 }
 
 // =============================================
