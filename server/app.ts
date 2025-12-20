@@ -38,6 +38,7 @@ import { syncChangeTasksFromFile, syncChangeTasksForProject } from './sync.js'
 import { cliRoutes } from './cli-adapter/index.js'
 import { postTaskRouter } from './routes/post-task.js'
 import { claudeFlowRouter } from './claude-flow/index.js'
+import { aiRouter } from './ai/index.js'
 import { OpenSpecPromptBuilder } from './claude-flow/prompt-builder.js'
 import * as pty from 'node-pty'
 const execAsync = promisify(exec)
@@ -103,6 +104,9 @@ app.use('/api/post-task', postTaskRouter)
 
 // Claude-Flow API 라우터 등록
 app.use('/api/claude-flow', claudeFlowRouter)
+
+// AI Execution API 라우터 등록 (단일 Provider 실행)
+app.use('/api/ai', aiRouter)
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
@@ -1707,6 +1711,7 @@ function getChangeStages(changeId: string, _projectPath?: string) {
     task_order: number
     major_title: string | null
     sub_order: number | null
+    display_id: string | null
     created_at: number
     updated_at: number
     archived_at: number | null
@@ -1734,6 +1739,7 @@ function getChangeStages(changeId: string, _projectPath?: string) {
       taskOrder: task.task_order,
       majorTitle: task.major_title,
       subOrder: task.sub_order,
+      displayId: task.display_id,
       createdAt: new Date(task.created_at).toISOString(),
       updatedAt: new Date(task.updated_at).toISOString(),
       archivedAt: task.archived_at ? new Date(task.archived_at).toISOString() : null,
@@ -2036,6 +2042,7 @@ app.post('/api/flow/sync', async (_req, res) => {
         }
 
         // Sync tasks from tasks.md (3단계 계층 지원)
+        // 전략: displayId 기반 매칭 (가장 안정적, 위치 기반)
         try {
           const tasksPath = join(changeDir, 'tasks.md')
           const tasksContent = await readFile(tasksPath, 'utf-8')
@@ -2044,38 +2051,52 @@ app.post('/api/flow/sync', async (_req, res) => {
           // Extended group type with 3-level hierarchy
           interface ExtendedGroup {
             title: string
-            tasks: Array<{ title: string; completed: boolean; lineNumber: number }>
+            tasks: Array<{ title: string; completed: boolean; lineNumber: number; displayId?: string }>
             majorOrder?: number
             majorTitle?: string
             subOrder?: number
+            groupTitle?: string
           }
+
+          // 파일에서 파싱된 모든 displayId 수집 (삭제 감지용)
+          const parsedDisplayIds = new Set<string>()
 
           for (const group of parsed.groups as ExtendedGroup[]) {
             // 3단계 계층 정보 추출
             const majorOrder = group.majorOrder ?? 1
             const majorTitle = group.majorTitle ?? group.title
             const subOrder = group.subOrder ?? 1
-            const groupTitle = group.title // ### 1.1 Subsection Title
+            const groupTitle = group.groupTitle ?? group.title // ### 1.1 Subsection Title
 
             for (let taskIdx = 0; taskIdx < group.tasks.length; taskIdx++) {
               const task = group.tasks[taskIdx]
               const taskOrder = taskIdx + 1
+              const displayId = task.displayId || null
 
-              // 우선순위 1: title + group_title로 매칭
-              // 우선순위 2: group_title + task_order로 매칭 (title이 변경된 경우)
-              let existingTask = sqlite.prepare(`
-                SELECT id FROM tasks WHERE change_id = ? AND title = ? AND group_title = ?
-              `).get(changeId, task.title, groupTitle) as { id: number } | undefined
+              if (displayId) {
+                parsedDisplayIds.add(displayId)
+              }
 
-              // title로 매칭되지 않으면 group_title + task_order로 시도
+              // 매칭 전략 (우선순위 순):
+              // 1. displayId로 매칭 (가장 안정적 - 파서가 순서 기반으로 생성)
+              // 2. change_id + title로 매칭 (displayId가 없는 레거시 데이터용)
+              let existingTask: { id: number } | undefined
+
+              if (displayId) {
+                existingTask = sqlite.prepare(`
+                  SELECT id FROM tasks WHERE change_id = ? AND display_id = ?
+                `).get(changeId, displayId) as { id: number } | undefined
+              }
+
+              // displayId로 못 찾으면 title로 시도 (레거시 호환)
               if (!existingTask) {
                 existingTask = sqlite.prepare(`
-                  SELECT id FROM tasks WHERE change_id = ? AND group_title = ? AND task_order = ?
-                `).get(changeId, groupTitle, taskOrder) as { id: number } | undefined
+                  SELECT id FROM tasks WHERE change_id = ? AND title = ?
+                `).get(changeId, task.title) as { id: number } | undefined
               }
 
               if (existingTask) {
-                // Update existing task with title, status and 3-level hierarchy info
+                // 기존 태스크 업데이트
                 const newStatus = task.completed ? 'done' : 'todo'
                 sqlite.prepare(`
                   UPDATE tasks
@@ -2086,24 +2107,39 @@ app.post('/api/flow/sync', async (_req, res) => {
                       task_order = ?,
                       major_title = ?,
                       sub_order = ?,
+                      display_id = ?,
+                      project_id = ?,
                       updated_at = ?
                   WHERE id = ?
-                `).run(task.title, newStatus, groupTitle, majorOrder, taskOrder, majorTitle, subOrder, now, existingTask.id)
+                `).run(
+                  task.title,
+                  newStatus,
+                  groupTitle,
+                  majorOrder,
+                  taskOrder,
+                  majorTitle,
+                  subOrder,
+                  displayId,
+                  project.id,
+                  now,
+                  existingTask.id
+                )
               } else {
-                // sequences 테이블에서 다음 ID 가져오기
+                // 새 태스크 생성
                 sqlite.prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_openspec'`).run()
                 const seqResult = sqlite.prepare(`SELECT value FROM sequences WHERE name = 'task_openspec'`).get() as { value: number }
                 const newId = seqResult.value
 
                 sqlite.prepare(`
                   INSERT INTO tasks (
-                    id, change_id, stage, title, status, priority, "order",
+                    id, project_id, change_id, stage, title, status, priority, "order",
                     group_title, group_order, task_order, major_title, sub_order,
-                    origin, created_at, updated_at
+                    display_id, origin, created_at, updated_at
                   )
-                  VALUES (?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
+                  VALUES (?, ?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
                 `).run(
                   newId,
+                  project.id,
                   changeId,
                   task.title,
                   task.completed ? 'done' : 'todo',
@@ -2113,9 +2149,28 @@ app.post('/api/flow/sync', async (_req, res) => {
                   taskOrder,
                   majorTitle,
                   subOrder,
+                  displayId,
                   now,
                   now
                 )
+              }
+            }
+          }
+
+          // 파일에서 삭제된 태스크 정리 (displayId가 있는 태스크 중 파일에 없는 것)
+          // 삭제 대신 archived 상태로 변경 (데이터 보존)
+          if (parsedDisplayIds.size > 0) {
+            const dbTasks = sqlite.prepare(`
+              SELECT id, display_id FROM tasks
+              WHERE change_id = ? AND display_id IS NOT NULL AND status != 'archived'
+            `).all(changeId) as Array<{ id: number; display_id: string }>
+
+            for (const dbTask of dbTasks) {
+              if (!parsedDisplayIds.has(dbTask.display_id)) {
+                // 파일에서 삭제된 태스크 - archived로 표시
+                sqlite.prepare(`
+                  UPDATE tasks SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ?
+                `).run(now, now, dbTask.id)
               }
             }
           }
