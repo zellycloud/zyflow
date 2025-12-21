@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Sparkles,
   Archive,
+  BookOpen,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -164,6 +165,19 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
 
   const handleSelectArchived = (projectId: string) => {
     const selectedItem: SelectedItem = { type: 'archived', projectId }
+
+    // 먼저 UI 업데이트 (즉시 반응)
+    onSelect(selectedItem)
+    selectItem(selectedItem)
+
+    // 프로젝트 활성화는 비동기로
+    if (projectId !== projectsData?.activeProjectId) {
+      activateProject.mutate(projectId)
+    }
+  }
+
+  const handleSelectDocs = (projectId: string) => {
+    const selectedItem: SelectedItem = { type: 'docs', projectId }
 
     // 먼저 UI 업데이트 (즉시 반응)
     onSelect(selectedItem)
@@ -412,6 +426,21 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                             >
                               <Archive className="size-3" />
                               <span>Archive</span>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          {/* Docs */}
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              onClick={() =>
+                                handleSelectDocs(project.id)
+                              }
+                              isActive={
+                                selectedItem?.type === 'docs' &&
+                                selectedItem.projectId === project.id
+                              }
+                            >
+                              <BookOpen className="size-3" />
+                              <span>Docs</span>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>
                           {/* Project Settings */}

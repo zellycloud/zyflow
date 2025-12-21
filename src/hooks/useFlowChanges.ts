@@ -308,6 +308,7 @@ export type SelectedItem =
   | { type: 'agent'; projectId: string; changeId?: string }
   | { type: 'post-task'; projectId: string }
   | { type: 'archived'; projectId: string; archivedChangeId?: string }
+  | { type: 'docs'; projectId: string }
   | { type: 'settings' }
 
 export function useSelectedItem() {

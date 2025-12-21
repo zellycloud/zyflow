@@ -8,6 +8,7 @@ import { ProjectSettings } from '@/components/settings/ProjectSettings'
 import { AgentPage } from '@/components/agent'
 import { PostTaskView } from '@/components/post-task'
 import { ArchivedChangesPage } from '@/components/dashboard/ArchivedChangesPage'
+import { DocsViewer } from '@/components/docs'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { useSelectedData } from '@/hooks/useFlowChanges'
 
@@ -111,6 +112,15 @@ export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
           initialArchivedChangeId={selectedItem.archivedChangeId}
         />
       )
+    case 'docs':
+      if (!selectedProject?.path) {
+        return (
+          <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+            <p>프로젝트 경로를 찾을 수 없습니다</p>
+          </div>
+        )
+      }
+      return <DocsViewer projectPath={selectedProject.path} />
     default:
       return null
   }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Toaster } from 'sonner'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { ThemeProvider } from '@/context/theme-provider'
@@ -8,6 +8,7 @@ import { FlowSidebar } from '@/components/layout/FlowSidebar'
 import { StatusBar } from '@/components/layout/StatusBar'
 import { FlowContent } from '@/components/flow/FlowContent'
 import { ChatPanel } from '@/components/chat'
+import { DocsCommandPalette } from '@/components/docs'
 import { ThemeToggle } from '@/components/dashboard/ThemeToggle'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useProjectsAllData } from '@/hooks/useProjects'
@@ -29,6 +30,7 @@ export type SelectedItem =
   | { type: 'agent'; projectId: string; changeId?: string }
   | { type: 'post-task'; projectId: string }
   | { type: 'archived'; projectId: string; archivedChangeId?: string }
+  | { type: 'docs'; projectId: string }
   | { type: 'settings' }
   | null
 
@@ -129,6 +131,7 @@ function AppContent() {
     const saved = localStorage.getItem('chat-panel-collapsed')
     return saved === 'true'
   })
+  const [docsCommandPaletteOpen, setDocsCommandPaletteOpen] = useState(false)
 
   const { isConnected } = useWebSocket()
   const { data: projectsData } = useProjectsAllData()
@@ -164,6 +167,11 @@ function AppContent() {
         e.preventDefault()
         setRightSidebarCollapsed(prev => !prev)
       }
+      // Cmd/Ctrl + Shift + D for docs command palette
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'd') {
+        e.preventDefault()
+        setDocsCommandPaletteOpen(prev => !prev)
+      }
     }
 
     document.addEventListener('keydown', handleKeyDown)
@@ -178,6 +186,14 @@ function AppContent() {
       localStorage.removeItem('zyflow-selected-item')
     }
   }, [selectedItem])
+
+  // 문서 선택 핸들러 (명령어 팔레트에서 선택 시)
+  const handleSelectDoc = useCallback((_docPath: string) => {
+    // 활성 프로젝트가 있으면 Docs 페이지로 이동
+    if (projectsData?.activeProjectId) {
+      setSelectedItem({ type: 'docs', projectId: projectsData.activeProjectId })
+    }
+  }, [projectsData?.activeProjectId])
 
   return (
     <SidebarProvider>
@@ -230,6 +246,14 @@ function AppContent() {
         </div>
       </div>
       <Toaster position="bottom-right" />
+
+      {/* 문서 검색 명령어 팔레트 (Cmd+Shift+D) */}
+      <DocsCommandPalette
+        open={docsCommandPaletteOpen}
+        onOpenChange={setDocsCommandPaletteOpen}
+        projectPath={currentWorkingDirectory}
+        onSelectDoc={handleSelectDoc}
+      />
     </SidebarProvider>
   )
 }
