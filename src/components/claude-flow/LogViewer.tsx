@@ -169,7 +169,9 @@ export function LogViewer({
 
                       {/* 내용 */}
                       <span className="text-zinc-300 break-all whitespace-pre-wrap">
-                        {log.content}
+                        {typeof log.content === 'string'
+                          ? log.content
+                          : JSON.stringify(log.content, null, 2)}
                       </span>
                     </div>
 
