@@ -24,6 +24,7 @@ import {
   Cloud,
   Package,
   Terminal,
+  FileText,
 } from 'lucide-react';
 import {
   useScanSystemSources,
@@ -55,6 +56,7 @@ const SOURCE_ICONS: Record<string, React.ReactNode> = {
   'azure-cli': <Cloud className="h-4 w-4" />,
   'docker': <Package className="h-4 w-4" />,
   'npm': <Package className="h-4 w-4" />,
+  'global-env': <FileText className="h-4 w-4" />,
 };
 
 // Service type 아이콘 매핑
@@ -63,6 +65,12 @@ const SERVICE_ICONS: Record<string, React.ReactNode> = {
   aws: <Cloud className="h-4 w-4" />,
   gcp: <Cloud className="h-4 w-4" />,
   azure: <Cloud className="h-4 w-4" />,
+  supabase: <Cloud className="h-4 w-4" />,
+  vercel: <Cloud className="h-4 w-4" />,
+  openai: <Terminal className="h-4 w-4" />,
+  anthropic: <Terminal className="h-4 w-4" />,
+  stripe: <Terminal className="h-4 w-4" />,
+  sentry: <Terminal className="h-4 w-4" />,
 };
 
 export function SystemImportDialog({

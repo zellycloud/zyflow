@@ -532,6 +532,152 @@ async function scanDockerConfig(): Promise<DockerConfig | null> {
 }
 
 // =============================================
+// 전역 .env 파일 스캔
+// =============================================
+
+interface GlobalEnvResult {
+  files: string[];
+  variables: Map<string, { value: string; source: string }>;
+}
+
+// 전역 .env 파일 경로들
+const GLOBAL_ENV_PATHS = [
+  '.env',
+  '.env.local',
+  '.env.global',
+  '.env.secrets',
+  '.secrets',
+  '.credentials',
+];
+
+// 알려진 서비스 키 패턴
+const SERVICE_KEY_PATTERNS: Record<string, { type: ExtendedServiceType; keys: string[] }> = {
+  github: {
+    type: 'github',
+    keys: ['GITHUB_TOKEN', 'GITHUB_ACCESS_TOKEN', 'GH_TOKEN', 'GITHUB_API_TOKEN', 'GITHUB_PAT'],
+  },
+  supabase: {
+    type: 'supabase',
+    keys: ['SUPABASE_URL', 'SUPABASE_KEY', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_KEY', 'SUPABASE_SERVICE_ROLE_KEY'],
+  },
+  vercel: {
+    type: 'vercel',
+    keys: ['VERCEL_TOKEN', 'VERCEL_API_TOKEN', 'VERCEL_ACCESS_TOKEN'],
+  },
+  openai: {
+    type: 'openai',
+    keys: ['OPENAI_API_KEY', 'OPENAI_KEY'],
+  },
+  anthropic: {
+    type: 'anthropic',
+    keys: ['ANTHROPIC_API_KEY', 'CLAUDE_API_KEY'],
+  },
+  aws: {
+    type: 'aws',
+    keys: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_REGION'],
+  },
+  stripe: {
+    type: 'stripe',
+    keys: ['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY', 'STRIPE_API_KEY'],
+  },
+  sentry: {
+    type: 'sentry',
+    keys: ['SENTRY_DSN', 'SENTRY_AUTH_TOKEN'],
+  },
+};
+
+async function scanGlobalEnvFiles(): Promise<GlobalEnvResult> {
+  const home = homedir();
+  const foundFiles: string[] = [];
+  const variables = new Map<string, { value: string; source: string }>();
+
+  for (const envFile of GLOBAL_ENV_PATHS) {
+    const filePath = join(home, envFile);
+    try {
+      const content = await readFile(filePath, 'utf-8');
+      foundFiles.push(envFile);
+
+      // 파싱
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim();
+
+        // 주석이나 빈 줄 무시
+        if (!trimmed || trimmed.startsWith('#')) continue;
+
+        // key=value 파싱
+        const eqIndex = trimmed.indexOf('=');
+        if (eqIndex > 0) {
+          const key = trimmed.substring(0, eqIndex).trim();
+          let value = trimmed.substring(eqIndex + 1).trim();
+
+          // 따옴표 제거
+          if ((value.startsWith('"') && value.endsWith('"')) ||
+              (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+          }
+
+          if (key && value) {
+            variables.set(key, { value, source: envFile });
+          }
+        }
+      }
+    } catch {
+      // 파일 없음
+    }
+  }
+
+  return { files: foundFiles, variables };
+}
+
+/**
+ * 전역 .env에서 서비스 감지
+ */
+function detectServicesFromEnv(
+  variables: Map<string, { value: string; source: string }>
+): Array<{
+  type: ExtendedServiceType;
+  displayName: string;
+  credentials: Record<string, string>;
+  source: string;
+}> {
+  const detected: Array<{
+    type: ExtendedServiceType;
+    displayName: string;
+    credentials: Record<string, string>;
+    source: string;
+  }> = [];
+
+  for (const [serviceName, config] of Object.entries(SERVICE_KEY_PATTERNS)) {
+    const foundCreds: Record<string, string> = {};
+    let source = '';
+
+    for (const key of config.keys) {
+      const variable = variables.get(key);
+      if (variable) {
+        // 키 이름을 간소화 (예: GITHUB_TOKEN -> token)
+        const simplifiedKey = key
+          .replace(new RegExp(`^${serviceName.toUpperCase()}_`, 'i'), '')
+          .toLowerCase()
+          .replace(/_/g, '');
+        foundCreds[simplifiedKey] = variable.value;
+        source = variable.source;
+      }
+    }
+
+    if (Object.keys(foundCreds).length > 0) {
+      detected.push({
+        type: config.type,
+        displayName: `${serviceName.charAt(0).toUpperCase() + serviceName.slice(1)} (from ~/${source})`,
+        credentials: foundCreds,
+        source: `global-env:${source}`,
+      });
+    }
+  }
+
+  return detected;
+}
+
+// =============================================
 // 메인 스캔 함수
 // =============================================
 
@@ -759,6 +905,38 @@ export async function scanSystemSources(projectPath?: string): Promise<InternalS
     icon: 'package',
     available: !!dockerConfig?.hasCredentials,
   });
+
+  // 7. 전역 .env 파일
+  const globalEnv = await scanGlobalEnvFiles();
+  if (globalEnv.files.length > 0) {
+    sources.push({
+      id: 'global-env',
+      name: 'Global .env',
+      description: `~/${globalEnv.files.join(', ~/')}`,
+      icon: 'file-text',
+      available: true,
+    });
+
+    // 전역 .env에서 서비스 감지
+    const envServices = detectServicesFromEnv(globalEnv.variables);
+    for (const envService of envServices) {
+      // 이미 같은 타입의 서비스가 있는지 확인 (중복 방지)
+      const existingService = services.find(s => s.type === envService.type);
+      if (!existingService) {
+        services.push({
+          type: envService.type,
+          displayName: envService.displayName,
+          source: envService.source,
+          credentials: Object.fromEntries(
+            Object.entries(envService.credentials).map(([k, v]) => [k, maskCredentialValue(v)])
+          ),
+          rawCredentials: envService.credentials,
+          isComplete: true,
+          missingRequired: [],
+        });
+      }
+    }
+  }
 
   return { sources, services };
 }
