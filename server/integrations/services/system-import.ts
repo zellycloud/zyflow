@@ -554,7 +554,7 @@ const GLOBAL_ENV_PATHS = [
 const SERVICE_KEY_PATTERNS: Record<string, { type: ExtendedServiceType; keys: string[] }> = {
   github: {
     type: 'github',
-    keys: ['GITHUB_TOKEN', 'GITHUB_ACCESS_TOKEN', 'GH_TOKEN', 'GITHUB_API_TOKEN', 'GITHUB_PAT'],
+    keys: ['GITHUB_TOKEN', 'GITHUB_ACCESS_TOKEN', 'GH_TOKEN', 'GITHUB_API_TOKEN', 'GITHUB_PAT', 'GITHUB_PERSONAL_ACCESS_TOKEN'],
   },
   supabase: {
     type: 'supabase',
