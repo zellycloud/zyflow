@@ -31,6 +31,11 @@ import {
   listEnvFiles,
   type ImportRequest,
 } from './services/env-import.js';
+import {
+  scanAndCacheSystemSources,
+  importSystemServices,
+  type SystemImportRequest,
+} from './services/system-import.js';
 import type { ServiceType, Credentials } from './db/schema.js';
 // Local Settings imports
 import {
@@ -869,6 +874,68 @@ router.post('/env/import', async (req: Request, res: Response) => {
     console.error('Failed to import services:', error);
     res.status(500).json({
       error: 'Failed to import services',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// =============================================
+// 시스템 설정 Import API
+// =============================================
+
+/**
+ * GET /api/integrations/system/scan
+ * 시스템 설정에서 사용 가능한 서비스 스캔
+ * (Git Config, gh CLI, AWS credentials, GCloud, Azure CLI 등)
+ * @query projectPath - 프로젝트 경로 (로컬 git config 조회 시 필요, 선택사항)
+ */
+router.get('/system/scan', async (req: Request, res: Response) => {
+  try {
+    const projectPath = req.query.projectPath as string | undefined;
+    const result = await scanAndCacheSystemSources(projectPath);
+    res.json(result);
+  } catch (error) {
+    console.error('Failed to scan system sources:', error);
+    res.status(500).json({
+      error: 'Failed to scan system sources',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/integrations/system/import
+ * 시스템 설정에서 선택한 서비스를 Integration Hub에 등록
+ */
+router.post('/system/import', async (req: Request, res: Response) => {
+  try {
+    const { projectPath, services } = req.body as {
+      projectPath?: string;
+      services: SystemImportRequest['services'];
+    };
+
+    if (!services || !Array.isArray(services)) {
+      res.status(400).json({
+        error: 'Missing required fields',
+        message: 'services array is required',
+      });
+      return;
+    }
+
+    if (services.length === 0) {
+      res.status(400).json({
+        error: 'No services selected',
+        message: 'At least one service must be selected for import',
+      });
+      return;
+    }
+
+    const result = await importSystemServices({ services }, projectPath);
+    res.json(result);
+  } catch (error) {
+    console.error('Failed to import system services:', error);
+    res.status(500).json({
+      error: 'Failed to import system services',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }

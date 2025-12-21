@@ -639,3 +639,98 @@ export function useImportEnv() {
     },
   });
 }
+
+// =============================================
+// System Import Types
+// =============================================
+
+export interface SystemSource {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  available: boolean;
+  error?: string;
+}
+
+export interface DetectedSystemService {
+  type: string;
+  displayName: string;
+  source: string; // 'git-config', 'gh-cli', 'aws-credentials', 'gcloud', etc.
+  credentials: Record<string, string>; // 마스킹된 값
+  isComplete: boolean;
+  missingRequired: string[];
+  environment?: EnvironmentHint;
+  existingAccount?: {
+    id: string;
+    name: string;
+  };
+}
+
+export interface SystemScanResult {
+  sources: SystemSource[];
+  services: DetectedSystemService[];
+}
+
+export interface SystemImportResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: Array<{ type: string; source: string; error: string }>;
+  accounts: Array<{ id: string; type: string; name: string }>;
+}
+
+// =============================================
+// System Import Hooks
+// =============================================
+
+/**
+ * 시스템 설정 스캔 (Git Config, gh CLI, AWS, GCloud 등)
+ */
+export function useScanSystemSources(projectPath?: string, enabled = false) {
+  return useQuery({
+    queryKey: ['integrations', 'system', 'scan', projectPath],
+    queryFn: async () => {
+      let url = `${API_BASE}/system/scan`;
+      if (projectPath) {
+        url += `?projectPath=${encodeURIComponent(projectPath)}`;
+      }
+      const res = await fetch(url);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to scan system sources');
+      }
+      return res.json() as Promise<SystemScanResult>;
+    },
+    enabled,
+  });
+}
+
+/**
+ * 시스템 설정에서 서비스 Import
+ */
+export function useImportSystemServices() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: {
+      projectPath?: string;
+      services: Array<{ type: string; source: string; name: string }>;
+    }) => {
+      const res = await fetch(`${API_BASE}/system/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to import system services');
+      }
+      return res.json() as Promise<SystemImportResult>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['integrations', 'accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['integrations', 'system'] });
+    },
+  });
+}

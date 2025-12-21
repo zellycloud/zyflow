@@ -12,10 +12,17 @@ import {
   Check,
   Loader2,
   Upload,
+  Terminal,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   useServiceAccounts,
   useDeleteServiceAccount,
@@ -24,6 +31,7 @@ import {
 } from '@/hooks/useIntegrations';
 import { ServiceAccountDialog } from './ServiceAccountDialog';
 import { EnvImportDialog } from './EnvImportDialog';
+import { SystemImportDialog } from './SystemImportDialog';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
@@ -58,6 +66,7 @@ interface ServiceAccountListProps {
 export function ServiceAccountList({ onEdit }: ServiceAccountListProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [systemImportDialogOpen, setSystemImportDialogOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<ServiceAccount | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -130,10 +139,24 @@ export function ServiceAccountList({ onEdit }: ServiceAccountListProps) {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-            <Upload className="h-4 w-4 mr-2" />
-            Import from .env
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <Upload className="h-4 w-4 mr-2" />
+                Import
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setImportDialogOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Import from .env
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSystemImportDialogOpen(true)}>
+                <Terminal className="h-4 w-4 mr-2" />
+                Import from System
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             계정 추가
@@ -271,6 +294,11 @@ export function ServiceAccountList({ onEdit }: ServiceAccountListProps) {
       <EnvImportDialog
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
+      />
+
+      <SystemImportDialog
+        open={systemImportDialogOpen}
+        onOpenChange={setSystemImportDialogOpen}
       />
     </div>
   );

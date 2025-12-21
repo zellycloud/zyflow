@@ -26,14 +26,51 @@ export interface EnvParseResult {
 
 // 지원하는 .env 파일 패턴 (우선순위 순)
 const ENV_FILE_PATTERNS = [
+  // 기본 .env 파일들
   '.env',
   '.env.local',
+  // 환경별 파일
   '.env.development',
   '.env.development.local',
   '.env.production',
   '.env.production.local',
   '.env.staging',
+  '.env.staging.local',
   '.env.test',
+  '.env.test.local',
+  // Next.js 특화
+  '.env.preview',
+  // Doppler / 기타
+  '.env.me',
+  '.env.vault',
+  // Wrangler (Cloudflare Workers)
+  '.dev.vars',
+  // Docker
+  '.env.docker',
+  // Serverless
+  '.env.sls',
+]
+
+// 추가 환경 파일 (하위 폴더 내)
+const ADDITIONAL_ENV_DIRS = [
+  '.vercel', // Vercel CLI 로컬 설정
+  'config',
+  'configs',
+  'environments',
+  'env',
+]
+
+// 추가 설정 파일 패턴 (폴더 내에서 찾을 파일들)
+const ADDITIONAL_ENV_FILES_IN_DIRS = [
+  '.env',
+  '.env.local',
+  '.env.development.local',
+  '.env.preview.local',
+  '.env.production.local',
+  'default.env',
+  'development.env',
+  'production.env',
+  'staging.env',
 ]
 
 /**
@@ -129,11 +166,12 @@ export function parseEnvContent(content: string): Map<string, string> {
 
 /**
  * 프로젝트 디렉토리에서 .env 파일 찾기
+ * @param includeSubdirs 하위 디렉토리도 검색할지 여부 (기본: true)
  */
-export async function findEnvFiles(projectPath: string): Promise<string[]> {
+export async function findEnvFiles(projectPath: string, includeSubdirs = true): Promise<string[]> {
   const foundFiles: string[] = []
 
-  // 기본 패턴 확인
+  // 1. 기본 패턴 확인 (루트 디렉토리)
   for (const pattern of ENV_FILE_PATTERNS) {
     const filePath = join(projectPath, pattern)
     try {
@@ -144,21 +182,86 @@ export async function findEnvFiles(projectPath: string): Promise<string[]> {
     }
   }
 
-  // 추가로 .env.* 패턴 검색
+  // 2. 추가로 .env.* 패턴 검색 (루트)
   try {
     const entries = await readdir(projectPath)
     for (const entry of entries) {
       if (
-        entry.startsWith('.env') &&
+        (entry.startsWith('.env') || entry.endsWith('.env')) &&
         !foundFiles.includes(entry) &&
         !entry.includes('.example') &&
-        !entry.includes('.sample')
+        !entry.includes('.sample') &&
+        !entry.includes('.template')
       ) {
-        foundFiles.push(entry)
+        // 파일인지 확인
+        try {
+          const fileStat = await stat(join(projectPath, entry))
+          if (fileStat.isFile()) {
+            foundFiles.push(entry)
+          }
+        } catch {
+          // stat 실패
+        }
       }
     }
   } catch {
     // 디렉토리 읽기 실패
+  }
+
+  // 3. 하위 디렉토리 검색
+  if (includeSubdirs) {
+    for (const subdir of ADDITIONAL_ENV_DIRS) {
+      const subdirPath = join(projectPath, subdir)
+      try {
+        await access(subdirPath)
+        const subdirStat = await stat(subdirPath)
+
+        if (subdirStat.isDirectory()) {
+          // 지정된 파일 패턴 확인
+          for (const pattern of ADDITIONAL_ENV_FILES_IN_DIRS) {
+            const filePath = join(subdirPath, pattern)
+            try {
+              await access(filePath)
+              const relativePath = join(subdir, pattern)
+              if (!foundFiles.includes(relativePath)) {
+                foundFiles.push(relativePath)
+              }
+            } catch {
+              // 파일 없음
+            }
+          }
+
+          // 추가로 .env.* 패턴 검색 (하위 디렉토리)
+          try {
+            const subdirEntries = await readdir(subdirPath)
+            for (const entry of subdirEntries) {
+              if (
+                (entry.startsWith('.env') || entry.endsWith('.env')) &&
+                !entry.includes('.example') &&
+                !entry.includes('.sample') &&
+                !entry.includes('.template')
+              ) {
+                const relativePath = join(subdir, entry)
+                if (!foundFiles.includes(relativePath)) {
+                  try {
+                    const fileStat = await stat(join(subdirPath, entry))
+                    if (fileStat.isFile()) {
+                      foundFiles.push(relativePath)
+                    }
+                  } catch {
+                    // stat 실패
+                  }
+                }
+              }
+            }
+          } catch {
+            // 디렉토리 읽기 실패
+          }
+        }
+      } catch {
+        // 하위 디렉토리 없음
+      }
+    }
   }
 
   return foundFiles
