@@ -7,13 +7,8 @@ import {
   ChevronRight,
   ChevronDown,
   GitBranch,
-  ListTodo,
-  Bot,
   ArrowDown,
   RefreshCw,
-  Sparkles,
-  Archive,
-  BookOpen,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -101,84 +96,6 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
   const handleSelectChange = (projectId: string, changeId: string) => {
     const selectedItem: SelectedItem = { type: 'change', projectId, changeId }
     
-    // 먼저 UI 업데이트 (즉시 반응)
-    onSelect(selectedItem)
-    selectItem(selectedItem)
-
-    // 프로젝트 활성화는 비동기로
-    if (projectId !== projectsData?.activeProjectId) {
-      activateProject.mutate(projectId)
-    }
-  }
-
-  const handleSelectStandaloneTasks = (projectId: string) => {
-    const selectedItem: SelectedItem = { type: 'standalone-tasks', projectId }
-
-    // 먼저 UI 업데이트 (즉시 반응)
-    onSelect(selectedItem)
-    selectItem(selectedItem)
-
-    // 프로젝트 활성화는 비동기로
-    if (projectId !== projectsData?.activeProjectId) {
-      activateProject.mutate(projectId)
-    }
-  }
-
-  const handleSelectProjectSettings = (projectId: string) => {
-    const selectedItem: SelectedItem = { type: 'project-settings', projectId }
-
-    // 먼저 UI 업데이트 (즉시 반응)
-    onSelect(selectedItem)
-    selectItem(selectedItem)
-
-    // 프로젝트 활성화는 비동기로
-    if (projectId !== projectsData?.activeProjectId) {
-      activateProject.mutate(projectId)
-    }
-  }
-
-  const handleSelectAgent = (projectId: string) => {
-    const selectedItem: SelectedItem = { type: 'agent', projectId }
-
-    // 먼저 UI 업데이트 (즉시 반응)
-    onSelect(selectedItem)
-    selectItem(selectedItem)
-
-    // 프로젝트 활성화는 비동기로
-    if (projectId !== projectsData?.activeProjectId) {
-      activateProject.mutate(projectId)
-    }
-  }
-
-  const handleSelectPostTask = (projectId: string) => {
-    const selectedItem: SelectedItem = { type: 'post-task', projectId }
-
-    // 먼저 UI 업데이트 (즉시 반응)
-    onSelect(selectedItem)
-    selectItem(selectedItem)
-
-    // 프로젝트 활성화는 비동기로
-    if (projectId !== projectsData?.activeProjectId) {
-      activateProject.mutate(projectId)
-    }
-  }
-
-  const handleSelectArchived = (projectId: string) => {
-    const selectedItem: SelectedItem = { type: 'archived', projectId }
-
-    // 먼저 UI 업데이트 (즉시 반응)
-    onSelect(selectedItem)
-    selectItem(selectedItem)
-
-    // 프로젝트 활성화는 비동기로
-    if (projectId !== projectsData?.activeProjectId) {
-      activateProject.mutate(projectId)
-    }
-  }
-
-  const handleSelectDocs = (projectId: string) => {
-    const selectedItem: SelectedItem = { type: 'docs', projectId }
-
     // 먼저 UI 업데이트 (즉시 반응)
     onSelect(selectedItem)
     selectItem(selectedItem)
@@ -368,96 +285,14 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                               </SidebarMenuSubItem>
                             )
                           })}
-                          {/* Agent */}
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton
-                              onClick={() =>
-                                handleSelectAgent(project.id)
-                              }
-                              isActive={
-                                selectedItem?.type === 'agent' &&
-                                selectedItem.projectId === project.id
-                              }
-                            >
-                              <Bot className="size-3" />
-                              <span>Agent</span>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          {/* Post-Task */}
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton
-                              onClick={() =>
-                                handleSelectPostTask(project.id)
-                              }
-                              isActive={
-                                selectedItem?.type === 'post-task' &&
-                                selectedItem.projectId === project.id
-                              }
-                            >
-                              <Sparkles className="size-3" />
-                              <span>Post-Task</span>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          {/* Inbox */}
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton
-                              onClick={() =>
-                                handleSelectStandaloneTasks(project.id)
-                              }
-                              isActive={
-                                selectedItem?.type === 'standalone-tasks' &&
-                                selectedItem.projectId === project.id
-                              }
-                            >
-                              <ListTodo className="size-3" />
-                              <span>Inbox</span>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          {/* Archive */}
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton
-                              onClick={() =>
-                                handleSelectArchived(project.id)
-                              }
-                              isActive={
-                                selectedItem?.type === 'archived' &&
-                                selectedItem.projectId === project.id
-                              }
-                            >
-                              <Archive className="size-3" />
-                              <span>Archive</span>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          {/* Docs */}
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton
-                              onClick={() =>
-                                handleSelectDocs(project.id)
-                              }
-                              isActive={
-                                selectedItem?.type === 'docs' &&
-                                selectedItem.projectId === project.id
-                              }
-                            >
-                              <BookOpen className="size-3" />
-                              <span>Docs</span>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          {/* Project Settings */}
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton
-                              onClick={() =>
-                                handleSelectProjectSettings(project.id)
-                              }
-                              isActive={
-                                selectedItem?.type === 'project-settings' &&
-                                selectedItem.projectId === project.id
-                              }
-                            >
-                              <Settings className="size-3" />
-                              <span>Settings</span>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
+                          {/* Changes가 없을 때 안내 메시지 */}
+                          {(!project.changes || project.changes.length === 0) && (
+                            <SidebarMenuSubItem>
+                              <SidebarMenuSubButton className="text-muted-foreground cursor-default">
+                                <span className="text-xs">변경 사항 없음</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          )}
                         </SidebarMenuSub>
                       </CollapsibleContent>
                     </SidebarMenuItem>

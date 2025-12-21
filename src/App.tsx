@@ -6,6 +6,7 @@ import { SidebarProvider } from '@/components/ui/sidebar'
 import { ResizableSidebar } from '@/components/ui/resizable-sidebar'
 import { FlowSidebar } from '@/components/layout/FlowSidebar'
 import { StatusBar } from '@/components/layout/StatusBar'
+import { MenuBar } from '@/components/layout/MenuBar'
 import { FlowContent } from '@/components/flow/FlowContent'
 import { ChatPanel } from '@/components/chat'
 import { DocsCommandPalette } from '@/components/docs'
@@ -233,10 +234,20 @@ function AppContent() {
             />
           </ResizableSidebar>
 
-          {/* Content Area - 선택에 따라 다른 뷰 */}
-          <main className="flex-1 overflow-y-auto p-6">
-            <FlowContent selectedItem={selectedItem} onSelectItem={setSelectedItem} />
-          </main>
+          {/* Main Content Area with MenuBar */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* MenuBar - Navigation for project-level features */}
+            <MenuBar
+              selectedItem={selectedItem}
+              activeProjectId={projectsData?.activeProjectId}
+              onSelectItem={setSelectedItem}
+            />
+
+            {/* Content Area - 선택에 따라 다른 뷰 */}
+            <main className="flex-1 overflow-y-auto p-6">
+              <FlowContent selectedItem={selectedItem} onSelectItem={setSelectedItem} />
+            </main>
+          </div>
 
           {/* Chat Panel - 오른쪽 채팅 패널 */}
           <ChatPanel
