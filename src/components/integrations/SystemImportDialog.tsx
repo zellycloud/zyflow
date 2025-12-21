@@ -48,6 +48,7 @@ interface SelectedService {
 // Source 아이콘 매핑
 const SOURCE_ICONS: Record<string, React.ReactNode> = {
   'git-config': <GitBranch className="h-4 w-4" />,
+  'git-remote': <Github className="h-4 w-4" />,
   'gh-cli': <Github className="h-4 w-4" />,
   'aws-credentials': <Cloud className="h-4 w-4" />,
   'gcloud': <Cloud className="h-4 w-4" />,

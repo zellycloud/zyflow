@@ -57,7 +57,68 @@ interface InternalScanResult {
 interface GitConfigResult {
   userName?: string;
   userEmail?: string;
+  githubUsername?: string; // Remote URL에서 추출한 GitHub 사용자명
+  remoteUrl?: string;
   scope: 'global' | 'local';
+}
+
+/**
+ * Git remote URL에서 GitHub 사용자명 추출
+ * 지원 형식:
+ * - git@github.com:username/repo.git
+ * - https://github.com/username/repo.git
+ * - https://username@github.com/username/repo.git
+ * - ssh://git@github.com/username/repo.git
+ */
+function extractGitHubUsernameFromUrl(url: string): string | undefined {
+  if (!url) return undefined;
+
+  // SSH 형식: git@github.com:username/repo.git
+  const sshMatch = url.match(/git@github\.com:([^/]+)\//);
+  if (sshMatch) return sshMatch[1];
+
+  // SSH 형식 (ssh:// 프로토콜): ssh://git@github.com/username/repo.git
+  const sshProtocolMatch = url.match(/ssh:\/\/git@github\.com\/([^/]+)\//);
+  if (sshProtocolMatch) return sshProtocolMatch[1];
+
+  // HTTPS 형식 (인증 포함): https://username@github.com/...
+  const httpsAuthMatch = url.match(/https:\/\/([^@]+)@github\.com\//);
+  if (httpsAuthMatch) return httpsAuthMatch[1];
+
+  // HTTPS 형식: https://github.com/username/repo.git
+  const httpsMatch = url.match(/https:\/\/github\.com\/([^/]+)\//);
+  if (httpsMatch) return httpsMatch[1];
+
+  return undefined;
+}
+
+/**
+ * .git/config 파일에서 remote URL 파싱
+ */
+async function parseGitConfigFile(gitConfigPath: string): Promise<{ remoteUrl?: string; githubUsername?: string }> {
+  try {
+    const content = await readFile(gitConfigPath, 'utf-8');
+
+    // [remote "origin"] 섹션에서 url 찾기
+    const remoteMatch = content.match(/\[remote\s+"origin"\][^\[]*url\s*=\s*(.+)/m);
+    if (remoteMatch) {
+      const remoteUrl = remoteMatch[1].trim();
+      const githubUsername = extractGitHubUsernameFromUrl(remoteUrl);
+      return { remoteUrl, githubUsername };
+    }
+
+    // origin이 없으면 첫 번째 remote 사용
+    const anyRemoteMatch = content.match(/\[remote\s+"[^"]+"\][^\[]*url\s*=\s*(.+)/m);
+    if (anyRemoteMatch) {
+      const remoteUrl = anyRemoteMatch[1].trim();
+      const githubUsername = extractGitHubUsernameFromUrl(remoteUrl);
+      return { remoteUrl, githubUsername };
+    }
+  } catch {
+    // 파일 읽기 실패
+  }
+
+  return {};
 }
 
 async function scanGitConfig(projectPath?: string): Promise<GitConfigResult | null> {
@@ -65,6 +126,8 @@ async function scanGitConfig(projectPath?: string): Promise<GitConfigResult | nu
     // Global config
     let userName: string | undefined;
     let userEmail: string | undefined;
+    let githubUsername: string | undefined;
+    let remoteUrl: string | undefined;
     let scope: 'global' | 'local' = 'global';
 
     try {
@@ -106,10 +169,36 @@ async function scanGitConfig(projectPath?: string): Promise<GitConfigResult | nu
       } catch {
         // Not set
       }
+
+      // .git/config에서 remote URL 파싱하여 GitHub 사용자명 추출
+      const gitConfigPath = join(projectPath, '.git', 'config');
+      const { remoteUrl: parsedUrl, githubUsername: parsedUsername } = await parseGitConfigFile(gitConfigPath);
+      if (parsedUrl) {
+        remoteUrl = parsedUrl;
+        scope = 'local';
+      }
+      if (parsedUsername) {
+        githubUsername = parsedUsername;
+      }
     }
 
-    if (userName || userEmail) {
-      return { userName, userEmail, scope };
+    // Global .gitconfig에서도 remote URL 추출 시도 (credential 관련)
+    if (!githubUsername) {
+      try {
+        // Git credential helper에서 저장된 username 시도
+        const credentialOutput = execSync('git config --global credential.https://github.com.username 2>/dev/null', {
+          encoding: 'utf-8',
+        }).trim();
+        if (credentialOutput) {
+          githubUsername = credentialOutput;
+        }
+      } catch {
+        // Not set
+      }
+    }
+
+    if (userName || userEmail || githubUsername) {
+      return { userName, userEmail, githubUsername, remoteUrl, scope };
     }
 
     return null;
@@ -465,6 +554,17 @@ export async function scanSystemSources(projectPath?: string): Promise<InternalS
     available: !!gitConfig,
   });
 
+  // 1.5 Git Remote (로컬 .git/config에서 GitHub 사용자명 추출)
+  if (gitConfig?.githubUsername && gitConfig.remoteUrl) {
+    sources.push({
+      id: 'git-remote',
+      name: 'Git Remote',
+      description: `GitHub: ${gitConfig.githubUsername}`,
+      icon: 'github',
+      available: true,
+    });
+  }
+
   // 2. gh CLI
   const ghCli = await scanGhCli();
   sources.push({
@@ -478,14 +578,17 @@ export async function scanSystemSources(projectPath?: string): Promise<InternalS
     error: !ghCli.authenticated ? 'Run `gh auth login` to authenticate' : undefined,
   });
 
-  // GitHub 서비스 생성 (gh CLI + git config 결합)
+  // GitHub 서비스 생성 (gh CLI + git config + git remote 결합)
   if (ghCli.authenticated && ghCli.token) {
     const githubCredentials: Record<string, string> = {
       token: ghCli.token,
     };
 
+    // 우선순위: gh CLI user > git remote username > git config username
     if (ghCli.user) {
       githubCredentials.username = ghCli.user;
+    } else if (gitConfig?.githubUsername) {
+      githubCredentials.username = gitConfig.githubUsername;
     } else if (gitConfig?.userName) {
       githubCredentials.username = gitConfig.userName;
     }
@@ -508,6 +611,25 @@ export async function scanSystemSources(projectPath?: string): Promise<InternalS
       isComplete: !!(githubCredentials.token && githubCredentials.username),
       missingRequired: [],
       existingAccount: existing ? { id: existing.id, name: existing.name } : undefined,
+    });
+  } else if (gitConfig?.githubUsername) {
+    // .git/config remote URL에서 추출한 GitHub 사용자명 (토큰 없음)
+    const githubCredentials: Record<string, string> = {
+      username: gitConfig.githubUsername,
+    };
+    if (gitConfig.userEmail) githubCredentials.email = gitConfig.userEmail;
+    if (gitConfig.remoteUrl) githubCredentials.remoteUrl = gitConfig.remoteUrl;
+
+    services.push({
+      type: 'github',
+      displayName: `GitHub (${gitConfig.githubUsername})`,
+      source: 'git-remote',
+      credentials: Object.fromEntries(
+        Object.entries(githubCredentials).map(([k, v]) => [k, maskCredentialValue(v)])
+      ),
+      rawCredentials: githubCredentials,
+      isComplete: false,
+      missingRequired: ['token'],
     });
   } else if (gitConfig?.userName) {
     // Git config만 있는 경우 (토큰 없음)
