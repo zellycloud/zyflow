@@ -143,16 +143,10 @@ async function getProjectPaths() {
 // POST /api/projects/browse - Open native folder picker dialog
 app.post('/api/projects/browse', async (_req, res) => {
   try {
-    // macOS: Use AppleScript to open folder picker
-    const script = `
-      osascript -e 'tell application "System Events"
-        activate
-        set folderPath to POSIX path of (choose folder with prompt "OpenSpec 프로젝트 폴더를 선택하세요")
-        return folderPath
-      end tell' 2>/dev/null
-    `
+    // macOS: Use AppleScript to open folder picker (simplified version)
+    const script = `osascript -e 'POSIX path of (choose folder with prompt "OpenSpec 프로젝트 폴더를 선택하세요")'`
 
-    const { stdout } = await execAsync(script)
+    const { stdout } = await execAsync(script, { timeout: 120000 }) // 2분 타임아웃
     const selectedPath = stdout.trim().replace(/\/$/, '') // Remove trailing slash
 
     if (!selectedPath) {
@@ -161,12 +155,13 @@ app.post('/api/projects/browse', async (_req, res) => {
 
     res.json({ success: true, data: { path: selectedPath, cancelled: false } })
   } catch (error) {
-    // User cancelled the dialog
-    if ((error as Error).message?.includes('User canceled')) {
+    const errorMessage = (error as Error).message || ''
+    // User cancelled the dialog (error code -128)
+    if (errorMessage.includes('-128') || errorMessage.includes('User canceled') || errorMessage.includes('취소')) {
       return res.json({ success: true, data: { path: null, cancelled: true } })
     }
     console.error('Error opening folder picker:', error)
-    res.json({ success: true, data: { path: null, cancelled: true } })
+    res.status(500).json({ success: false, error: 'Failed to open folder picker' })
   }
 })
 
