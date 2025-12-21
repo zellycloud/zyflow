@@ -18,13 +18,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+// import {
+//   Select,
+//   SelectContent,
+//   SelectItem,
+//   SelectTrigger,
+//   SelectValue,
+// } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
 interface CustomCLIProfile {
@@ -127,7 +127,7 @@ interface CustomCLIDialogProps {
   existingProfiles?: CustomCLIProfile[]
 }
 
-export function CustomCLIDialog({ onSave, existingProfiles = [] }: CustomCLIDialogProps) {
+export function CustomCLIDialog({ onSave, existingProfiles: _existingProfiles = [] }: CustomCLIDialogProps) {
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<'template' | 'form' | 'test' | 'models'>('template')
   const [loading, setLoading] = useState(false)
@@ -496,20 +496,7 @@ export function CustomCLIDialog({ onSave, existingProfiles = [] }: CustomCLIDial
  */
 export function CustomCLIList() {
   const [profiles, setProfiles] = useState<CustomCLIProfile[]>([])
-  const [loading, setLoading] = useState(true)
-
-  // 프로필 로드
-  const loadProfiles = async () => {
-    try {
-      const response = await fetch('/api/cli/profiles?type=custom')
-      const data = await response.json()
-      setProfiles(data.profiles || [])
-    } catch (error) {
-      console.error('Failed to load profiles:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const [loading] = useState(true)
 
   // 삭제
   const handleDelete = async (id: string) => {
