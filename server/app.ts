@@ -35,6 +35,8 @@ import { emit } from './websocket.js'
 import { getGlobalMultiWatcher } from './watcher.js'
 import { integrationsRouter, initIntegrationsDb } from './integrations/index.js'
 import { syncChangeTasksFromFile, syncChangeTasksForProject } from './sync.js'
+import { getSqlite } from './tasks/db/client.js'
+import type { Stage, ChangeStatus } from './tasks/db/schema.js'
 import { cliRoutes } from './cli-adapter/index.js'
 import { postTaskRouter } from './routes/post-task.js'
 import { docsRouter } from './routes/docs.js'
@@ -1690,9 +1692,6 @@ app.post('/api/tasks/:id/unarchive', async (req, res) => {
 
 // ==================== FLOW API (DB 기반 Change 관리) ====================
 
-import { getSqlite } from './tasks/db/client.js'
-import type { Stage, ChangeStatus } from './tasks/db/schema.js'
-
 const STAGES: Stage[] = ['spec', 'changes', 'task', 'code', 'test', 'commit', 'docs']
 
 // Helper: Change의 stages 집계 정보 계산
@@ -2959,14 +2958,15 @@ app.post('/api/flow/changes/:id/archive', async (req, res) => {
       }
     }
 
-    // If validation failed and not forced, return error with option to force
+    // If validation failed and not forced, return error to let user decide
     if (validationFailed && !force) {
+      console.log(`[Archive] Validation failed for ${changeId}, returning error to client`)
       return res.status(422).json({
         success: false,
         error: 'Validation failed',
         validationErrors,
         canForce: true,
-        hint: 'Set force: true to archive without validation',
+        hint: 'Use force option to archive without validation, or fix the spec errors first',
       })
     }
 

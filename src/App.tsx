@@ -239,7 +239,7 @@ function AppContent() {
             {/* MenuBar - Navigation for project-level features */}
             <MenuBar
               selectedItem={selectedItem}
-              activeProjectId={projectsData?.activeProjectId}
+              activeProjectId={projectsData?.activeProjectId ?? undefined}
               onSelectItem={setSelectedItem}
             />
 

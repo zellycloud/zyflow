@@ -55,7 +55,7 @@ export function MenuBar({
     )
   }
 
-  const handleSelect = (type: SelectedItem['type']) => {
+  const handleSelect = (type: NonNullable<SelectedItem>['type']) => {
     if (!activeProjectId || !type) return
 
     switch (type) {
