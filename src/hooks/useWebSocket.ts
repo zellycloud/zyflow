@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { WS_ENDPOINT } from '@/config/api'
 
 export type WSEventType =
   | 'connected'
@@ -22,7 +23,7 @@ export interface WSEvent {
   timestamp: number
 }
 
-const WS_URL = 'ws://localhost:3001/ws'
+const WS_URL = WS_ENDPOINT
 const RECONNECT_INTERVAL = 3000
 const MAX_RECONNECT_ATTEMPTS = 10
 

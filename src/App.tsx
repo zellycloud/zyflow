@@ -13,6 +13,7 @@ import { DocsCommandPalette } from '@/components/docs'
 import { ThemeToggle } from '@/components/dashboard/ThemeToggle'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useProjectsAllData } from '@/hooks/useProjects'
+import { API_ENDPOINTS } from '@/config/api'
 import { GitBranch, Circle, Wifi, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -41,7 +42,7 @@ function ApiStatusIndicator() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['api-health'],
     queryFn: async () => {
-      const res = await fetch('http://localhost:3001/api/health')
+      const res = await fetch(API_ENDPOINTS.health)
       if (!res.ok) throw new Error('API server not responding')
       return res.json()
     },

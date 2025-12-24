@@ -5,8 +5,9 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { API_ENDPOINTS } from '@/config/api'
 
-const API_BASE = 'http://localhost:3001/api'
+const API_BASE = API_ENDPOINTS.base
 
 // =============================================
 // Types

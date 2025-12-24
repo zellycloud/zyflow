@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { API_ENDPOINTS } from '@/config/api'
 
 export interface DocItem {
   id: string
@@ -22,7 +23,7 @@ export interface DocSearchResult {
   matches: string[]
 }
 
-const API_BASE = 'http://localhost:3001/api'
+const API_BASE = API_ENDPOINTS.base
 
 /**
  * 프로젝트의 문서 목록 조회

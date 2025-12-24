@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'react'
 import { ChevronDown, Check, Settings, Plus, Loader2 } from 'lucide-react'
+import { cliApiUrl } from '@/config/api'
 
 interface CLIProfile {
   id: string
@@ -42,7 +43,7 @@ export function CLISelector({
   async function fetchProfiles() {
     try {
       setLoading(true)
-      const res = await fetch('http://localhost:3001/api/cli/profiles/available')
+      const res = await fetch(cliApiUrl.availableProfiles())
       const data = await res.json()
       if (data.success) {
         setProfiles(data.profiles)

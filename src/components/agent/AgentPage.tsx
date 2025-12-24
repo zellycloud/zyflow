@@ -12,6 +12,7 @@ import {
   Terminal,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { projectApiUrl } from '@/config/api'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,7 +61,7 @@ export function AgentPage({ projectId, changeId: initialChangeId, projectPath }:
     queryKey: ['project-changes', projectId],
     queryFn: async () => {
       if (!projectId) return []
-      const res = await fetch(`http://localhost:3001/api/projects/${projectId}/changes`)
+      const res = await fetch(projectApiUrl.changes(projectId))
       if (!res.ok) return []
       const data = await res.json()
       return data.changes as Change[]

@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { API_ENDPOINTS } from '@/config/api'
 import {
   DndContext,
   closestCenter,
@@ -228,7 +229,7 @@ export function CLISettings() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['cli-settings'],
     queryFn: async (): Promise<CLISettingsResponse> => {
-      const res = await fetch('http://localhost:3001/api/cli/settings')
+      const res = await fetch(API_ENDPOINTS.cliSettings)
       if (!res.ok) throw new Error('Failed to fetch CLI settings')
       return res.json()
     },
@@ -269,7 +270,7 @@ export function CLISettings() {
   // Save settings mutation
   const saveMutation = useMutation({
     mutationFn: async (payload: { settings?: Record<string, CLISetting>; consensus?: ConsensusSettings }) => {
-      const res = await fetch('http://localhost:3001/api/cli/settings', {
+      const res = await fetch(API_ENDPOINTS.cliSettings, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

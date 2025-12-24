@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { ThemeToggle } from './ThemeToggle'
 import { cn } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
+import { API_ENDPOINTS } from '@/config/api'
 import {
   Tooltip,
   TooltipContent,
@@ -21,7 +22,7 @@ function ApiStatusIndicator() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['api-health'],
     queryFn: async () => {
-      const res = await fetch('http://localhost:3001/api/health')
+      const res = await fetch(API_ENDPOINTS.health)
       if (!res.ok) throw new Error('API server not responding')
       return res.json()
     },

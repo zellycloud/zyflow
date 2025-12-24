@@ -6,6 +6,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { API_ENDPOINTS } from '@/config/api'
 
 export interface AgentMessage {
   role: 'user' | 'agent' | 'system' | 'error'
@@ -33,7 +34,7 @@ export interface AgentSessionState {
   conversation_history?: Array<{ role: 'user' | 'assistant'; content: string }>
 }
 
-const API_BASE = 'http://localhost:3001/api/agents'
+const API_BASE = API_ENDPOINTS.agents
 
 export interface CLIProfile {
   id: string
@@ -394,7 +395,7 @@ export function useAgentSessions() {
   return useQuery({
     queryKey: ['agent-sessions'],
     queryFn: async () => {
-      const res = await fetch('http://localhost:3001/api/cli/sessions')
+      const res = await fetch(API_ENDPOINTS.cliSessions)
       if (!res.ok) throw new Error('Failed to fetch sessions')
       const data = await res.json()
       // Map CLI session format to AgentSessionState format
