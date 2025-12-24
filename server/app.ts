@@ -489,6 +489,21 @@ async function getChangesForProject(projectPath: string) {
   const openspecDir = join(projectPath, 'openspec', 'changes')
   const changes = []
 
+  // Get archived change IDs from DB to filter them out
+  const archivedChangeIds = new Set<string>()
+  try {
+    const projectId = projectPath.toLowerCase().replace(/[^a-z0-9]/g, '-')
+    const sqlite = getSqlite()
+    const archivedRows = sqlite.prepare(`
+      SELECT id FROM changes WHERE project_id = ? AND status = 'archived'
+    `).all(projectId) as { id: string }[]
+    for (const row of archivedRows) {
+      archivedChangeIds.add(row.id)
+    }
+  } catch {
+    // DB not initialized yet, proceed without filtering
+  }
+
   let entries
   try {
     entries = await readdir(openspecDir, { withFileTypes: true })
@@ -500,6 +515,9 @@ async function getChangesForProject(projectPath: string) {
     if (!entry.isDirectory() || entry.name === 'archive') continue
 
     const changeId = entry.name
+
+    // Skip archived changes (based on DB status)
+    if (archivedChangeIds.has(changeId)) continue
     const changeDir = join(openspecDir, changeId)
 
     let title = changeId
@@ -2892,7 +2910,7 @@ app.use('/api/agents', async (req, res) => {
 app.post('/api/flow/changes/:id/archive', async (req, res) => {
   try {
     const changeId = req.params.id
-    const { skipSpecs } = req.body
+    const { skipSpecs, force } = req.body
     const project = await getActiveProject()
 
     if (!project) {
@@ -2904,12 +2922,74 @@ app.post('/api/flow/changes/:id/archive', async (req, res) => {
     if (skipSpecs) {
       args.push('--skip-specs')
     }
+    if (force) {
+      args.push('--no-validate')
+    }
 
-    const { stdout, stderr } = await execAsync(`openspec ${args.join(' ')}`, {
-      cwd: project.path,
-    })
+    let stdout = ''
+    let stderr = ''
+    let validationFailed = false
+    let validationErrors: string[] = []
 
-    // DB에서 Change 상태 업데이트
+    try {
+      const result = await execAsync(`openspec ${args.join(' ')}`, {
+        cwd: project.path,
+      })
+      stdout = result.stdout
+      stderr = result.stderr
+    } catch (execError) {
+      // execAsync throws on non-zero exit code
+      const error = execError as { stdout?: string; stderr?: string; message?: string }
+      stdout = error.stdout || ''
+      stderr = error.stderr || ''
+
+      // Check if it's a validation error
+      if (stdout.includes('Validation failed') || stdout.includes('Validation errors')) {
+        validationFailed = true
+        // Parse validation errors from output
+        const lines = stdout.split('\n')
+        for (const line of lines) {
+          if (line.includes('✗') || line.includes('⚠')) {
+            validationErrors.push(line.trim())
+          }
+        }
+      } else {
+        // Other error, rethrow
+        throw execError
+      }
+    }
+
+    // If validation failed and not forced, return error with option to force
+    if (validationFailed && !force) {
+      return res.status(422).json({
+        success: false,
+        error: 'Validation failed',
+        validationErrors,
+        canForce: true,
+        hint: 'Set force: true to archive without validation',
+      })
+    }
+
+    // Check if archive directory was actually created (file was moved)
+    const archivePath = join(project.path, 'openspec', 'changes', 'archive', changeId)
+    const originalPath = join(project.path, 'openspec', 'changes', changeId)
+
+    let filesMoved = false
+    try {
+      await import('fs/promises').then(fs => fs.access(archivePath))
+      filesMoved = true
+    } catch {
+      // Archive directory doesn't exist, check if original still exists
+      try {
+        await import('fs/promises').then(fs => fs.access(originalPath))
+        filesMoved = false
+      } catch {
+        // Neither exists - something went wrong
+        filesMoved = false
+      }
+    }
+
+    // DB에서 Change 상태 업데이트 (파일 이동 여부와 관계없이)
     await initTaskDb()
     const sqlite = getSqlite()
     const now = Date.now()
@@ -2926,6 +3006,7 @@ app.post('/api/flow/changes/:id/archive', async (req, res) => {
       data: {
         changeId,
         archived: true,
+        filesMoved,
         stdout: stdout.trim(),
         stderr: stderr.trim(),
       },
@@ -2935,6 +3016,107 @@ app.post('/api/flow/changes/:id/archive', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to archive change',
+    })
+  }
+})
+
+// POST /api/flow/changes/:id/fix-validation - 자동으로 validation 에러 수정
+app.post('/api/flow/changes/:id/fix-validation', async (req, res) => {
+  try {
+    const changeId = req.params.id
+    const project = await getActiveProject()
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const changeDir = join(project.path, 'openspec', 'changes', changeId)
+    const fs = await import('fs/promises')
+
+    // Fix proposal.md - add "SHALL" to requirements that don't have it
+    const proposalPath = join(changeDir, 'proposal.md')
+    let proposalFixed = false
+    try {
+      let content = await fs.readFile(proposalPath, 'utf-8')
+      // Find requirement lines without SHALL/MUST and add "SHALL"
+      // Pattern: Lines starting with "- " in requirements section that don't have SHALL/MUST
+      const lines = content.split('\n')
+      const fixedLines = lines.map(line => {
+        // Check if it's a requirement-like line (starts with "- " and doesn't have SHALL/MUST)
+        if (line.match(/^[-*]\s+/) && !line.match(/\b(SHALL|MUST)\b/i)) {
+          // Check if it's in a requirements context (has keywords like "requirement", "feature", etc.)
+          if (line.match(/^[-*]\s+\w/)) {
+            // Insert "SHALL" after the bullet point
+            return line.replace(/^([-*]\s+)/, '$1The system SHALL ')
+          }
+        }
+        return line
+      })
+      const newContent = fixedLines.join('\n')
+      if (newContent !== content) {
+        await fs.writeFile(proposalPath, newContent)
+        proposalFixed = true
+      }
+    } catch {
+      // proposal.md not found or not readable
+    }
+
+    // Fix spec files in specs/ subdirectory
+    const specsDir = join(changeDir, 'specs')
+    let specsFixed = 0
+    try {
+      const specEntries = await fs.readdir(specsDir, { withFileTypes: true })
+      for (const entry of specEntries) {
+        if (!entry.isDirectory()) continue
+        const specPath = join(specsDir, entry.name, 'spec.md')
+        try {
+          let content = await fs.readFile(specPath, 'utf-8')
+          // Find requirement headings and their content
+          // Pattern: ### Requirement: ... followed by content
+          const lines = content.split('\n')
+          const fixedLines = lines.map((line, i) => {
+            // If this is a requirement heading
+            if (line.match(/^###\s+Requirement:/)) {
+              // Check if the requirement text contains SHALL/MUST
+              if (!line.match(/\b(SHALL|MUST)\b/i)) {
+                // Insert "SHALL" into the requirement
+                return line.replace(/(###\s+Requirement:\s*)(.+)/, (_, prefix, reqText) => {
+                  // If the text is like "Feature Name", convert to "The system SHALL provide Feature Name"
+                  return `${prefix}The system SHALL provide ${reqText}`
+                })
+              }
+            }
+            return line
+          })
+          const newContent = fixedLines.join('\n')
+          if (newContent !== content) {
+            await fs.writeFile(specPath, newContent)
+            specsFixed++
+          }
+        } catch {
+          // spec.md not found
+        }
+      }
+    } catch {
+      // specs directory not found
+    }
+
+    res.json({
+      success: true,
+      data: {
+        changeId,
+        proposalFixed,
+        specsFixed,
+        message: proposalFixed || specsFixed > 0
+          ? `Fixed validation errors: proposal=${proposalFixed}, specs=${specsFixed}`
+          : 'No fixes needed or possible',
+      },
+    })
+  } catch (error) {
+    console.error('Error fixing validation:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fix validation',
     })
   }
 })

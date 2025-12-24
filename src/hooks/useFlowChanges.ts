@@ -451,33 +451,77 @@ export function useUpdateFlowTask() {
 interface ArchiveChangeInput {
   changeId: string
   skipSpecs?: boolean
+  force?: boolean
+  autoFix?: boolean
 }
 
 interface ArchiveChangeResult {
   changeId: string
   archived: boolean
+  filesMoved?: boolean
   stdout: string
   stderr: string
+}
+
+interface ArchiveValidationError {
+  success: false
+  error: string
+  validationErrors: string[]
+  canForce: boolean
+  hint: string
 }
 
 export function useArchiveChange() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ changeId, skipSpecs }: ArchiveChangeInput): Promise<ArchiveChangeResult> => {
-      const res = await fetch(`${API_BASE}/flow/changes/${changeId}/archive`, {
+    mutationFn: async ({ changeId, skipSpecs, force, autoFix }: ArchiveChangeInput): Promise<ArchiveChangeResult> => {
+      // First attempt
+      let res = await fetch(`${API_BASE}/flow/changes/${changeId}/archive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ skipSpecs }),
+        body: JSON.stringify({ skipSpecs, force }),
       })
-      const json: ApiResponse<ArchiveChangeResult> = await res.json()
-      if (!json.success) throw new Error(json.error)
+
+      // Check for validation error (422)
+      if (res.status === 422 && autoFix) {
+        const errorJson = await res.json() as ArchiveValidationError
+
+        // Try to auto-fix validation errors
+        const fixRes = await fetch(`${API_BASE}/flow/changes/${changeId}/fix-validation`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ errors: errorJson.validationErrors }),
+        })
+
+        if (fixRes.ok) {
+          // Retry archive after fix
+          res = await fetch(`${API_BASE}/flow/changes/${changeId}/archive`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ skipSpecs }),
+          })
+        }
+      }
+
+      const json = await res.json()
+      if (!json.success) {
+        // If still failing and canForce, include that info in error
+        if (json.canForce) {
+          const error = new Error(json.error) as Error & { validationErrors?: string[]; canForce?: boolean }
+          error.validationErrors = json.validationErrors
+          error.canForce = json.canForce
+          throw error
+        }
+        throw new Error(json.error)
+      }
       return json.data!
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['flow', 'changes'] })
       queryClient.invalidateQueries({ queryKey: ['flow', 'changes', 'counts'] })
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['projects-all-data'] })
     },
   })
 }

@@ -276,22 +276,50 @@ export function ChangeDetail({ projectId, changeId, onArchived }: ChangeDetailPr
                   <AlertDialogFooter>
                     <AlertDialogCancel onClick={() => setArchiveError(null)}>취소</AlertDialogCancel>
                     {archiveError ? (
-                      <AlertDialogAction
-                        onClick={async () => {
-                          try {
-                            await archiveChange.mutateAsync({ changeId, skipSpecs: true })
-                            toast.success('Change가 아카이브되었습니다 (Spec 업데이트 건너뜀)')
-                            setShowArchiveDialog(false)
-                            setArchiveError(null)
-                            onArchived?.()
-                          } catch (error) {
-                            toast.error(error instanceof Error ? error.message : '아카이브 실패')
-                          }
-                        }}
-                        disabled={archiveChange.isPending}
-                      >
-                        {archiveChange.isPending ? '처리 중...' : 'Spec 없이 아카이브'}
-                      </AlertDialogAction>
+                      <>
+                        <AlertDialogAction
+                          onClick={async () => {
+                            try {
+                              // 자동 수정 후 재시도
+                              await archiveChange.mutateAsync({ changeId, skipSpecs: false, autoFix: true })
+                              toast.success('Change가 아카이브되었습니다 (자동 수정 적용)')
+                              setShowArchiveDialog(false)
+                              setArchiveError(null)
+                              onArchived?.()
+                            } catch (error) {
+                              // 자동 수정 실패 시 강제 옵션 제공
+                              const err = error as Error & { canForce?: boolean }
+                              if (err.canForce) {
+                                toast.error('자동 수정 실패. 강제 아카이브를 시도해주세요.')
+                              } else {
+                                toast.error(error instanceof Error ? error.message : '아카이브 실패')
+                              }
+                            }
+                          }}
+                          disabled={archiveChange.isPending}
+                          className="bg-blue-600 hover:bg-blue-700"
+                        >
+                          {archiveChange.isPending ? '처리 중...' : '자동 수정 후 재시도'}
+                        </AlertDialogAction>
+                        <AlertDialogAction
+                          onClick={async () => {
+                            try {
+                              // 강제 아카이브 (validation 건너뜀)
+                              await archiveChange.mutateAsync({ changeId, skipSpecs: false, force: true })
+                              toast.success('Change가 아카이브되었습니다 (검증 건너뜀)')
+                              setShowArchiveDialog(false)
+                              setArchiveError(null)
+                              onArchived?.()
+                            } catch (error) {
+                              toast.error(error instanceof Error ? error.message : '아카이브 실패')
+                            }
+                          }}
+                          disabled={archiveChange.isPending}
+                          className="bg-orange-600 hover:bg-orange-700"
+                        >
+                          {archiveChange.isPending ? '처리 중...' : '강제 아카이브'}
+                        </AlertDialogAction>
+                      </>
                     ) : (
                       <AlertDialogAction
                         onClick={async (e) => {
@@ -302,9 +330,10 @@ export function ChangeDetail({ projectId, changeId, onArchived }: ChangeDetailPr
                             setShowArchiveDialog(false)
                             onArchived?.()
                           } catch (error) {
-                            const message = error instanceof Error ? error.message : '아카이브 실패'
-                            // Spec 관련 에러인 경우 재시도 옵션 제공
-                            if (message.includes('spec') || message.includes('Spec') || message.includes('ADDED')) {
+                            const err = error as Error & { validationErrors?: string[]; canForce?: boolean }
+                            const message = err.message || '아카이브 실패'
+                            // Validation 에러인 경우 재시도 옵션 제공
+                            if (err.canForce || message.includes('Validation') || message.includes('spec') || message.includes('Spec') || message.includes('ADDED')) {
                               setArchiveError(message)
                             } else {
                               toast.error(message)
