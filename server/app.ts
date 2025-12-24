@@ -41,6 +41,9 @@ import { cliRoutes } from './cli-adapter/index.js'
 import { postTaskRouter } from './routes/post-task.js'
 import { docsRouter } from './routes/docs.js'
 import { claudeFlowRouter } from './claude-flow/index.js'
+import { projectsRouter } from './routes/projects.js'
+import { changesRouter } from './routes/changes.js'
+import { flowRouter } from './routes/flow.js'
 import { aiRouter } from './ai/index.js'
 import { OpenSpecPromptBuilder } from './claude-flow/prompt-builder.js'
 import * as pty from 'node-pty'
@@ -113,6 +116,15 @@ app.use('/api/ai', aiRouter)
 
 // Docs API 라우터 등록
 app.use('/api/docs', docsRouter)
+
+// Projects API 라우터 등록
+app.use('/api/projects', projectsRouter)
+
+// Changes API 라우터 등록
+app.use('/api/changes', changesRouter)
+
+// Flow API 라우터 등록
+app.use('/api/flow', flowRouter)
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {

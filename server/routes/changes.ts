@@ -1,0 +1,401 @@
+/**
+ * Changes Router
+ *
+ * OpenSpec Changes 관련 API 라우터
+ */
+
+import { Router } from 'express'
+import { readdir, readFile, writeFile, access, stat } from 'fs/promises'
+import { join } from 'path'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+import { getActiveProject } from '../config.js'
+import { parseTasksFile, toggleTaskInFile } from '../parser.js'
+
+const execAsync = promisify(exec)
+
+export const changesRouter = Router()
+
+// Helper to get paths for active project
+async function getProjectPaths() {
+  const project = await getActiveProject()
+  if (!project) {
+    return null
+  }
+  return {
+    projectPath: project.path,
+    openspecDir: join(project.path, 'openspec', 'changes'),
+    specsDir: join(project.path, 'openspec', 'specs'),
+    plansDir: join(project.path, '.zyflow', 'plans'),
+    // Archive directories (three possible locations)
+    archiveDir: join(project.path, 'openspec', 'changes', 'archive'), // openspec/changes/archive/
+    legacyArchiveDir: join(project.path, 'openspec', 'archive'), // openspec/archive/
+    archivedDir: join(project.path, 'openspec', 'archived'), // openspec/archived/
+  }
+}
+
+// GET / - List all changes
+changesRouter.get('/', async (_req, res) => {
+  try {
+    const paths = await getProjectPaths()
+    if (!paths) {
+      return res.json({ success: true, data: { changes: [] } })
+    }
+
+    let entries
+    try {
+      entries = await readdir(paths.openspecDir, { withFileTypes: true })
+    } catch {
+      return res.json({ success: true, data: { changes: [] } })
+    }
+
+    const changes = []
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === 'archive') continue
+
+      const changeId = entry.name
+      const changeDir = join(paths.openspecDir, changeId)
+
+      // Read proposal.md for title
+      let title = changeId
+      try {
+        const proposalPath = join(changeDir, 'proposal.md')
+        const proposalContent = await readFile(proposalPath, 'utf-8')
+        const titleMatch = proposalContent.match(/^#\s+Change:\s+(.+)$/m)
+        if (titleMatch) {
+          title = titleMatch[1].trim()
+        }
+      } catch {
+        // No proposal.md, use directory name
+      }
+
+      // Read tasks.md for progress
+      let totalTasks = 0
+      let completedTasks = 0
+      try {
+        const tasksPath = join(changeDir, 'tasks.md')
+        const tasksContent = await readFile(tasksPath, 'utf-8')
+        const parsed = parseTasksFile(changeId, tasksContent)
+
+        for (const group of parsed.groups) {
+          totalTasks += group.tasks.length
+          completedTasks += group.tasks.filter((t) => t.completed).length
+        }
+      } catch {
+        // No tasks.md
+      }
+
+      const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+      // Get last modified date from git (latest commit in change directory)
+      let updatedAt: string | null = null
+      try {
+        // Get latest commit date for any file in the change directory
+        // Use relative path from project root for git command
+        const relativeChangeDir = `openspec/changes/${changeId}`
+        const gitCmd = `git log -1 --format="%aI" -- "${relativeChangeDir}"`
+        const { stdout } = await execAsync(gitCmd, { cwd: paths.projectPath })
+        if (stdout.trim()) {
+          updatedAt = stdout.trim()
+        } else {
+          // Fallback to file stat of tasks.md or proposal.md
+          const tasksPath = join(changeDir, 'tasks.md')
+          const proposalPath = join(changeDir, 'proposal.md')
+          try {
+            const s = await stat(tasksPath)
+            updatedAt = s.mtime.toISOString()
+          } catch {
+            const s = await stat(proposalPath)
+            updatedAt = s.mtime.toISOString()
+          }
+        }
+      } catch (err) {
+        // If all fails, use current time
+        console.error('Git log error:', err)
+        updatedAt = new Date().toISOString()
+      }
+
+      changes.push({
+        id: changeId,
+        title,
+        progress,
+        totalTasks,
+        completedTasks,
+        updatedAt,
+      })
+    }
+
+    res.json({ success: true, data: { changes } })
+  } catch (error) {
+    console.error('Error listing changes:', error)
+    res.status(500).json({ success: false, error: 'Failed to list changes' })
+  }
+})
+
+// GET /archived - List all archived changes
+changesRouter.get('/archived', async (_req, res) => {
+  try {
+    const paths = await getProjectPaths()
+    if (!paths) {
+      return res.json({ success: true, data: { changes: [] } })
+    }
+
+    const archivedChanges: Array<{
+      id: string
+      title: string
+      progress: number
+      totalTasks: number
+      completedTasks: number
+      archivedAt: string | null
+      source: 'archive' | 'archived'
+    }> = []
+
+    // Helper function to read archived change from a directory
+    async function readArchivedChange(
+      changeDir: string,
+      changeId: string,
+      source: 'archive' | 'archived'
+    ) {
+      // Read proposal.md for title
+      let title = changeId
+      try {
+        const proposalPath = join(changeDir, 'proposal.md')
+        const proposalContent = await readFile(proposalPath, 'utf-8')
+        const titleMatch = proposalContent.match(/^#\s+Change:\s+(.+)$/m)
+        if (titleMatch) {
+          title = titleMatch[1].trim()
+        }
+      } catch {
+        // No proposal.md, use directory name
+      }
+
+      // Read tasks.md for progress
+      let totalTasks = 0
+      let completedTasks = 0
+      try {
+        const tasksPath = join(changeDir, 'tasks.md')
+        const tasksContent = await readFile(tasksPath, 'utf-8')
+        const parsed = parseTasksFile(changeId, tasksContent)
+
+        for (const group of parsed.groups) {
+          totalTasks += group.tasks.length
+          completedTasks += group.tasks.filter((t) => t.completed).length
+        }
+      } catch {
+        // No tasks.md
+      }
+
+      const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+      // Get archived date from file stat
+      let archivedAt: string | null = null
+      try {
+        const proposalPath = join(changeDir, 'proposal.md')
+        const tasksPath = join(changeDir, 'tasks.md')
+        try {
+          const s = await stat(proposalPath)
+          archivedAt = s.mtime.toISOString()
+        } catch {
+          const s = await stat(tasksPath)
+          archivedAt = s.mtime.toISOString()
+        }
+      } catch {
+        archivedAt = null
+      }
+
+      return {
+        id: changeId,
+        title,
+        progress,
+        totalTasks,
+        completedTasks,
+        archivedAt,
+        source,
+      }
+    }
+
+    // Helper to read all changes from an archive directory
+    async function readFromArchiveDir(dir: string) {
+      try {
+        const entries = await readdir(dir, { withFileTypes: true })
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue
+          const changeDir = join(dir, entry.name)
+          const change = await readArchivedChange(changeDir, entry.name, 'archive')
+          archivedChanges.push(change)
+        }
+      } catch {
+        // Directory doesn't exist
+      }
+    }
+
+    // Read from all three archive locations
+    await readFromArchiveDir(paths.archiveDir) // openspec/changes/archive/
+    await readFromArchiveDir(paths.legacyArchiveDir) // openspec/archive/
+    await readFromArchiveDir(paths.archivedDir) // openspec/archived/
+
+    // Sort by archivedAt descending (newest first)
+    archivedChanges.sort((a, b) => {
+      if (!a.archivedAt && !b.archivedAt) return 0
+      if (!a.archivedAt) return 1
+      if (!b.archivedAt) return -1
+      return new Date(b.archivedAt).getTime() - new Date(a.archivedAt).getTime()
+    })
+
+    res.json({ success: true, data: { changes: archivedChanges } })
+  } catch (error) {
+    console.error('Error listing archived changes:', error)
+    res.status(500).json({ success: false, error: 'Failed to list archived changes' })
+  }
+})
+
+// GET /archived/:id - Get archived change detail
+changesRouter.get('/archived/:id', async (req, res) => {
+  try {
+    const paths = await getProjectPaths()
+    if (!paths) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const changeId = req.params.id
+    let changeDir: string | null = null
+
+    // Check all three archive locations
+    const archiveLocations = [
+      paths.archiveDir, // openspec/changes/archive/
+      paths.legacyArchiveDir, // openspec/archive/
+      paths.archivedDir, // openspec/archived/
+    ]
+
+    for (const archiveBase of archiveLocations) {
+      const candidatePath = join(archiveBase, changeId)
+      try {
+        await access(candidatePath)
+        changeDir = candidatePath
+        break
+      } catch {
+        // Not found in this location, try next
+      }
+    }
+
+    if (!changeDir) {
+      return res.status(404).json({ success: false, error: 'Archived change not found' })
+    }
+
+    // Read all files in the change directory
+    const files: Record<string, string> = {}
+    const entries = await readdir(changeDir, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith('.md')) {
+        const filePath = join(changeDir, entry.name)
+        const content = await readFile(filePath, 'utf-8')
+        files[entry.name] = content
+      }
+      // Also check specs subdirectory
+      if (entry.isDirectory() && entry.name === 'specs') {
+        const specsDir = join(changeDir, 'specs')
+        const specEntries = await readdir(specsDir, { withFileTypes: true })
+        for (const specEntry of specEntries) {
+          if (specEntry.isFile() && specEntry.name.endsWith('.md')) {
+            const specPath = join(specsDir, specEntry.name)
+            const content = await readFile(specPath, 'utf-8')
+            files[`specs/${specEntry.name}`] = content
+          }
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: changeId,
+        files,
+      },
+    })
+  } catch (error) {
+    console.error('Error getting archived change:', error)
+    res.status(500).json({ success: false, error: 'Failed to get archived change' })
+  }
+})
+
+// GET /:id/tasks - Get tasks for a change
+changesRouter.get('/:id/tasks', async (req, res) => {
+  try {
+    const paths = await getProjectPaths()
+    if (!paths) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const changeId = req.params.id
+    const tasksPath = join(paths.openspecDir, changeId, 'tasks.md')
+    const content = await readFile(tasksPath, 'utf-8')
+    const parsed = parseTasksFile(changeId, content)
+
+    res.json({ success: true, data: parsed })
+  } catch (error) {
+    console.error('Error reading tasks:', error)
+    res.status(500).json({ success: false, error: 'Failed to read tasks' })
+  }
+})
+
+// ==================== TASKS ====================
+
+// PATCH /tasks/:changeId/:taskId - Toggle task checkbox
+changesRouter.patch('/tasks/:changeId/:taskId', async (req, res) => {
+  try {
+    const paths = await getProjectPaths()
+    if (!paths) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { changeId, taskId } = req.params
+    const tasksPath = join(paths.openspecDir, changeId, 'tasks.md')
+
+    // Read current content
+    const content = await readFile(tasksPath, 'utf-8')
+
+    // Toggle the task
+    const { newContent, task } = toggleTaskInFile(content, taskId)
+
+    // Write back
+    await writeFile(tasksPath, newContent, 'utf-8')
+
+    res.json({ success: true, data: { task } })
+  } catch (error) {
+    console.error('Error toggling task:', error)
+    res.status(500).json({ success: false, error: 'Failed to toggle task' })
+  }
+})
+
+// ==================== PLANS ====================
+
+// GET /plans/:changeId/:taskId - Get detail plan
+changesRouter.get('/plans/:changeId/:taskId', async (req, res) => {
+  try {
+    const paths = await getProjectPaths()
+    if (!paths) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { changeId, taskId } = req.params
+    const planPath = join(paths.plansDir, changeId, `${taskId}.md`)
+
+    try {
+      const content = await readFile(planPath, 'utf-8')
+      res.json({
+        success: true,
+        data: { taskId, changeId, content, exists: true },
+      })
+    } catch {
+      res.json({
+        success: true,
+        data: { taskId, changeId, content: null, exists: false },
+      })
+    }
+  } catch (error) {
+    console.error('Error reading plan:', error)
+    res.status(500).json({ success: false, error: 'Failed to read plan' })
+  }
+})
