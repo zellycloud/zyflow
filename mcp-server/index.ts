@@ -53,14 +53,6 @@ import {
   handleDeleteAgentSession,
 } from './agent-tools.js'
 
-// Diagram Tools imports
-import {
-  diagramToolDefinitions,
-  handleDiagramGenerate,
-  handleDiagramFromChange,
-  handleDiagramValidate,
-} from './diagram-tools.js'
-
 // Post-Task Tools imports
 import {
   postTaskToolDefinitions,
@@ -451,9 +443,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
       // Agent Tools
       ...agentToolDefinitions,
-
-      // Diagram Tools
-      ...diagramToolDefinitions,
 
       // Post-Task Tools
       ...postTaskToolDefinitions,
@@ -978,37 +967,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'zyflow_delete_agent_session': {
         const result = await handleDeleteAgentSession(args as { sessionId: string })
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          isError: !result.success,
-        }
-      }
-
-      // Diagram Tools
-      case 'diagram_generate': {
-        const result = await handleDiagramGenerate(
-          args as { projectPath: string; instructions?: string; maxDepth?: number; excludePatterns?: string[]; repoUrl?: string; branch?: string },
-          PROJECT_PATH
-        )
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          isError: !result.success,
-        }
-      }
-
-      case 'diagram_from_change': {
-        const result = await handleDiagramFromChange(
-          args as { changeId: string; projectPath?: string; includeAffectedFiles?: boolean },
-          PROJECT_PATH
-        )
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          isError: !result.success,
-        }
-      }
-
-      case 'diagram_validate': {
-        const result = handleDiagramValidate(args as { mermaidCode: string })
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
           isError: !result.success,

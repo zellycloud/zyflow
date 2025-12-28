@@ -11,7 +11,8 @@
     "esModuleInterop": true,
     "declaration": false,
     "sourceMap": true,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "noImplicitAny": false
   },
   "include": ["mcp-server/**/*.ts", "server/tasks/**/*.ts"],
   "exclude": ["node_modules", "dist"]

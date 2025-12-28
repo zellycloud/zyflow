@@ -1,4 +1,4 @@
-import { eq, desc, asc, and, inArray, ne, lt } from 'drizzle-orm';
+import { eq, desc, asc, and, inArray, ne, lt, SQL } from 'drizzle-orm';
 import { getDb, getSqlite } from '../db/client.js';
 import { tasks, Task, NewTask, TaskStatus, TaskPriority, TaskOrigin } from '../db/schema.js';
 
@@ -104,7 +104,7 @@ export function getTask(id: number | string): Task | null {
 
 export function listTasks(options: ListTasksOptions = {}): Task[] {
   const db = getDb();
-  const conditions = [];
+  const conditions: SQL<unknown>[] = [];
 
   // 기본적으로 archived 제외 (includeArchived가 true가 아닌 경우)
   if (!options.includeArchived) {
