@@ -299,3 +299,241 @@ export const eventIndexes = sqliteTable('event_indexes', {
 
 export type EventIndex = typeof eventIndexes.$inferSelect;
 export type NewEventIndex = typeof eventIndexes.$inferInsert;
+
+// =============================================
+// Alert System 테이블
+// =============================================
+
+// Alert 소스 타입
+export type AlertSource = 'github' | 'vercel' | 'sentry' | 'supabase' | 'custom';
+
+// Alert 심각도
+export type AlertSeverity = 'critical' | 'warning' | 'info';
+
+// Alert 상태
+export type AlertStatus = 'pending' | 'processing' | 'resolved' | 'ignored';
+
+// 위험도 레벨
+export type RiskLevel = 'low' | 'medium' | 'high';
+
+// Alerts 테이블
+export const alerts = sqliteTable('alerts', {
+  id: text('id').primaryKey(), // UUID
+  source: text('source', {
+    enum: ['github', 'vercel', 'sentry', 'supabase', 'custom'],
+  }).notNull(),
+  type: text('type').notNull(), // 'workflow.failed', 'deployment.error', 'issue.created' 등
+  severity: text('severity', {
+    enum: ['critical', 'warning', 'info'],
+  }).notNull(),
+  status: text('status', {
+    enum: ['pending', 'processing', 'resolved', 'ignored'],
+  }).notNull().default('pending'),
+
+  title: text('title').notNull(),
+  summary: text('summary'), // Agent 분석 요약
+  externalUrl: text('external_url'), // 원본 서비스 링크
+
+  payload: text('payload').notNull(), // JSON - 원본 webhook 데이터
+  metadata: text('metadata'), // JSON - repo, branch, commit, environment, projectId
+
+  analysis: text('analysis'), // JSON - AlertAnalysis
+  resolution: text('resolution'), // JSON - { type, action, details, prUrl }
+
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  resolvedAt: integer('resolved_at', { mode: 'timestamp' }),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(), // createdAt + 90일
+}, (table) => ({
+  statusIdx: index('idx_alerts_status').on(table.status),
+  sourceIdx: index('idx_alerts_source').on(table.source),
+  severityIdx: index('idx_alerts_severity').on(table.severity),
+  createdAtIdx: index('idx_alerts_created_at').on(table.createdAt),
+  expiresAtIdx: index('idx_alerts_expires_at').on(table.expiresAt),
+}));
+
+export type Alert = typeof alerts.$inferSelect;
+export type NewAlert = typeof alerts.$inferInsert;
+
+// Alert Analysis 인터페이스 (JSON으로 저장)
+export interface AlertAnalysis {
+  alertId: string;
+  rootCause?: string;
+  relatedFiles?: string[];
+  suggestedFix?: string;
+  autoFixable: boolean;
+  autoFixAction?: 'retry' | 'rollback' | 'patch';
+  confidence: number; // 0-1
+  similarAlerts?: string[];
+  documentation?: string;
+  analyzedAt: string;
+}
+
+// Alert Resolution 인터페이스 (JSON으로 저장)
+export interface AlertResolution {
+  type: 'auto' | 'manual';
+  action: string; // 'pr_created' | 'retried' | 'rolled_back' | 'ignored'
+  details?: string;
+  prUrl?: string;
+}
+
+// Alert Metadata 인터페이스 (JSON으로 저장)
+export interface AlertMetadata {
+  repo?: string;
+  branch?: string;
+  commit?: string;
+  environment?: string;
+  projectId?: string;
+}
+
+// Risk Assessment 인터페이스
+export interface RiskAssessment {
+  level: RiskLevel;
+  autoApprove: boolean;
+  requiresReview: boolean;
+  reason: string;
+}
+
+// Activity Logs 테이블
+export const activityLogs = sqliteTable('activity_logs', {
+  id: text('id').primaryKey(), // UUID
+  alertId: text('alert_id').references(() => alerts.id, { onDelete: 'cascade' }),
+
+  actor: text('actor', {
+    enum: ['system', 'agent', 'user'],
+  }).notNull(),
+  action: text('action').notNull(), // 'webhook.received', 'analysis.started', 'pr.created'
+  description: text('description').notNull(),
+
+  metadata: text('metadata'), // JSON
+
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+}, (table) => ({
+  alertIdIdx: index('idx_activity_logs_alert_id').on(table.alertId),
+  createdAtIdx: index('idx_activity_logs_created_at').on(table.createdAt),
+}));
+
+export type ActivityLog = typeof activityLogs.$inferSelect;
+export type NewActivityLog = typeof activityLogs.$inferInsert;
+
+// Webhook Configs 테이블
+export const webhookConfigs = sqliteTable('webhook_configs', {
+  id: text('id').primaryKey(), // UUID
+  source: text('source', {
+    enum: ['github', 'vercel', 'sentry', 'supabase', 'custom'],
+  }).notNull(),
+  name: text('name').notNull(), // 사용자 지정 이름
+
+  endpoint: text('endpoint').notNull(), // 생성된 webhook URL
+  secret: text('secret'), // 암호화됨 - webhook 검증용
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+
+  rules: text('rules'), // JSON - { include?, exclude?, severityMap? }
+  projectIds: text('project_ids'), // JSON array
+
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+}, (table) => ({
+  sourceIdx: index('idx_webhook_configs_source').on(table.source),
+  enabledIdx: index('idx_webhook_configs_enabled').on(table.enabled),
+}));
+
+export type WebhookConfig = typeof webhookConfigs.$inferSelect;
+export type NewWebhookConfig = typeof webhookConfigs.$inferInsert;
+
+// Webhook Rules 인터페이스 (JSON으로 저장)
+export interface WebhookRules {
+  include?: string[]; // 포함할 이벤트 타입
+  exclude?: string[]; // 제외할 이벤트 타입
+  severityMap?: Record<string, AlertSeverity>;
+}
+
+// Notification Config 테이블 (싱글톤)
+export const notificationConfig = sqliteTable('notification_config', {
+  id: text('id').primaryKey().default('default'),
+
+  slackWebhookUrl: text('slack_webhook_url'), // 암호화됨
+  slackChannel: text('slack_channel'),
+  slackEnabled: integer('slack_enabled', { mode: 'boolean' }).notNull().default(false),
+
+  ruleOnCritical: integer('rule_on_critical', { mode: 'boolean' }).notNull().default(true),
+  ruleOnAutofix: integer('rule_on_autofix', { mode: 'boolean' }).notNull().default(true),
+  ruleOnAll: integer('rule_on_all', { mode: 'boolean' }).notNull().default(false),
+
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+export type NotificationConfig = typeof notificationConfig.$inferSelect;
+export type NewNotificationConfig = typeof notificationConfig.$inferInsert;
+
+// Alert Patterns 테이블 (유사 Alert 매칭 및 해결 패턴 학습)
+export const alertPatterns = sqliteTable('alert_patterns', {
+  id: text('id').primaryKey(), // UUID
+  source: text('source', {
+    enum: ['github', 'vercel', 'sentry', 'supabase', 'custom'],
+  }).notNull(),
+  type: text('type').notNull(), // Alert type pattern (e.g., 'workflow.failure', 'deployment.error')
+
+  // 패턴 식별자 (제목, 에러 메시지 등에서 추출된 핵심 키워드)
+  patternSignature: text('pattern_signature').notNull(), // 정규화된 패턴 시그니처
+  patternKeywords: text('pattern_keywords'), // JSON array - 주요 키워드들
+
+  // 해결 패턴 정보
+  resolutionCount: integer('resolution_count').notNull().default(0),
+  autoFixCount: integer('auto_fix_count').notNull().default(0),
+  manualFixCount: integer('manual_fix_count').notNull().default(0),
+  avgResolutionTime: integer('avg_resolution_time'), // 밀리초
+
+  // 추천 해결책
+  recommendedAction: text('recommended_action'), // 가장 성공적인 해결 방법
+  recommendedFix: text('recommended_fix'), // 추천 수정 내용
+  successRate: real('success_rate'), // 0-1 성공률
+
+  // 연결된 Alert IDs
+  alertIds: text('alert_ids'), // JSON array - 이 패턴에 매칭된 Alert ID들
+
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+}, (table) => ({
+  sourceTypeIdx: index('idx_alert_patterns_source_type').on(table.source, table.type),
+  signatureIdx: index('idx_alert_patterns_signature').on(table.patternSignature),
+}));
+
+export type AlertPattern = typeof alertPatterns.$inferSelect;
+export type NewAlertPattern = typeof alertPatterns.$inferInsert;
+
+// Alert Trends 테이블 (일별 통계 캐시)
+export const alertTrends = sqliteTable('alert_trends', {
+  id: integer('id').primaryKey(),
+  date: text('date').notNull(), // YYYY-MM-DD 형식
+
+  // 소스별 카운트
+  source: text('source', {
+    enum: ['github', 'vercel', 'sentry', 'supabase', 'custom', 'all'],
+  }).notNull(),
+
+  // 카운트 통계
+  totalCount: integer('total_count').notNull().default(0),
+  criticalCount: integer('critical_count').notNull().default(0),
+  warningCount: integer('warning_count').notNull().default(0),
+  infoCount: integer('info_count').notNull().default(0),
+
+  // 해결 통계
+  resolvedCount: integer('resolved_count').notNull().default(0),
+  ignoredCount: integer('ignored_count').notNull().default(0),
+  autoFixedCount: integer('auto_fixed_count').notNull().default(0),
+
+  // 시간 통계
+  avgResolutionTime: integer('avg_resolution_time'), // 밀리초
+  minResolutionTime: integer('min_resolution_time'),
+  maxResolutionTime: integer('max_resolution_time'),
+
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+}, (table) => ({
+  dateSourceIdx: index('idx_alert_trends_date_source').on(table.date, table.source),
+}));
+
+export type AlertTrend = typeof alertTrends.$inferSelect;
+export type NewAlertTrend = typeof alertTrends.$inferInsert;

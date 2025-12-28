@@ -549,6 +549,157 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
     CREATE INDEX IF NOT EXISTS idx_rollback_points_session_id ON rollback_points(session_id);
   `);
 
+  // =============================================
+  // Alert System 테이블
+  // =============================================
+
+  // Alerts 테이블
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS alerts (
+      id TEXT PRIMARY KEY,
+      source TEXT NOT NULL CHECK(source IN ('github', 'vercel', 'sentry', 'supabase', 'custom')),
+      type TEXT NOT NULL,
+      severity TEXT NOT NULL CHECK(severity IN ('critical', 'warning', 'info')),
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'resolved', 'ignored')),
+      title TEXT NOT NULL,
+      summary TEXT,
+      external_url TEXT,
+      payload TEXT NOT NULL,
+      metadata TEXT,
+      analysis TEXT,
+      resolution TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      resolved_at INTEGER,
+      expires_at INTEGER NOT NULL
+    );
+  `);
+
+  // Alerts 인덱스
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_source ON alerts(source);`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity);`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at);`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_expires_at ON alerts(expires_at);`);
+
+  // Activity Logs 테이블
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS activity_logs (
+      id TEXT PRIMARY KEY,
+      alert_id TEXT REFERENCES alerts(id) ON DELETE CASCADE,
+      actor TEXT NOT NULL CHECK(actor IN ('system', 'agent', 'user')),
+      action TEXT NOT NULL,
+      description TEXT NOT NULL,
+      metadata TEXT,
+      created_at INTEGER NOT NULL
+    );
+  `);
+
+  // Activity Logs 인덱스
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_activity_logs_alert_id ON activity_logs(alert_id);`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at);`);
+
+  // Webhook Configs 테이블
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS webhook_configs (
+      id TEXT PRIMARY KEY,
+      source TEXT NOT NULL CHECK(source IN ('github', 'vercel', 'sentry', 'supabase', 'custom')),
+      name TEXT NOT NULL,
+      endpoint TEXT NOT NULL,
+      secret TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      rules TEXT,
+      project_ids TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
+  // Webhook Configs 인덱스
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_webhook_configs_source ON webhook_configs(source);`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_webhook_configs_enabled ON webhook_configs(enabled);`);
+
+  // Notification Config 테이블 (싱글톤)
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS notification_config (
+      id TEXT PRIMARY KEY DEFAULT 'default',
+      slack_webhook_url TEXT,
+      slack_channel TEXT,
+      slack_enabled INTEGER NOT NULL DEFAULT 0,
+      rule_on_critical INTEGER NOT NULL DEFAULT 1,
+      rule_on_autofix INTEGER NOT NULL DEFAULT 1,
+      rule_on_all INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
+  // 기본 notification config 생성
+  sqlite.exec(`
+    INSERT OR IGNORE INTO notification_config (id, created_at, updated_at)
+    VALUES ('default', ${Date.now()}, ${Date.now()});
+  `);
+
+  // Migration: Add risk_assessment column to alerts
+  try {
+    sqlite.exec(`ALTER TABLE alerts ADD COLUMN risk_assessment TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // =============================================
+  // Alert Patterns 테이블 (Phase 3: 유사 Alert 매칭)
+  // =============================================
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS alert_patterns (
+      id TEXT PRIMARY KEY,
+      source TEXT NOT NULL CHECK(source IN ('github', 'vercel', 'sentry', 'supabase', 'custom')),
+      type TEXT NOT NULL,
+      pattern_signature TEXT NOT NULL,
+      pattern_keywords TEXT,
+      resolution_count INTEGER NOT NULL DEFAULT 0,
+      auto_fix_count INTEGER NOT NULL DEFAULT 0,
+      manual_fix_count INTEGER NOT NULL DEFAULT 0,
+      avg_resolution_time INTEGER,
+      recommended_action TEXT,
+      recommended_fix TEXT,
+      success_rate REAL,
+      alert_ids TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
+  // Alert Patterns 인덱스
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_alert_patterns_source_type ON alert_patterns(source, type);`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_alert_patterns_signature ON alert_patterns(pattern_signature);`);
+
+  // =============================================
+  // Alert Trends 테이블 (Phase 3: 통계 대시보드)
+  // =============================================
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS alert_trends (
+      id INTEGER PRIMARY KEY,
+      date TEXT NOT NULL,
+      source TEXT NOT NULL CHECK(source IN ('github', 'vercel', 'sentry', 'supabase', 'custom', 'all')),
+      total_count INTEGER NOT NULL DEFAULT 0,
+      critical_count INTEGER NOT NULL DEFAULT 0,
+      warning_count INTEGER NOT NULL DEFAULT 0,
+      info_count INTEGER NOT NULL DEFAULT 0,
+      resolved_count INTEGER NOT NULL DEFAULT 0,
+      ignored_count INTEGER NOT NULL DEFAULT 0,
+      auto_fixed_count INTEGER NOT NULL DEFAULT 0,
+      avg_resolution_time INTEGER,
+      min_resolution_time INTEGER,
+      max_resolution_time INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
+  // Alert Trends 인덱스
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_alert_trends_date_source ON alert_trends(date, source);`);
+
   db = drizzle(sqlite, { schema });
   currentDbPath = dbPath;
   return db;
