@@ -9,6 +9,7 @@ import { AgentPage } from '@/components/agent'
 import { PostTaskView } from '@/components/post-task'
 import { ArchivedChangesPage } from '@/components/dashboard/ArchivedChangesPage'
 import { DocsViewer } from '@/components/docs'
+import { AlertCenter } from '@/components/alerts'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { useSelectedData } from '@/hooks/useFlowChanges'
 
@@ -121,6 +122,8 @@ export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
         )
       }
       return <DocsViewer projectPath={selectedProject.path} />
+    case 'alerts':
+      return <AlertCenter />
     default:
       return null
   }

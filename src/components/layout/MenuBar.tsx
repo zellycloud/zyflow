@@ -14,6 +14,7 @@ import {
   BookOpen,
   Settings,
   ChevronDown,
+  Bell,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -80,6 +81,9 @@ export function MenuBar({
       case 'project-settings':
         onSelectItem({ type: 'project-settings', projectId: activeProjectId })
         break
+      case 'alerts':
+        onSelectItem({ type: 'alerts', projectId: activeProjectId })
+        break
     }
   }
 
@@ -89,6 +93,7 @@ export function MenuBar({
   const isArchivedActive = selectedItem?.type === 'archived'
   const isToolsActive = selectedItem?.type === 'agent' || selectedItem?.type === 'post-task'
   const isViewActive = selectedItem?.type === 'docs' || selectedItem?.type === 'project-settings'
+  const isAlertsActive = selectedItem?.type === 'alerts'
 
   return (
     <div
@@ -207,6 +212,20 @@ export function MenuBar({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Alerts Button */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className={cn(
+          'h-7 gap-1 text-xs',
+          isAlertsActive && 'bg-accent'
+        )}
+        onClick={() => handleSelect('alerts')}
+      >
+        <Bell className="h-3.5 w-3.5" />
+        Alerts
+      </Button>
     </div>
   )
 }

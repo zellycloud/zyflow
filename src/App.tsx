@@ -33,6 +33,7 @@ export type SelectedItem =
   | { type: 'post-task'; projectId: string }
   | { type: 'archived'; projectId: string; archivedChangeId?: string }
   | { type: 'docs'; projectId: string }
+  | { type: 'alerts'; projectId: string }
   | { type: 'settings' }
   | null
 
