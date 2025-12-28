@@ -14,6 +14,8 @@ export interface WatcherOptions {
   projectId?: string
   /** 파일 변경 시 호출될 콜백 */
   onTasksChange: (changeId: string, filePath: string, projectPath: string) => void
+  /** 새 Change 폴더 생성 시 호출될 콜백 */
+  onNewChange?: (changeId: string, projectPath: string) => void
   /** 디바운스 시간 (ms) - 기본 500ms */
   debounceMs?: number
   /** 시작 시 기존 파일도 스캔할지 여부 - 기본 false */
@@ -37,10 +39,34 @@ export interface WatcherInstance {
  * 단일 프로젝트 tasks.md 파일 감시자 생성
  */
 export function createTasksWatcher(options: WatcherOptions): WatcherInstance {
-  const { projectPath, projectId, onTasksChange, debounceMs = 500, scanOnStart = false } = options
+  const { projectPath, projectId, onTasksChange, onNewChange, debounceMs = 500, scanOnStart = false } = options
 
   let watcher: FSWatcher | null = null
   const debounceTimers: Map<string, NodeJS.Timeout> = new Map()
+  // 이미 처리한 새 Change 폴더 추적 (중복 호출 방지)
+  const processedNewChanges: Set<string> = new Set()
+
+  /**
+   * 새 Change 폴더 생성 감지 핸들러
+   * proposal.md, design.md, tasks.md 등 OpenSpec 파일 생성 시 트리거
+   */
+  const handleNewChangeFolder = async (filePath: string) => {
+    // OpenSpec 주요 파일 패턴 매칭: proposal.md, design.md, tasks.md
+    // (depth 2 제한으로 specs/xxx/spec.md는 감지 불가 - proposal.md 등으로 대체)
+    const match = filePath.match(/openspec[/\\]changes[/\\]([^/\\]+)[/\\](proposal|design|tasks)\.md$/)
+    if (!match) return
+
+    const changeId = match[1]
+
+    // 이미 처리된 Change는 스킵
+    if (processedNewChanges.has(changeId)) return
+    processedNewChanges.add(changeId)
+
+    console.log(`[Watcher] New change folder detected: ${changeId} (via ${match[2]}.md)`)
+
+    // 새 Change 콜백 호출
+    onNewChange?.(changeId, projectPath)
+  }
 
   const handleChange = async (filePath: string) => {
     // 상대 경로에서 changeId 추출 (Windows/Unix 모두 지원)
@@ -116,22 +142,38 @@ export function createTasksWatcher(options: WatcherOptions): WatcherInstance {
         stabilityThreshold: 300,
         pollInterval: 100,
       },
-      // .git 폴더와 archive 폴더 무시
-      ignored: [/(^|[/\\])\./, /[/\\]archive[/\\]/],
-      // 재귀적으로 감시
+      // .git 폴더, archive 폴더, node_modules 무시
+      ignored: [/(^|[/\\])\./, /[/\\]archive[/\\]/, /node_modules/],
+      // depth 2: change폴더/{proposal,design,tasks}.md 감지 가능
+      // (specs 폴더 내 spec.md는 proposal.md 등으로 대체 감지)
       depth: 2,
+      // 파일 핸들 수 제한을 위해 polling 사용 안함 (native fs events 사용)
+      usePolling: false,
+      persistent: true,
     })
 
-    // tasks.md 파일만 필터링하여 처리
-    const filterAndHandle = async (filePath: string) => {
+    // tasks.md 파일 변경 필터링
+    const filterAndHandleChange = async (filePath: string) => {
       if (filePath.endsWith('/tasks.md') || filePath.endsWith('\\tasks.md')) {
         await handleChange(filePath)
       }
     }
 
+    // 새 파일 추가 시: tasks.md 처리 + 새 Change 폴더 감지
+    const filterAndHandleAdd = async (filePath: string) => {
+      // tasks.md 추가 시 동기화
+      if (filePath.endsWith('/tasks.md') || filePath.endsWith('\\tasks.md')) {
+        await handleChange(filePath)
+      }
+      // 새 Change 폴더 감지 (proposal.md, design.md, tasks.md, spec.md)
+      if (onNewChange) {
+        await handleNewChangeFolder(filePath)
+      }
+    }
+
     watcher
-      .on('change', filterAndHandle)
-      .on('add', filterAndHandle)
+      .on('change', filterAndHandleChange)
+      .on('add', filterAndHandleAdd)
       .on('error', (error) => {
         console.error(`[Watcher] Error for ${projectPath}:`, error)
       })
@@ -184,7 +226,8 @@ export interface MultiWatcherManager {
 export function createMultiWatcherManager(
   onTasksChange: (changeId: string, filePath: string, projectPath: string) => void,
   debounceMs = 500,
-  scanOnStart = false
+  scanOnStart = false,
+  onNewChange?: (changeId: string, projectPath: string) => void
 ): MultiWatcherManager {
   const watchers = new Map<string, WatcherInstance>()
 
@@ -199,6 +242,7 @@ export function createMultiWatcherManager(
       projectPath,
       projectId,
       onTasksChange,
+      onNewChange,
       debounceMs,
       scanOnStart,
     })

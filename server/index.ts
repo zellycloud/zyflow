@@ -64,6 +64,7 @@ async function initMultiWatcher() {
     // Multi-Watcher Manager 생성
     // 참고: scanOnStart는 기본 false - syncAllChangesOnStartup이 이미 초기 동기화를 수행하므로 중복 방지
     const multiWatcher = createMultiWatcherManager(
+      // onTasksChange: tasks.md 파일 변경 시 호출
       async (changeId, filePath, projectPath) => {
         console.log(`[Watcher] Syncing ${changeId} due to file change: ${filePath}`)
         try {
@@ -87,7 +88,31 @@ async function initMultiWatcher() {
           console.error(`[Watcher] Sync error for ${changeId}:`, error)
         }
       },
-      1000 // debounceMs - 1초로 늘려서 파일 쓰기 완료 대기
+      1000, // debounceMs - 1초로 늘려서 파일 쓰기 완료 대기
+      false, // scanOnStart
+      // onNewChange: 새 Change 폴더 생성 시 호출 (proposal.md, design.md, tasks.md 등)
+      async (changeId, projectPath) => {
+        console.log(`[Watcher] New change folder detected: ${changeId} in ${projectPath}`)
+        try {
+          // DB에 Change 등록
+          await ensureChangeExists(changeId, projectPath)
+
+          // tasks.md가 있으면 태스크도 동기화
+          const result = await syncChangeTasksForProject(changeId, projectPath)
+          console.log(
+            `[Watcher] New change synced: ${changeId} (${result.tasksCreated} tasks created)`
+          )
+
+          // WebSocket으로 클라이언트에 새 Change 알림
+          emit('change:created', {
+            changeId,
+            projectPath,
+            tasksCreated: result.tasksCreated
+          })
+        } catch (error) {
+          console.error(`[Watcher] New change sync error for ${changeId}:`, error)
+        }
+      }
     )
 
     // 모든 프로젝트에 대해 watcher 추가

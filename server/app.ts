@@ -44,6 +44,7 @@ import { claudeFlowRouter } from './claude-flow/index.js'
 import { projectsRouter } from './routes/projects.js'
 import { changesRouter } from './routes/changes.js'
 import { flowRouter } from './routes/flow.js'
+import { alertsRouter, setBroadcastAlert } from './routes/alerts.js'
 import { aiRouter } from './ai/index.js'
 import { OpenSpecPromptBuilder } from './claude-flow/prompt-builder.js'
 import * as pty from 'node-pty'
@@ -125,6 +126,14 @@ app.use('/api/changes', changesRouter)
 
 // Flow API 라우터 등록
 app.use('/api/flow', flowRouter)
+
+// Alerts API 라우터 등록
+app.use('/api/alerts', alertsRouter)
+
+// Alert WebSocket broadcast 설정
+setBroadcastAlert((data) => {
+  emit('alert', data)
+})
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
