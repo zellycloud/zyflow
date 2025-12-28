@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, Settings, RefreshCw, BarChart3 } from 'lucide-react'
+import { Bell, Settings, RefreshCw, BarChart3, Github, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -8,14 +8,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useAlerts, useAlertStats } from '@/hooks/useAlerts'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { useAlerts, useAlertStats, useSyncGitHubActions, useGitHubAuthStatus } from '@/hooks/useAlerts'
 import type { AlertSource, AlertSeverity, AlertStatus } from '@/hooks/useAlerts'
 import { AlertList } from './AlertList'
 import { AlertDetail } from './AlertDetail'
 import { AlertSettings } from './AlertSettings'
 import { AlertDashboard } from './AlertDashboard'
 
-export function AlertCenter() {
+interface AlertCenterProps {
+  projectId?: string
+}
+
+export function AlertCenter({ projectId }: AlertCenterProps) {
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showDashboard, setShowDashboard] = useState(false)
@@ -25,8 +35,12 @@ export function AlertCenter() {
     status?: AlertStatus
   }>({})
 
-  const { data: alertsData, isLoading, refetch } = useAlerts(filter)
-  const { data: stats } = useAlertStats()
+  // projectId를 포함한 필터로 쿼리
+  const alertsFilter = { ...filter, projectId }
+  const { data: alertsData, isLoading, refetch } = useAlerts(alertsFilter)
+  const { data: stats } = useAlertStats(projectId)
+  const { data: authStatus } = useGitHubAuthStatus()
+  const syncGitHub = useSyncGitHubActions()
 
   const handleSelectAlert = (alertId: string) => {
     setSelectedAlertId(alertId)
@@ -37,6 +51,18 @@ export function AlertCenter() {
     setSelectedAlertId(null)
     setShowSettings(false)
     setShowDashboard(false)
+  }
+
+  const handleSyncGitHub = async () => {
+    try {
+      // 프로젝트 ID를 포함하여 GitHub 동기화
+      const result = await syncGitHub.mutateAsync({ projectId })
+      if (result.newAlerts > 0) {
+        refetch()
+      }
+    } catch (error) {
+      console.error('Failed to sync GitHub Actions:', error)
+    }
   }
 
   if (showSettings) {
@@ -65,6 +91,45 @@ export function AlertCenter() {
           )}
         </div>
         <div className="flex items-center gap-1">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleSyncGitHub}
+                  disabled={syncGitHub.isPending || !authStatus?.authenticated}
+                  title="Sync GitHub Actions"
+                >
+                  {syncGitHub.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Github className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {authStatus?.authenticated ? (
+                  <div className="text-xs">
+                    <p>Sync GitHub Actions ({authStatus.method === 'pat' ? 'PAT' : 'CLI'})</p>
+                    <p className="text-muted-foreground">@{authStatus.user}</p>
+                    {syncGitHub.data && (
+                      <p className="text-muted-foreground">
+                        Last: {syncGitHub.data.newAlerts} new, {syncGitHub.data.skipped} skipped
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-xs text-yellow-500">
+                    <p>GitHub 인증 필요</p>
+                    <p className="text-muted-foreground">
+                      .env에 GITHUB_PERSONAL_ACCESS_TOKEN 설정
+                    </p>
+                  </div>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Button
             variant="ghost"
             size="icon"

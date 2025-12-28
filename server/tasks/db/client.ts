@@ -647,6 +647,42 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
     // Column already exists, ignore
   }
 
+  // Migration: Add GitHub Actions poller columns to notification_config
+  try {
+    sqlite.exec(`ALTER TABLE notification_config ADD COLUMN poller_enabled INTEGER NOT NULL DEFAULT 0`);
+  } catch {
+    // Column already exists, ignore
+  }
+  try {
+    sqlite.exec(`ALTER TABLE notification_config ADD COLUMN poller_interval_ms INTEGER NOT NULL DEFAULT 300000`);
+  } catch {
+    // Column already exists, ignore
+  }
+  try {
+    sqlite.exec(`ALTER TABLE notification_config ADD COLUMN poller_repos TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+  try {
+    sqlite.exec(`ALTER TABLE notification_config ADD COLUMN poller_last_polled_at INTEGER`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add project_id column to alerts table for project-based filtering
+  try {
+    sqlite.exec(`ALTER TABLE alerts ADD COLUMN project_id TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Create index for project_id on alerts
+  try {
+    sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_project_id ON alerts(project_id);`);
+  } catch {
+    // Index already exists, ignore
+  }
+
   // =============================================
   // Alert Patterns 테이블 (Phase 3: 유사 Alert 매칭)
   // =============================================

@@ -117,12 +117,14 @@ interface AlertsFilter {
   source?: AlertSource
   severity?: AlertSeverity
   status?: AlertStatus
+  projectId?: string
   limit?: number
   offset?: number
 }
 
 export function useAlerts(filter?: AlertsFilter) {
   const params = new URLSearchParams()
+  if (filter?.projectId) params.set('projectId', filter.projectId)
   if (filter?.source) params.set('source', filter.source)
   if (filter?.severity) params.set('severity', filter.severity)
   if (filter?.status) params.set('status', filter.status)
@@ -162,11 +164,18 @@ export function useAlert(alertId: string | null) {
   })
 }
 
-export function useAlertStats() {
+export function useAlertStats(projectId?: string) {
+  const params = new URLSearchParams()
+  if (projectId) params.set('projectId', projectId)
+  const queryString = params.toString()
+
   return useQuery({
-    queryKey: ['alerts', 'stats'],
+    queryKey: ['alerts', 'stats', projectId],
     queryFn: async (): Promise<AlertStats> => {
-      const res = await fetch(`${API_BASE}/alerts/stats`)
+      const url = queryString
+        ? `${API_BASE}/alerts/stats?${queryString}`
+        : `${API_BASE}/alerts/stats`
+      const res = await fetch(url)
       const json: ApiResponse<AlertStats> = await res.json()
       if (!json.success) throw new Error(json.error)
       return json.data!
@@ -726,4 +735,126 @@ export function formatChange(value: number): { text: string; isPositive: boolean
   const isPositive = value < 0 // Less alerts is positive
   const text = value === 0 ? '변화 없음' : `${value > 0 ? '+' : ''}${value}%`
   return { text, isPositive }
+}
+
+// =============================================
+// GitHub Actions Sync Hooks
+// =============================================
+
+export interface GitHubAuthStatus {
+  authenticated: boolean
+  user?: string
+  method?: 'pat' | 'cli'
+  error?: string
+}
+
+export interface GitHubSyncResult {
+  success: boolean
+  newAlerts: number
+  skipped: number
+  errors: string[]
+  repo?: string
+}
+
+export interface PollerConfig {
+  enabled: boolean
+  intervalMs: number
+  repos: string[]
+  lastPolledAt?: number
+  isRunning: boolean
+}
+
+// Check gh CLI auth status
+export function useGitHubAuthStatus() {
+  return useQuery({
+    queryKey: ['alerts', 'github', 'auth-status'],
+    queryFn: async (): Promise<GitHubAuthStatus> => {
+      const res = await fetch(`${API_BASE}/alerts/github/auth-status`)
+      const json: ApiResponse<GitHubAuthStatus> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    staleTime: 60000, // 1분
+  })
+}
+
+// Sync GitHub Actions for a repo
+export function useSyncGitHubActions() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ repo, limit, projectId }: { repo?: string; limit?: number; projectId?: string } = {}) => {
+      const res = await fetch(`${API_BASE}/alerts/github/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo, limit, projectId }),
+      })
+      const json: ApiResponse<GitHubSyncResult> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      queryClient.invalidateQueries({ queryKey: ['alerts', 'stats'] })
+      queryClient.invalidateQueries({ queryKey: ['alerts', 'dashboard-stats'] })
+    },
+  })
+}
+
+// Sync all configured repos
+export function useSyncAllGitHubActions() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ repos, projectId }: { repos?: string[]; projectId?: string } = {}) => {
+      const res = await fetch(`${API_BASE}/alerts/github/sync-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repos, projectId }),
+      })
+      const json: ApiResponse<{ results: GitHubSyncResult[]; totalNew: number; totalSkipped: number }> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      queryClient.invalidateQueries({ queryKey: ['alerts', 'stats'] })
+      queryClient.invalidateQueries({ queryKey: ['alerts', 'dashboard-stats'] })
+    },
+  })
+}
+
+// Get poller configuration
+export function usePollerConfig() {
+  return useQuery({
+    queryKey: ['alerts', 'github', 'poller-config'],
+    queryFn: async (): Promise<PollerConfig> => {
+      const res = await fetch(`${API_BASE}/alerts/github/poller-config`)
+      const json: ApiResponse<PollerConfig> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    staleTime: 30000, // 30초
+  })
+}
+
+// Update poller configuration
+export function useUpdatePollerConfig() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (config: { enabled?: boolean; intervalMs?: number; repos?: string[] }) => {
+      const res = await fetch(`${API_BASE}/alerts/github/poller-config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      })
+      const json: ApiResponse<PollerConfig> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts', 'github', 'poller-config'] })
+    },
+  })
 }

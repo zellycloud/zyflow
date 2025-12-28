@@ -123,7 +123,7 @@ export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
       }
       return <DocsViewer projectPath={selectedProject.path} />
     case 'alerts':
-      return <AlertCenter />
+      return <AlertCenter projectId={selectedItem.projectId} />
     default:
       return null
   }

@@ -22,6 +22,17 @@ import {
   getAdvancedStats,
   createPullRequest,
 } from '../services/alertProcessor.js'
+import {
+  checkGhAuth,
+  syncRepoWorkflows,
+  syncAllRepos,
+  getCurrentRepo,
+  getPollerConfig,
+  updatePollerConfig,
+  startBackgroundPoller,
+  stopBackgroundPoller,
+  isPollerRunning,
+} from '../services/githubActionsPoller.js'
 import type {
   AlertSource,
   AlertSeverity,
@@ -503,10 +514,16 @@ alertsRouter.post('/webhooks/supabase', async (req, res) => {
 alertsRouter.get('/', async (req, res) => {
   try {
     const sqlite = getSqlite()
-    const { source, severity, status, limit = '50', offset = '0' } = req.query
+    const { source, severity, status, projectId, limit = '50', offset = '0' } = req.query
 
     let whereClause = 'WHERE expires_at > ?'
-    const params: (string | number)[] = [Date.now()]
+    const params: (string | number | null)[] = [Date.now()]
+
+    // project_id 필터링 (프로젝트별 알림 분리)
+    if (projectId) {
+      whereClause += ' AND project_id = ?'
+      params.push(projectId as string)
+    }
 
     if (source) {
       whereClause += ' AND source = ?'
@@ -548,26 +565,31 @@ alertsRouter.get('/', async (req, res) => {
 })
 
 // GET /alerts/stats - Get alert statistics
-alertsRouter.get('/stats', async (_req, res) => {
+alertsRouter.get('/stats', async (req, res) => {
   try {
     const sqlite = getSqlite()
     const now = Date.now()
+    const { projectId } = req.query
+
+    // project_id 필터 조건 생성
+    const projectFilter = projectId ? ' AND project_id = ?' : ''
+    const params = projectId ? [now, projectId as string] : [now]
 
     const total = sqlite.prepare(`
-      SELECT COUNT(*) as count FROM alerts WHERE expires_at > ?
-    `).get(now) as { count: number }
+      SELECT COUNT(*) as count FROM alerts WHERE expires_at > ?${projectFilter}
+    `).get(...params) as { count: number }
 
     const bySeverity = sqlite.prepare(`
-      SELECT severity, COUNT(*) as count FROM alerts WHERE expires_at > ? GROUP BY severity
-    `).all(now) as { severity: string; count: number }[]
+      SELECT severity, COUNT(*) as count FROM alerts WHERE expires_at > ?${projectFilter} GROUP BY severity
+    `).all(...params) as { severity: string; count: number }[]
 
     const bySource = sqlite.prepare(`
-      SELECT source, COUNT(*) as count FROM alerts WHERE expires_at > ? GROUP BY source
-    `).all(now) as { source: string; count: number }[]
+      SELECT source, COUNT(*) as count FROM alerts WHERE expires_at > ?${projectFilter} GROUP BY source
+    `).all(...params) as { source: string; count: number }[]
 
     const byStatus = sqlite.prepare(`
-      SELECT status, COUNT(*) as count FROM alerts WHERE expires_at > ? GROUP BY status
-    `).all(now) as { status: string; count: number }[]
+      SELECT status, COUNT(*) as count FROM alerts WHERE expires_at > ?${projectFilter} GROUP BY status
+    `).all(...params) as { status: string; count: number }[]
 
     res.json({
       success: true,
@@ -1303,5 +1325,193 @@ alertsRouter.patch('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error updating alert:', error)
     res.status(500).json({ success: false, error: 'Failed to update alert' })
+  }
+})
+
+// =============================================
+// GitHub Actions Poller Endpoints
+// =============================================
+
+// GET /github/auth-status - Check gh CLI authentication status
+alertsRouter.get('/github/auth-status', async (_req, res) => {
+  try {
+    const result = await checkGhAuth()
+    res.json({ success: true, data: result })
+  } catch (error) {
+    console.error('Error checking gh auth:', error)
+    res.status(500).json({ success: false, error: 'Failed to check gh auth' })
+  }
+})
+
+// POST /github/sync - Sync GitHub Actions failures for a repository
+alertsRouter.post('/github/sync', async (req, res) => {
+  try {
+    const { repo, limit = 20, projectId } = req.body
+
+    // repo가 지정되지 않으면 현재 디렉토리의 repo 사용
+    let targetRepo = repo
+    if (!targetRepo) {
+      targetRepo = await getCurrentRepo()
+      if (!targetRepo) {
+        return res.status(400).json({
+          success: false,
+          error: 'Repository not specified and could not detect current repository',
+        })
+      }
+    }
+
+    const result = await syncRepoWorkflows(targetRepo, {
+      limit,
+      projectId,
+      broadcastAlert: broadcastAlert || undefined,
+    })
+
+    createActivityLog(null, 'user', 'github.synced', `Synced GitHub Actions for ${targetRepo}`, {
+      repo: targetRepo,
+      projectId,
+      newAlerts: result.newAlerts,
+      skipped: result.skipped,
+    })
+
+    res.json({ success: true, data: result })
+  } catch (error) {
+    console.error('Error syncing GitHub Actions:', error)
+    res.status(500).json({ success: false, error: 'Failed to sync GitHub Actions' })
+  }
+})
+
+// POST /github/sync-all - Sync GitHub Actions failures for all configured repositories
+alertsRouter.post('/github/sync-all', async (req, res) => {
+  try {
+    const { repos, projectId } = req.body
+
+    let targetRepos = repos
+    if (!targetRepos || targetRepos.length === 0) {
+      // 폴러 설정에서 repos 가져오기
+      const config = getPollerConfig()
+      targetRepos = config.repos
+
+      // 여전히 없으면 현재 디렉토리의 repo 사용
+      if (!targetRepos || targetRepos.length === 0) {
+        const currentRepo = await getCurrentRepo()
+        if (currentRepo) {
+          targetRepos = [currentRepo]
+        } else {
+          return res.status(400).json({
+            success: false,
+            error: 'No repositories configured and could not detect current repository',
+          })
+        }
+      }
+    }
+
+    const result = await syncAllRepos(targetRepos, {
+      projectId,
+      broadcastAlert: broadcastAlert || undefined,
+    })
+
+    createActivityLog(null, 'user', 'github.synced_all', `Synced GitHub Actions for ${targetRepos.length} repos`, {
+      repos: targetRepos,
+      projectId,
+      totalNew: result.totalNew,
+      totalSkipped: result.totalSkipped,
+    })
+
+    res.json({ success: true, data: result })
+  } catch (error) {
+    console.error('Error syncing all repos:', error)
+    res.status(500).json({ success: false, error: 'Failed to sync all repos' })
+  }
+})
+
+// GET /github/poller-config - Get poller configuration
+alertsRouter.get('/github/poller-config', async (_req, res) => {
+  try {
+    const config = getPollerConfig()
+    res.json({
+      success: true,
+      data: {
+        ...config,
+        isRunning: isPollerRunning(),
+      },
+    })
+  } catch (error) {
+    console.error('Error getting poller config:', error)
+    res.status(500).json({ success: false, error: 'Failed to get poller config' })
+  }
+})
+
+// PATCH /github/poller-config - Update poller configuration
+alertsRouter.patch('/github/poller-config', async (req, res) => {
+  try {
+    const { enabled, intervalMs, repos } = req.body
+
+    updatePollerConfig({
+      enabled: enabled !== undefined ? enabled : undefined,
+      intervalMs: intervalMs !== undefined ? intervalMs : undefined,
+      repos: repos !== undefined ? repos : undefined,
+    })
+
+    const config = getPollerConfig()
+
+    // 폴러 상태 업데이트
+    if (enabled === true) {
+      startBackgroundPoller(broadcastAlert || undefined)
+    } else if (enabled === false) {
+      stopBackgroundPoller()
+    }
+
+    createActivityLog(null, 'user', 'poller.updated', 'GitHub Actions poller config updated', {
+      enabled: config.enabled,
+      intervalMs: config.intervalMs,
+      repoCount: config.repos.length,
+    })
+
+    res.json({
+      success: true,
+      data: {
+        ...config,
+        isRunning: isPollerRunning(),
+      },
+    })
+  } catch (error) {
+    console.error('Error updating poller config:', error)
+    res.status(500).json({ success: false, error: 'Failed to update poller config' })
+  }
+})
+
+// POST /github/poller/start - Start background poller
+alertsRouter.post('/github/poller/start', async (_req, res) => {
+  try {
+    startBackgroundPoller(broadcastAlert || undefined)
+
+    createActivityLog(null, 'user', 'poller.started', 'GitHub Actions poller started')
+
+    res.json({
+      success: true,
+      message: 'Poller started',
+      isRunning: isPollerRunning(),
+    })
+  } catch (error) {
+    console.error('Error starting poller:', error)
+    res.status(500).json({ success: false, error: 'Failed to start poller' })
+  }
+})
+
+// POST /github/poller/stop - Stop background poller
+alertsRouter.post('/github/poller/stop', async (_req, res) => {
+  try {
+    stopBackgroundPoller()
+
+    createActivityLog(null, 'user', 'poller.stopped', 'GitHub Actions poller stopped')
+
+    res.json({
+      success: true,
+      message: 'Poller stopped',
+      isRunning: isPollerRunning(),
+    })
+  } catch (error) {
+    console.error('Error stopping poller:', error)
+    res.status(500).json({ success: false, error: 'Failed to stop poller' })
   }
 })
