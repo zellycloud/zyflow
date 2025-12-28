@@ -31,7 +31,7 @@ export {
   createThirdPromptUserMessage,
   createModifyPromptUserMessage,
   withAdditionalInstructions,
-} from './prompts';
+} from './prompts.js';
 
 // File Tree
 export {
@@ -39,7 +39,7 @@ export {
   readReadme,
   getProjectContext,
   type FileTreeOptions,
-} from './file-tree';
+} from './file-tree.js';
 
 // LLM Adapter
 export {
@@ -51,7 +51,7 @@ export {
   type LLMAdapter,
   type LLMMessage,
   type LLMCompletionOptions,
-} from './llm-adapter';
+} from './llm-adapter.js';
 
 // Generator
 export {
@@ -62,7 +62,7 @@ export {
   type GenerationStage,
   type GenerationResult,
   type ModifyResult,
-} from './generator';
+} from './generator.js';
 
 // Mermaid Utilities
 export {
@@ -75,4 +75,4 @@ export {
   formatMermaidCode,
   type ClickEvent,
   type ValidationResult,
-} from './mermaid-utils';
+} from './mermaid-utils.js';

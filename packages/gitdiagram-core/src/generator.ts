@@ -7,7 +7,7 @@
  * 3. Generate Mermaid.js diagram
  */
 
-import type { LLMAdapter, LLMMessage } from './llm-adapter';
+import type { LLMAdapter, LLMMessage } from './llm-adapter.js';
 import {
   SYSTEM_FIRST_PROMPT,
   SYSTEM_SECOND_PROMPT,
@@ -18,8 +18,8 @@ import {
   createSecondPromptUserMessage,
   createThirdPromptUserMessage,
   createModifyPromptUserMessage,
-} from './prompts';
-import { getProjectContext, type FileTreeOptions } from './file-tree';
+} from './prompts.js';
+import { getProjectContext, type FileTreeOptions } from './file-tree.js';
 
 export interface GeneratorOptions {
   /** LLM adapter to use */

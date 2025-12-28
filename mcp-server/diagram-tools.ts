@@ -18,7 +18,7 @@ import {
   createFirstPromptUserMessage,
   createSecondPromptUserMessage,
   createThirdPromptUserMessage,
-} from '../packages/gitdiagram-core/src/index.js'
+} from '@zyflow/gitdiagram-core'
 
 // Types
 interface DiagramGenerateArgs {
@@ -312,13 +312,13 @@ export function handleDiagramValidate(
 검증 결과: ${validation.valid ? '통과' : '실패'}
 
 에러 (${validation.errors.length}):
-${validation.errors.map((e) => `- ${e}`).join('\n') || '없음'}
+${validation.errors.map((e: string) => `- ${e}`).join('\n') || '없음'}
 
 경고 (${validation.warnings.length}):
-${validation.warnings.map((w) => `- ${w}`).join('\n') || '없음'}
+${validation.warnings.map((w: string) => `- ${w}`).join('\n') || '없음'}
 
 클릭 이벤트 (${clickEvents.length}):
-${clickEvents.map((c) => `- ${c.nodeId}: ${c.path}`).join('\n') || '없음'}
+${clickEvents.map((c: { nodeId: string; path: string }) => `- ${c.nodeId}: ${c.path}`).join('\n') || '없음'}
 `,
     }
   } catch (error) {
