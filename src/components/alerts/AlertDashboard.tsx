@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Clock, CheckCircle, Zap, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react'
+import { Clock, CheckCircle, Zap, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   useDashboardStats,
