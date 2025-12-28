@@ -584,6 +584,185 @@ alertsRouter.get('/stats', async (_req, res) => {
   }
 })
 
+// =============================================
+// Non-parameterized routes (MUST be before /:id to avoid route conflict)
+// =============================================
+
+// GET /activities - List activity logs
+alertsRouter.get('/activities', async (req, res) => {
+  try {
+    const sqlite = getSqlite()
+    const { alertId, actor, limit = '50', offset = '0' } = req.query
+
+    let whereClause = 'WHERE 1=1'
+    const params: (string | number)[] = []
+
+    if (alertId) {
+      whereClause += ' AND alert_id = ?'
+      params.push(alertId as string)
+    }
+    if (actor) {
+      whereClause += ' AND actor = ?'
+      params.push(actor as string)
+    }
+
+    const activities = sqlite.prepare(`
+      SELECT * FROM activity_logs
+      ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, parseInt(limit as string), parseInt(offset as string))
+
+    res.json({ success: true, data: activities })
+  } catch (error) {
+    console.error('Error listing activities:', error)
+    res.status(500).json({ success: false, error: 'Failed to list activities' })
+  }
+})
+
+// GET /trends - Get alert trends data
+alertsRouter.get('/trends', async (req, res) => {
+  try {
+    const { days = '30', source } = req.query
+    const trends = getTrends(parseInt(days as string), source as string | undefined)
+
+    res.json({ success: true, data: trends })
+  } catch (error) {
+    console.error('Error getting trends:', error)
+    res.status(500).json({ success: false, error: 'Failed to get trends' })
+  }
+})
+
+// GET /advanced-stats - Get advanced statistics
+alertsRouter.get('/advanced-stats', async (_req, res) => {
+  try {
+    const stats = getAdvancedStats()
+    res.json({ success: true, data: stats })
+  } catch (error) {
+    console.error('Error getting advanced stats:', error)
+    res.status(500).json({ success: false, error: 'Failed to get advanced stats' })
+  }
+})
+
+// GET /patterns - Get learned alert patterns
+alertsRouter.get('/patterns', async (req, res) => {
+  try {
+    const sqlite = getSqlite()
+    const { source, limit = '20' } = req.query
+
+    let query = 'SELECT * FROM alert_patterns'
+    const params: (string | number)[] = []
+
+    if (source) {
+      query += ' WHERE source = ?'
+      params.push(source as string)
+    }
+
+    query += ' ORDER BY resolution_count DESC LIMIT ?'
+    params.push(parseInt(limit as string))
+
+    const patterns = sqlite.prepare(query).all(...params)
+
+    res.json({ success: true, data: patterns })
+  } catch (error) {
+    console.error('Error getting patterns:', error)
+    res.status(500).json({ success: false, error: 'Failed to get patterns' })
+  }
+})
+
+// GET /dashboard-stats - Get dashboard stats (combines multiple stats)
+alertsRouter.get('/dashboard-stats', async (_req, res) => {
+  try {
+    const sqlite = getSqlite()
+    const now = Date.now()
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000
+
+    // Today's alerts
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+    const todayAlerts = sqlite.prepare(`
+      SELECT COUNT(*) as count FROM alerts WHERE created_at >= ?
+    `).get(todayStart.getTime()) as { count: number }
+
+    // Pending alerts
+    const pendingAlerts = sqlite.prepare(`
+      SELECT COUNT(*) as count FROM alerts WHERE status = 'pending' AND expires_at > ?
+    `).get(now) as { count: number }
+
+    // Resolution rate (last 7 days)
+    const totalLast7Days = sqlite.prepare(`
+      SELECT COUNT(*) as count FROM alerts WHERE created_at >= ?
+    `).get(sevenDaysAgo) as { count: number }
+    const resolvedLast7Days = sqlite.prepare(`
+      SELECT COUNT(*) as count FROM alerts WHERE status = 'resolved' AND created_at >= ?
+    `).get(sevenDaysAgo) as { count: number }
+    const resolutionRate = totalLast7Days.count > 0
+      ? Math.round((resolvedLast7Days.count / totalLast7Days.count) * 100)
+      : 0
+
+    // Auto-fix success rate (last 30 days)
+    const autoFixed = sqlite.prepare(`
+      SELECT COUNT(*) as count FROM alerts
+      WHERE resolution LIKE '%"type":"auto"%' AND created_at >= ?
+    `).get(thirtyDaysAgo) as { count: number }
+    const manualFixed = sqlite.prepare(`
+      SELECT COUNT(*) as count FROM alerts
+      WHERE status = 'resolved' AND (resolution IS NULL OR resolution NOT LIKE '%"type":"auto"%') AND created_at >= ?
+    `).get(thirtyDaysAgo) as { count: number }
+    const autoFixRate = (autoFixed.count + manualFixed.count) > 0
+      ? Math.round((autoFixed.count / (autoFixed.count + manualFixed.count)) * 100)
+      : 0
+
+    // Average resolution time (in hours)
+    const avgResTime = sqlite.prepare(`
+      SELECT AVG((resolved_at - created_at) / 3600000.0) as avg_hours
+      FROM alerts WHERE status = 'resolved' AND resolved_at IS NOT NULL AND created_at >= ?
+    `).get(thirtyDaysAgo) as { avg_hours: number | null }
+
+    // Critical alerts today
+    const criticalToday = sqlite.prepare(`
+      SELECT COUNT(*) as count FROM alerts
+      WHERE severity = 'critical' AND created_at >= ?
+    `).get(todayStart.getTime()) as { count: number }
+
+    // Trend comparison (this week vs last week)
+    const thisWeekStart = now - 7 * 24 * 60 * 60 * 1000
+    const lastWeekStart = now - 14 * 24 * 60 * 60 * 1000
+    const thisWeek = sqlite.prepare(`
+      SELECT COUNT(*) as count FROM alerts WHERE created_at >= ? AND created_at < ?
+    `).get(thisWeekStart, now) as { count: number }
+    const lastWeek = sqlite.prepare(`
+      SELECT COUNT(*) as count FROM alerts WHERE created_at >= ? AND created_at < ?
+    `).get(lastWeekStart, thisWeekStart) as { count: number }
+    const weekOverWeekChange = lastWeek.count > 0
+      ? Math.round(((thisWeek.count - lastWeek.count) / lastWeek.count) * 100)
+      : 0
+
+    res.json({
+      success: true,
+      data: {
+        todayAlerts: todayAlerts.count,
+        pendingAlerts: pendingAlerts.count,
+        resolutionRate,
+        autoFixRate,
+        avgResolutionTimeHours: avgResTime.avg_hours ? Math.round(avgResTime.avg_hours * 10) / 10 : null,
+        criticalToday: criticalToday.count,
+        weekOverWeekChange,
+        autoFixedCount: autoFixed.count,
+        manualFixedCount: manualFixed.count,
+      },
+    })
+  } catch (error) {
+    console.error('Error getting dashboard stats:', error)
+    res.status(500).json({ success: false, error: 'Failed to get dashboard stats' })
+  }
+})
+
+// =============================================
+// Parameterized routes (/:id pattern)
+// =============================================
+
 // GET /alerts/:id - Get single alert
 alertsRouter.get('/:id', async (req, res) => {
   try {
@@ -690,42 +869,6 @@ alertsRouter.post('/:id/process', async (req, res) => {
   } catch (error) {
     console.error('Error processing alert:', error)
     res.status(500).json({ success: false, error: 'Failed to process alert' })
-  }
-})
-
-// =============================================
-// Activity Logs Endpoints
-// =============================================
-
-// GET /activities - List activity logs
-alertsRouter.get('/activities', async (req, res) => {
-  try {
-    const sqlite = getSqlite()
-    const { alertId, actor, limit = '50', offset = '0' } = req.query
-
-    let whereClause = 'WHERE 1=1'
-    const params: (string | number)[] = []
-
-    if (alertId) {
-      whereClause += ' AND alert_id = ?'
-      params.push(alertId as string)
-    }
-    if (actor) {
-      whereClause += ' AND actor = ?'
-      params.push(actor as string)
-    }
-
-    const activities = sqlite.prepare(`
-      SELECT * FROM activity_logs
-      ${whereClause}
-      ORDER BY created_at DESC
-      LIMIT ? OFFSET ?
-    `).all(...params, parseInt(limit as string), parseInt(offset as string))
-
-    res.json({ success: true, data: activities })
-  } catch (error) {
-    console.error('Error listing activities:', error)
-    res.status(500).json({ success: false, error: 'Failed to list activities' })
   }
 })
 
@@ -1025,58 +1168,8 @@ alertsRouter.post('/cleanup', async (_req, res) => {
 })
 
 // =============================================
-// Phase 3: Advanced Features Endpoints
+// Phase 3: Advanced Features Endpoints (/:id dependent routes)
 // =============================================
-
-// GET /trends - Get alert trends data
-alertsRouter.get('/trends', async (req, res) => {
-  try {
-    const { days = '30', source } = req.query
-    const trends = getTrends(parseInt(days as string), source as string | undefined)
-
-    res.json({ success: true, data: trends })
-  } catch (error) {
-    console.error('Error getting trends:', error)
-    res.status(500).json({ success: false, error: 'Failed to get trends' })
-  }
-})
-
-// GET /advanced-stats - Get advanced statistics
-alertsRouter.get('/advanced-stats', async (_req, res) => {
-  try {
-    const stats = getAdvancedStats()
-    res.json({ success: true, data: stats })
-  } catch (error) {
-    console.error('Error getting advanced stats:', error)
-    res.status(500).json({ success: false, error: 'Failed to get advanced stats' })
-  }
-})
-
-// GET /patterns - Get learned alert patterns
-alertsRouter.get('/patterns', async (req, res) => {
-  try {
-    const sqlite = getSqlite()
-    const { source, limit = '20' } = req.query
-
-    let query = 'SELECT * FROM alert_patterns'
-    const params: (string | number)[] = []
-
-    if (source) {
-      query += ' WHERE source = ?'
-      params.push(source as string)
-    }
-
-    query += ' ORDER BY resolution_count DESC LIMIT ?'
-    params.push(parseInt(limit as string))
-
-    const patterns = sqlite.prepare(query).all(...params)
-
-    res.json({ success: true, data: patterns })
-  } catch (error) {
-    console.error('Error getting patterns:', error)
-    res.status(500).json({ success: false, error: 'Failed to get patterns' })
-  }
-})
 
 // GET /similar/:id - Get similar alerts for a specific alert
 alertsRouter.get('/similar/:id', async (req, res) => {
@@ -1210,94 +1303,5 @@ alertsRouter.patch('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error updating alert:', error)
     res.status(500).json({ success: false, error: 'Failed to update alert' })
-  }
-})
-
-// GET /dashboard-stats - Get dashboard stats (combines multiple stats)
-alertsRouter.get('/dashboard-stats', async (_req, res) => {
-  try {
-    const sqlite = getSqlite()
-    const now = Date.now()
-    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000
-    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000
-
-    // Today's alerts
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
-    const todayAlerts = sqlite.prepare(`
-      SELECT COUNT(*) as count FROM alerts WHERE created_at >= ?
-    `).get(todayStart.getTime()) as { count: number }
-
-    // Pending alerts
-    const pendingAlerts = sqlite.prepare(`
-      SELECT COUNT(*) as count FROM alerts WHERE status = 'pending' AND expires_at > ?
-    `).get(now) as { count: number }
-
-    // Resolution rate (last 7 days)
-    const totalLast7Days = sqlite.prepare(`
-      SELECT COUNT(*) as count FROM alerts WHERE created_at >= ?
-    `).get(sevenDaysAgo) as { count: number }
-    const resolvedLast7Days = sqlite.prepare(`
-      SELECT COUNT(*) as count FROM alerts WHERE status = 'resolved' AND created_at >= ?
-    `).get(sevenDaysAgo) as { count: number }
-    const resolutionRate = totalLast7Days.count > 0
-      ? Math.round((resolvedLast7Days.count / totalLast7Days.count) * 100)
-      : 0
-
-    // Auto-fix success rate (last 30 days)
-    const autoFixed = sqlite.prepare(`
-      SELECT COUNT(*) as count FROM alerts
-      WHERE resolution LIKE '%"type":"auto"%' AND created_at >= ?
-    `).get(thirtyDaysAgo) as { count: number }
-    const manualFixed = sqlite.prepare(`
-      SELECT COUNT(*) as count FROM alerts
-      WHERE status = 'resolved' AND (resolution IS NULL OR resolution NOT LIKE '%"type":"auto"%') AND created_at >= ?
-    `).get(thirtyDaysAgo) as { count: number }
-    const autoFixRate = (autoFixed.count + manualFixed.count) > 0
-      ? Math.round((autoFixed.count / (autoFixed.count + manualFixed.count)) * 100)
-      : 0
-
-    // Average resolution time (in hours)
-    const avgResTime = sqlite.prepare(`
-      SELECT AVG((resolved_at - created_at) / 3600000.0) as avg_hours
-      FROM alerts WHERE status = 'resolved' AND resolved_at IS NOT NULL AND created_at >= ?
-    `).get(thirtyDaysAgo) as { avg_hours: number | null }
-
-    // Critical alerts today
-    const criticalToday = sqlite.prepare(`
-      SELECT COUNT(*) as count FROM alerts
-      WHERE severity = 'critical' AND created_at >= ?
-    `).get(todayStart.getTime()) as { count: number }
-
-    // Trend comparison (this week vs last week)
-    const thisWeekStart = now - 7 * 24 * 60 * 60 * 1000
-    const lastWeekStart = now - 14 * 24 * 60 * 60 * 1000
-    const thisWeek = sqlite.prepare(`
-      SELECT COUNT(*) as count FROM alerts WHERE created_at >= ? AND created_at < ?
-    `).get(thisWeekStart, now) as { count: number }
-    const lastWeek = sqlite.prepare(`
-      SELECT COUNT(*) as count FROM alerts WHERE created_at >= ? AND created_at < ?
-    `).get(lastWeekStart, thisWeekStart) as { count: number }
-    const weekOverWeekChange = lastWeek.count > 0
-      ? Math.round(((thisWeek.count - lastWeek.count) / lastWeek.count) * 100)
-      : 0
-
-    res.json({
-      success: true,
-      data: {
-        todayAlerts: todayAlerts.count,
-        pendingAlerts: pendingAlerts.count,
-        resolutionRate,
-        autoFixRate,
-        avgResolutionTimeHours: avgResTime.avg_hours ? Math.round(avgResTime.avg_hours * 10) / 10 : null,
-        criticalToday: criticalToday.count,
-        weekOverWeekChange,
-        autoFixedCount: autoFixed.count,
-        manualFixedCount: manualFixed.count,
-      },
-    })
-  } catch (error) {
-    console.error('Error getting dashboard stats:', error)
-    res.status(500).json({ success: false, error: 'Failed to get dashboard stats' })
   }
 })
