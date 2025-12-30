@@ -239,8 +239,10 @@ export function useAnalyzeAlert() {
       return json.data!
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      // 개별 알림 캐시 먼저 업데이트
       queryClient.setQueryData(['alerts', data.alert.id], data.alert)
+      // 모든 alerts 관련 쿼리 무효화 (리스트 포함)
+      queryClient.invalidateQueries({ queryKey: ['alerts'], exact: false })
     },
   })
 }
@@ -259,8 +261,10 @@ export function useProcessAlert() {
       return json.data!
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      // 개별 알림 캐시 먼저 업데이트
       queryClient.setQueryData(['alerts', data.alert.id], data.alert)
+      // 모든 alerts 관련 쿼리 무효화 (리스트 포함)
+      queryClient.invalidateQueries({ queryKey: ['alerts'], exact: false })
     },
   })
 }

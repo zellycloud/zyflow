@@ -129,8 +129,9 @@ export async function checkGhAuth(): Promise<{ authenticated: boolean; user?: st
       user: match?.[1] || 'unknown',
       method: 'cli',
     }
-  } catch {
+  } catch (cliError) {
     // gh CLI도 실패
+    console.error('gh CLI authentication check failed:', cliError)
   }
 
   return {
@@ -328,6 +329,11 @@ async function createAlertFromWorkflowRun(
   const alertId = randomUUID()
   const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000
 
+  // GitHub의 원래 타임스탬프 사용 (run.createdAt 또는 run.runStartedAt)
+  const originalTimestamp = run.createdAt
+    ? new Date(run.createdAt).getTime()
+    : (run.runStartedAt ? new Date(run.runStartedAt).getTime() : now)
+
   // Alert 제목 생성
   const title = `${run.workflowName || run.name} - failure`
 
@@ -361,7 +367,7 @@ async function createAlertFromWorkflowRun(
     },
   }
 
-  // Alert 생성
+  // Alert 생성 - GitHub의 원래 타임스탬프 사용
   sqlite.prepare(`
     INSERT INTO alerts (id, source, type, severity, status, title, external_url, payload, metadata, project_id, created_at, updated_at, expires_at)
     VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
@@ -375,9 +381,9 @@ async function createAlertFromWorkflowRun(
     JSON.stringify(payload),
     JSON.stringify(metadata),
     projectId,
-    now,
-    now,
-    now + NINETY_DAYS_MS
+    originalTimestamp,  // GitHub의 원래 생성 시간 사용
+    now,                // 업데이트 시간은 현재 시간
+    originalTimestamp + NINETY_DAYS_MS  // 만료일도 원래 시간 기준
   )
 
   // Activity log 생성

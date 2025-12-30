@@ -44,6 +44,7 @@ import type {
   RiskLevel,
   WebhookRules,
 } from '../tasks/db/schema.js'
+import { getProjectById } from '../config.js'
 
 // WebSocket broadcast 함수 (app.ts에서 주입)
 let broadcastAlert: ((alert: unknown) => void) | null = null
@@ -1343,15 +1344,30 @@ alertsRouter.get('/github/auth-status', async (_req, res) => {
   }
 })
 
+// projectId로 실제 경로를 조회하는 헬퍼 함수
+// config.json에서 프로젝트 정보를 조회하여 정확한 경로 반환
+async function getProjectPath(projectId: string): Promise<string | null> {
+  if (!projectId) return null
+  try {
+    const project = await getProjectById(projectId)
+    return project?.path || null
+  } catch (error) {
+    console.error('Error getting project path:', error)
+    return null
+  }
+}
+
 // POST /github/sync - Sync GitHub Actions failures for a repository
 alertsRouter.post('/github/sync', async (req, res) => {
   try {
     const { repo, limit = 20, projectId } = req.body
 
-    // repo가 지정되지 않으면 현재 디렉토리의 repo 사용
+    // repo가 지정되지 않으면 프로젝트 경로 또는 현재 디렉토리의 repo 사용
     let targetRepo = repo
     if (!targetRepo) {
-      targetRepo = await getCurrentRepo()
+      // projectId가 있으면 해당 프로젝트 경로에서 repo 정보 가져오기
+      const projectPath = projectId ? await getProjectPath(projectId) : null
+      targetRepo = await getCurrentRepo(projectPath || undefined)
       if (!targetRepo) {
         return res.status(400).json({
           success: false,
@@ -1391,9 +1407,10 @@ alertsRouter.post('/github/sync-all', async (req, res) => {
       const config = getPollerConfig()
       targetRepos = config.repos
 
-      // 여전히 없으면 현재 디렉토리의 repo 사용
+      // 여전히 없으면 프로젝트 경로 또는 현재 디렉토리의 repo 사용
       if (!targetRepos || targetRepos.length === 0) {
-        const currentRepo = await getCurrentRepo()
+        const projectPath = projectId ? await getProjectPath(projectId) : null
+        const currentRepo = await getCurrentRepo(projectPath || undefined)
         if (currentRepo) {
           targetRepos = [currentRepo]
         } else {

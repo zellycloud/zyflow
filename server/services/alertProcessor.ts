@@ -766,21 +766,14 @@ export async function processAlert(alertId: string): Promise<ProcessingResult> {
       createActivityLog(alertId, 'system', 'notification.sent', 'Slack notification sent')
     }
 
-    // 최종 상태 업데이트
+    // 최종 상태 업데이트 - auto-fix 성공 시에만 resolved로 변경
+    // 그 외의 경우 분석이 완료되어도 pending 상태 유지 (사용자 액션 대기)
     const currentAlert = sqlite.prepare('SELECT status FROM alerts WHERE id = ?').get(alertId) as { status: string }
     if (currentAlert.status === 'processing') {
-      // auto-fix 성공이 아니어도 분석 완료되면 resolved로 변경 (수동 개입 필요 표시)
-      const resolution: AlertResolution = {
-        type: 'manual',
-        action: 'analyzed',
-        details: analysis.autoFixable
-          ? 'Auto-fix available but not executed. Manual review recommended.'
-          : 'Analysis completed. Manual intervention required.',
-      }
-
+      // processing 상태에서 pending으로 복귀 (분석은 완료되었지만 해결되지 않음)
       sqlite.prepare(`
-        UPDATE alerts SET status = 'resolved', resolution = ?, resolved_at = ?, updated_at = ? WHERE id = ?
-      `).run(JSON.stringify(resolution), Date.now(), Date.now(), alertId)
+        UPDATE alerts SET status = 'pending', updated_at = ? WHERE id = ?
+      `).run(Date.now(), alertId)
     }
 
     createActivityLog(alertId, 'agent', 'processing.completed', 'Alert processing completed')
