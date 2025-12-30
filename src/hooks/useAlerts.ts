@@ -278,6 +278,77 @@ interface ProcessingResult {
   notificationSent: boolean
 }
 
+interface AgentFixResult {
+  success: boolean
+  sessionId?: string
+  error?: string
+  details?: string
+}
+
+export interface AgentFixProgress {
+  alertId: string
+  sessionId: string
+  status: 'running' | 'completed' | 'failed'
+  startedAt: string
+  endedAt?: string
+  output: string[]
+  error?: string
+}
+
+// Agent Fix 진행 상황 조회 (폴링용)
+export function useAgentFixProgress(alertId: string | null, enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['alerts', 'agent-fix-progress', alertId],
+    queryFn: async (): Promise<AgentFixProgress | null> => {
+      if (!alertId) return null
+      const res = await fetch(`${API_BASE}/alerts/${alertId}/agent-fix/progress`)
+      if (res.status === 404) return null
+      const json = await res.json() as ApiResponse<AgentFixProgress | { status: 'no_session'; message: string }>
+      if (!json.success) {
+        // 진행 중인 세션이 없으면 null 반환
+        if (json.error?.includes('No active') || json.error?.includes('not found')) {
+          return null
+        }
+        throw new Error(json.error)
+      }
+      // 세션이 없는 경우 null 반환
+      if (json.data && 'status' in json.data && (json.data as { status: string }).status === 'no_session') {
+        return null
+      }
+      return (json.data as AgentFixProgress) ?? null
+    },
+    enabled: !!alertId && enabled,
+    refetchInterval: (query) => {
+      // 진행 중일 때만 1초마다 폴링
+      if (query.state.data?.status === 'running') return 1000
+      return false
+    },
+    staleTime: 500,
+  })
+}
+
+// Agent Fix 실행
+export function useAgentFix() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (alertId: string) => {
+      const res = await fetch(`${API_BASE}/alerts/${alertId}/agent-fix`, {
+        method: 'POST',
+      })
+      const json: ApiResponse<{ alert: Alert; result: AgentFixResult }> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    onSuccess: (data) => {
+      // 개별 알림 캐시 먼저 업데이트
+      queryClient.setQueryData(['alerts', data.alert.id], data.alert)
+      // 모든 alerts 관련 쿼리 무효화 (리스트 포함)
+      queryClient.invalidateQueries({ queryKey: ['alerts'], exact: false })
+    },
+  })
+}
+
 // =============================================
 // Activity Logs API Hooks
 // =============================================
