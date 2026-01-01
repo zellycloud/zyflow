@@ -72,9 +72,17 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
       current_stage TEXT NOT NULL DEFAULT 'spec' CHECK(current_stage IN ('spec', 'task', 'code', 'test', 'commit', 'docs')),
       progress INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      archived_at INTEGER
     );
   `);
+
+  // Migration: Add archived_at column to changes if it doesn't exist
+  try {
+    sqlite.exec(`ALTER TABLE changes ADD COLUMN archived_at INTEGER`);
+  } catch {
+    // Column already exists
+  }
 
   // Create tasks table
   sqlite.exec(`

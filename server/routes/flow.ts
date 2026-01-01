@@ -1002,8 +1002,8 @@ flowRouter.post('/changes/:id/archive', async (req, res) => {
     const now = Date.now()
 
     sqlite.prepare(`
-      UPDATE changes SET status = 'archived', updated_at = ? WHERE id = ? AND project_id = ?
-    `).run(now, changeId, project.id)
+      UPDATE changes SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ? AND project_id = ?
+    `).run(now, now, changeId, project.id)
 
     emit('change:archived', { changeId, projectId: project.id })
 

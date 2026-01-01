@@ -11,6 +11,7 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { getActiveProject } from '../config.js'
 import { parseTasksFile, toggleTaskInFile } from '../parser.js'
+import { initDb, getSqlite } from '../tasks/db/client.js'
 
 const execAsync = promisify(exec)
 
@@ -136,112 +137,43 @@ changesRouter.get('/', async (_req, res) => {
 // GET /archived - List all archived changes
 changesRouter.get('/archived', async (_req, res) => {
   try {
-    const paths = await getProjectPaths()
-    if (!paths) {
+    const project = await getActiveProject()
+    if (!project) {
       return res.json({ success: true, data: { changes: [] } })
     }
 
-    const archivedChanges: Array<{
+    initDb()
+    const sqlite = getSqlite()
+
+    // DB에서 archived 상태인 changes 조회 (archived_at 포함)
+    const dbChanges = sqlite.prepare(`
+      SELECT c.id, c.title, c.progress, c.archived_at, c.updated_at,
+        (SELECT COUNT(*) FROM tasks t WHERE t.change_id = c.id AND t.status != 'archived') as totalTasks,
+        (SELECT COUNT(*) FROM tasks t WHERE t.change_id = c.id AND t.status = 'done') as completedTasks
+      FROM changes c
+      WHERE c.project_id = ? AND c.status = 'archived'
+      ORDER BY COALESCE(c.archived_at, c.updated_at) DESC
+    `).all(project.id) as Array<{
       id: string
       title: string
       progress: number
+      archived_at: number | null
+      updated_at: number
       totalTasks: number
       completedTasks: number
-      archivedAt: string | null
-      source: 'archive' | 'archived'
-    }> = []
+    }>
 
-    // Helper function to read archived change from a directory
-    async function readArchivedChange(
-      changeDir: string,
-      changeId: string,
-      source: 'archive' | 'archived'
-    ) {
-      // Read proposal.md for title
-      let title = changeId
-      try {
-        const proposalPath = join(changeDir, 'proposal.md')
-        const proposalContent = await readFile(proposalPath, 'utf-8')
-        const titleMatch = proposalContent.match(/^#\s+Change:\s+(.+)$/m)
-        if (titleMatch) {
-          title = titleMatch[1].trim()
-        }
-      } catch {
-        // No proposal.md, use directory name
-      }
-
-      // Read tasks.md for progress
-      let totalTasks = 0
-      let completedTasks = 0
-      try {
-        const tasksPath = join(changeDir, 'tasks.md')
-        const tasksContent = await readFile(tasksPath, 'utf-8')
-        const parsed = parseTasksFile(changeId, tasksContent)
-
-        for (const group of parsed.groups) {
-          totalTasks += group.tasks.length
-          completedTasks += group.tasks.filter((t) => t.completed).length
-        }
-      } catch {
-        // No tasks.md
-      }
-
-      const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-
-      // Get archived date from file stat
-      let archivedAt: string | null = null
-      try {
-        const proposalPath = join(changeDir, 'proposal.md')
-        const tasksPath = join(changeDir, 'tasks.md')
-        try {
-          const s = await stat(proposalPath)
-          archivedAt = s.mtime.toISOString()
-        } catch {
-          const s = await stat(tasksPath)
-          archivedAt = s.mtime.toISOString()
-        }
-      } catch {
-        archivedAt = null
-      }
-
-      return {
-        id: changeId,
-        title,
-        progress,
-        totalTasks,
-        completedTasks,
-        archivedAt,
-        source,
-      }
-    }
-
-    // Helper to read all changes from an archive directory
-    async function readFromArchiveDir(dir: string) {
-      try {
-        const entries = await readdir(dir, { withFileTypes: true })
-        for (const entry of entries) {
-          if (!entry.isDirectory()) continue
-          const changeDir = join(dir, entry.name)
-          const change = await readArchivedChange(changeDir, entry.name, 'archive')
-          archivedChanges.push(change)
-        }
-      } catch {
-        // Directory doesn't exist
-      }
-    }
-
-    // Read from all three archive locations
-    await readFromArchiveDir(paths.archiveDir) // openspec/changes/archive/
-    await readFromArchiveDir(paths.legacyArchiveDir) // openspec/archive/
-    await readFromArchiveDir(paths.archivedDir) // openspec/archived/
-
-    // Sort by archivedAt descending (newest first)
-    archivedChanges.sort((a, b) => {
-      if (!a.archivedAt && !b.archivedAt) return 0
-      if (!a.archivedAt) return 1
-      if (!b.archivedAt) return -1
-      return new Date(b.archivedAt).getTime() - new Date(a.archivedAt).getTime()
-    })
+    const archivedChanges = dbChanges.map(change => ({
+      id: change.id,
+      title: change.title,
+      progress: change.progress,
+      totalTasks: change.totalTasks,
+      completedTasks: change.completedTasks,
+      archivedAt: change.archived_at
+        ? new Date(change.archived_at).toISOString()
+        : new Date(change.updated_at).toISOString(),
+      source: 'db' as const
+    }))
 
     res.json({ success: true, data: { changes: archivedChanges } })
   } catch (error) {
