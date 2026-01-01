@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
-import { FileText, Plus, Loader2, Play, History, CheckSquare, Square, MinusSquare } from 'lucide-react'
+import { FileText, Plus, Loader2, Play, History, CheckSquare, Square, MinusSquare, Filter, FilterX } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
@@ -45,6 +45,9 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
 
   // 다중 태스크 실행 다이얼로그 상태
   const [executingMultiple, setExecutingMultiple] = useState(false)
+
+  // 미완료 작업만 보기 필터
+  const [showOnlyPending, setShowOnlyPending] = useState(false)
 
   // Proposal 내용 가져오기 (Changes 탭용)
   const { data: proposalContent, isLoading: proposalLoading } = useProposalContent(
@@ -108,6 +111,16 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
     tasks.filter(t => selectedTaskIds.has(t.id)),
     [tasks, selectedTaskIds]
   )
+
+  // 필터링된 태스크 (미완료만 보기 옵션 적용)
+  const filteredTasks = useMemo(() =>
+    showOnlyPending ? tasks.filter(t => t.status !== 'done') : tasks,
+    [tasks, showOnlyPending]
+  )
+
+  // 완료된 태스크 수
+  const doneCount = useMemo(() => tasks.filter(t => t.status === 'done').length, [tasks])
+  const pendingCount = tasks.length - doneCount
 
   // Spec 탭: specs/{spec-id}/spec.md (기능 명세서)
   if (stage === 'spec') {
@@ -204,7 +217,8 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
   const majorSections: MajorSection[] = []
   const majorMap = new Map<number, MajorSection>()
 
-  for (const task of tasks) {
+  // filteredTasks를 사용하여 미완료 필터 적용
+  for (const task of filteredTasks) {
     const majorOrder = task.groupOrder ?? 1
     const majorTitle = task.majorTitle ?? task.groupTitle ?? '기타'
     const subOrder = task.subOrder ?? 1
@@ -277,8 +291,38 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
           })()}
           <span>{STAGE_CONFIG[stage].label} 태스크</span>
           <Badge variant="secondary" className="text-xs">
-            {tasks.filter((t) => t.status === 'done').length}/{tasks.length}
+            {doneCount}/{tasks.length}
           </Badge>
+          {/* 미완료 작업만 보기 토글 */}
+          {pendingCount > 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={showOnlyPending ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-7 px-2 gap-1"
+                    onClick={() => setShowOnlyPending(!showOnlyPending)}
+                  >
+                    {showOnlyPending ? (
+                      <>
+                        <FilterX className="h-3.5 w-3.5" />
+                        <span className="text-xs">미완료 {pendingCount}개</span>
+                      </>
+                    ) : (
+                      <>
+                        <Filter className="h-3.5 w-3.5" />
+                        <span className="text-xs">미완료만</span>
+                      </>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {showOnlyPending ? '전체 보기' : '미완료 작업만 보기'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {/* 선택된 태스크가 있을 때 실행 버튼 표시 */}
@@ -300,9 +344,11 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
       </div>
 
       {/* Task Content */}
-      {tasks.length === 0 ? (
+      {filteredTasks.length === 0 ? (
         <div className="p-4 rounded-lg border text-muted-foreground text-center text-sm">
-          {stage} 단계에 태스크가 없습니다
+          {showOnlyPending && tasks.length > 0
+            ? '모든 태스크가 완료되었습니다! 🎉'
+            : `${stage} 단계에 태스크가 없습니다`}
         </div>
       ) : (
         /* 3단계 계층 구조 렌더링 */
