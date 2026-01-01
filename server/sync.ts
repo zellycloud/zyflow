@@ -707,7 +707,8 @@ export async function syncAllChangesOnStartup(): Promise<{
 export async function syncRemoteChangeTasksForProject(
   changeId: string,
   remotePath: string,
-  server: RemoteServer
+  server: RemoteServer,
+  projectId: string
 ): Promise<SyncResult> {
   // Dynamic import to avoid circular dependency
   const { readRemoteFile } = await import('./remote/ssh-manager.js')
@@ -750,16 +751,16 @@ export async function syncRemoteChangeTasksForProject(
         const task = group.tasks[taskIdx]
         const taskOrder = taskIdx + 1
 
-        // 우선순위 1: title + group_title로 매칭
-        // 우선순위 2: group_title + task_order로 매칭
+        // 우선순위 1: title + group_title + project_id로 매칭
+        // 우선순위 2: group_title + task_order + project_id로 매칭
         let existingTask = sqlite.prepare(`
-          SELECT id, status, title FROM tasks WHERE change_id = ? AND title = ? AND group_title = ?
-        `).get(changeId, task.title, groupTitle) as { id: number; status: string; title: string } | undefined
+          SELECT id, status, title FROM tasks WHERE change_id = ? AND project_id = ? AND title = ? AND group_title = ?
+        `).get(changeId, projectId, task.title, groupTitle) as { id: number; status: string; title: string } | undefined
 
         if (!existingTask) {
           existingTask = sqlite.prepare(`
-            SELECT id, status, title FROM tasks WHERE change_id = ? AND group_title = ? AND task_order = ?
-          `).get(changeId, groupTitle, taskOrder) as { id: number; status: string; title: string } | undefined
+            SELECT id, status, title FROM tasks WHERE change_id = ? AND project_id = ? AND group_title = ? AND task_order = ?
+          `).get(changeId, projectId, groupTitle, taskOrder) as { id: number; status: string; title: string } | undefined
         }
 
         const newStatus = task.completed ? 'done' : 'todo'
@@ -797,14 +798,15 @@ export async function syncRemoteChangeTasksForProject(
 
           sqlite.prepare(`
             INSERT INTO tasks (
-              id, change_id, stage, title, status, priority, "order",
+              id, change_id, project_id, stage, title, status, priority, "order",
               group_title, group_order, task_order, major_title, sub_order,
               origin, created_at, updated_at
             )
-            VALUES (?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
+            VALUES (?, ?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
           `).run(
             newId,
             changeId,
+            projectId,
             task.title,
             newStatus,
             task.lineNumber,
@@ -825,8 +827,8 @@ export async function syncRemoteChangeTasksForProject(
     let tasksDeleted = 0
     if (taskTitlesInFile.size > 0) {
       const existingTasks = sqlite.prepare(`
-        SELECT id, title FROM tasks WHERE change_id = ? AND origin = 'openspec'
-      `).all(changeId) as Array<{ id: number; title: string }>
+        SELECT id, title FROM tasks WHERE change_id = ? AND project_id = ? AND origin = 'openspec'
+      `).all(changeId, projectId) as Array<{ id: number; title: string }>
 
       for (const task of existingTasks) {
         if (!taskTitlesInFile.has(task.title)) {

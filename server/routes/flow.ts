@@ -9,7 +9,7 @@ import { readdir, readFile, writeFile, access } from 'fs/promises'
 import { join } from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
-import { loadConfig, getActiveProject } from '../config.js'
+import { loadConfig, getActiveProject, getProjectById } from '../config.js'
 import { parseTasksFile } from '../parser.js'
 import { initDb } from '../tasks/index.js'
 import { getSqlite } from '../tasks/db/client.js'
@@ -44,7 +44,7 @@ async function getProjectPaths() {
 }
 
 // Helper: Get stages for a change
-function getChangeStages(changeId: string, _projectPath?: string) {
+function getChangeStages(changeId: string, projectId?: string) {
   const sqlite = getSqlite()
   const stages: Record<Stage, { total: number; completed: number; tasks: unknown[] }> = {
     spec: { total: 0, completed: 0, tasks: [] },
@@ -56,11 +56,13 @@ function getChangeStages(changeId: string, _projectPath?: string) {
     docs: { total: 0, completed: 0, tasks: [] },
   }
 
-  const tasks = sqlite.prepare(`
-    SELECT * FROM tasks
-    WHERE change_id = ? AND status != 'archived'
-    ORDER BY stage, group_order, sub_order, task_order, "order"
-  `).all(changeId) as Array<{
+  // project_id가 있으면 함께 조건 추가
+  const sql = projectId
+    ? `SELECT * FROM tasks WHERE change_id = ? AND project_id = ? AND status != 'archived' ORDER BY stage, group_order, sub_order, task_order, "order"`
+    : `SELECT * FROM tasks WHERE change_id = ? AND status != 'archived' ORDER BY stage, group_order, sub_order, task_order, "order"`
+  const params = projectId ? [changeId, projectId] : [changeId]
+
+  const tasks = sqlite.prepare(sql).all(...params) as Array<{
     id: number
     change_id: string
     stage: Stage
@@ -225,7 +227,7 @@ flowRouter.get('/changes', async (_req, res) => {
     }>
 
     const changes = dbChanges.map((c) => {
-      const stages = getChangeStages(c.id, project.path)
+      const stages = getChangeStages(c.id, project.id)
       const progress = calculateProgress(stages)
       const currentStage = determineCurrentStage(stages)
 
@@ -280,30 +282,33 @@ flowRouter.get('/changes/:id', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Project not found for this change' })
     }
 
-    const stages = getChangeStages(change.id, project.path)
+    const stages = getChangeStages(change.id, project.id)
     const progress = calculateProgress(stages)
     const currentStage = determineCurrentStage(stages)
 
     let gitCreatedAt: string | null = null
     let gitUpdatedAt: string | null = null
-    try {
-      const relativeChangeDir = `openspec/changes/${change.id}`
-      const { stdout: updatedStdout } = await execAsync(
-        `git log -1 --format="%aI" -- "${relativeChangeDir}"`,
-        { cwd: project.path }
-      )
-      if (updatedStdout.trim()) {
-        gitUpdatedAt = updatedStdout.trim()
+    // 원격 프로젝트가 아닌 경우에만 git 명령 실행
+    if (!project.remote) {
+      try {
+        const relativeChangeDir = `openspec/changes/${change.id}`
+        const { stdout: updatedStdout } = await execAsync(
+          `git log -1 --format="%aI" -- "${relativeChangeDir}"`,
+          { cwd: project.path }
+        )
+        if (updatedStdout.trim()) {
+          gitUpdatedAt = updatedStdout.trim()
+        }
+        const { stdout: createdStdout } = await execAsync(
+          `git log --diff-filter=A --format="%aI" -- "${relativeChangeDir}" | tail -1`,
+          { cwd: project.path }
+        )
+        if (createdStdout.trim()) {
+          gitCreatedAt = createdStdout.trim()
+        }
+      } catch {
+        // Git 명령 실패 시 DB 값 사용
       }
-      const { stdout: createdStdout } = await execAsync(
-        `git log --diff-filter=A --format="%aI" -- "${relativeChangeDir}" | tail -1`,
-        { cwd: project.path }
-      )
-      if (createdStdout.trim()) {
-        gitCreatedAt = createdStdout.trim()
-      }
-    } catch {
-      // Git 명령 실패 시 DB 값 사용
     }
 
     res.json({
@@ -535,9 +540,13 @@ flowRouter.post('/sync', async (_req, res) => {
 flowRouter.get('/tasks', async (req, res) => {
   try {
     await initTaskDb()
-    const { changeId, stage, status, standalone, includeArchived } = req.query
+    const { changeId, stage, status, standalone, includeArchived, projectId } = req.query
 
-    const project = await getActiveProject()
+    // projectId 쿼리 파라미터가 있으면 해당 프로젝트 사용, 없으면 활성 프로젝트
+    const project = projectId
+      ? await getProjectById(projectId as string)
+      : await getActiveProject()
+
     if (!project) {
       return res.status(400).json({ success: false, error: 'No active project' })
     }
@@ -926,8 +935,12 @@ flowRouter.post('/sync/all', async (_req, res) => {
 flowRouter.post('/changes/:id/archive', async (req, res) => {
   try {
     const changeId = req.params.id
-    const { skipSpecs, force } = req.body
-    const project = await getActiveProject()
+    const { skipSpecs, force, projectId } = req.body
+
+    // projectId가 있으면 해당 프로젝트 사용, 없으면 활성 프로젝트
+    const project = projectId
+      ? await getProjectById(projectId)
+      : await getActiveProject()
 
     if (!project) {
       return res.status(400).json({ success: false, error: 'No active project' })
@@ -945,64 +958,125 @@ flowRouter.post('/changes/:id/archive', async (req, res) => {
     let stderr = ''
     let validationFailed = false
     let validationErrors: string[] = []
-
-    try {
-      const result = await execAsync(`openspec ${args.join(' ')}`, {
-        cwd: project.path,
-      })
-      stdout = result.stdout
-      stderr = result.stderr
-    } catch (execError) {
-      const error = execError as { stdout?: string; stderr?: string; message?: string }
-      stdout = error.stdout || ''
-      stderr = error.stderr || ''
-
-      if (stdout.includes('Validation failed') || stdout.includes('Validation errors')) {
-        validationFailed = true
-        const lines = stdout.split('\n')
-        for (const line of lines) {
-          if (line.includes('✗') || line.includes('⚠')) {
-            validationErrors.push(line.trim())
-          }
-        }
-      } else {
-        throw execError
-      }
-    }
-
-    if (validationFailed && !force) {
-      console.log(`[Archive] Validation failed for ${changeId}, returning error to client`)
-      return res.status(422).json({
-        success: false,
-        error: 'Validation failed',
-        validationErrors,
-        canForce: true,
-        hint: 'Use force option to archive without validation, or fix the spec errors first',
-      })
-    }
-
-    const archivePath = join(project.path, 'openspec', 'changes', 'archive', changeId)
-    const originalPath = join(project.path, 'openspec', 'changes', changeId)
-
     let filesMoved = false
-    try {
-      await access(archivePath)
-      filesMoved = true
-    } catch {
+
+    // 원격 프로젝트인 경우 SSH를 통해 아카이브 실행
+    if (project.remote) {
+      const { executeCommand, exists } = await import('../remote/ssh-manager.js')
+      const { getRemoteServerById } = await import('../remote/remote-config.js')
+
+      const server = await getRemoteServerById(project.remote.serverId)
+      if (!server) {
+        return res.status(400).json({ success: false, error: 'Remote server not found' })
+      }
+
+      // 원격에서 openspec archive 명령 실행 또는 직접 mv 명령 실행
+      const archivePath = `${project.path}/openspec/changes/archive`
+      const sourcePath = `${project.path}/openspec/changes/${changeId}`
+      const targetPath = `${archivePath}/${new Date().toISOString().split('T')[0]}-${changeId}`
+
       try {
-        await access(originalPath)
-        filesMoved = false
+        // 먼저 archive 폴더 존재 확인
+        const archiveExists = await exists(server, archivePath)
+        if (!archiveExists) {
+          await executeCommand(server, `mkdir -p "${archivePath}"`, { cwd: project.path })
+        }
+
+        // 소스 폴더 존재 확인
+        const sourceExists = await exists(server, sourcePath)
+        if (!sourceExists) {
+          return res.status(404).json({
+            success: false,
+            error: `Change folder not found: ${changeId}`
+          })
+        }
+
+        // mv 명령으로 아카이브 폴더로 이동
+        const mvResult = await executeCommand(
+          server,
+          `mv "${sourcePath}" "${targetPath}"`,
+          { cwd: project.path }
+        )
+
+        stdout = mvResult.stdout
+        stderr = mvResult.stderr
+
+        if (mvResult.exitCode === 0) {
+          filesMoved = true
+          console.log(`[Archive] Remote archive successful: ${changeId} -> ${targetPath}`)
+        } else {
+          throw new Error(`Failed to move change folder: ${stderr}`)
+        }
+      } catch (execError) {
+        const error = execError as { stdout?: string; stderr?: string; message?: string }
+        console.error('[Archive] Remote archive error:', error)
+        throw new Error(error.message || 'Failed to archive change on remote server')
+      }
+    } else {
+      // 로컬 프로젝트인 경우 기존 로직 사용
+      try {
+        const result = await execAsync(`openspec ${args.join(' ')}`, {
+          cwd: project.path,
+        })
+        stdout = result.stdout
+        stderr = result.stderr
+      } catch (execError) {
+        const error = execError as { stdout?: string; stderr?: string; message?: string }
+        stdout = error.stdout || ''
+        stderr = error.stderr || ''
+
+        if (stdout.includes('Validation failed') || stdout.includes('Validation errors')) {
+          validationFailed = true
+          const lines = stdout.split('\n')
+          for (const line of lines) {
+            if (line.includes('✗') || line.includes('⚠')) {
+              validationErrors.push(line.trim())
+            }
+          }
+        } else {
+          throw execError
+        }
+      }
+
+      if (validationFailed && !force) {
+        console.log(`[Archive] Validation failed for ${changeId}, returning error to client`)
+        return res.status(422).json({
+          success: false,
+          error: 'Validation failed',
+          validationErrors,
+          canForce: true,
+          hint: 'Use force option to archive without validation, or fix the spec errors first',
+        })
+      }
+
+      const archivePath = join(project.path, 'openspec', 'changes', 'archive', changeId)
+      const originalPath = join(project.path, 'openspec', 'changes', changeId)
+
+      try {
+        await access(archivePath)
+        filesMoved = true
       } catch {
-        filesMoved = false
+        try {
+          await access(originalPath)
+          filesMoved = false
+        } catch {
+          filesMoved = false
+        }
       }
     }
 
+    // DB 업데이트 (로컬/원격 공통)
     await initTaskDb()
     const sqlite = getSqlite()
     const now = Date.now()
 
     sqlite.prepare(`
       UPDATE changes SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ? AND project_id = ?
+    `).run(now, now, changeId, project.id)
+
+    // tasks도 archived로 업데이트
+    sqlite.prepare(`
+      UPDATE tasks SET status = 'archived', archived_at = ?, updated_at = ? WHERE change_id = ? AND project_id = ?
     `).run(now, now, changeId, project.id)
 
     emit('change:archived', { changeId, projectId: project.id })

@@ -281,7 +281,7 @@ export function ChangeDetail({ projectId, changeId, onArchived }: ChangeDetailPr
                           onClick={async () => {
                             try {
                               // 자동 수정 후 재시도
-                              await archiveChange.mutateAsync({ changeId, skipSpecs: false, autoFix: true })
+                              await archiveChange.mutateAsync({ changeId, skipSpecs: false, autoFix: true, projectId })
                               toast.success('Change가 아카이브되었습니다 (자동 수정 적용)')
                               setShowArchiveDialog(false)
                               setArchiveError(null)
@@ -305,7 +305,7 @@ export function ChangeDetail({ projectId, changeId, onArchived }: ChangeDetailPr
                           onClick={async () => {
                             try {
                               // 강제 아카이브 (validation 건너뜀)
-                              await archiveChange.mutateAsync({ changeId, skipSpecs: false, force: true })
+                              await archiveChange.mutateAsync({ changeId, skipSpecs: false, force: true, projectId })
                               toast.success('Change가 아카이브되었습니다 (검증 건너뜀)')
                               setShowArchiveDialog(false)
                               setArchiveError(null)
@@ -325,7 +325,7 @@ export function ChangeDetail({ projectId, changeId, onArchived }: ChangeDetailPr
                         onClick={async (e) => {
                           e.preventDefault()
                           try {
-                            await archiveChange.mutateAsync({ changeId, skipSpecs: false })
+                            await archiveChange.mutateAsync({ changeId, skipSpecs: false, projectId })
                             toast.success('Change가 아카이브되었습니다')
                             setShowArchiveDialog(false)
                             onArchived?.()

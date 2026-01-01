@@ -221,7 +221,8 @@ export interface MultiWatcherManager {
 }
 
 /**
- * Multi-Project Watcher Manager 생성
+ * Unified Multi-Project Watcher Manager 생성
+ * 단일 chokidar 인스턴스로 모든 프로젝트를 감시하여 EMFILE 에러 방지
  */
 export function createMultiWatcherManager(
   onTasksChange: (changeId: string, filePath: string, projectPath: string) => void,
@@ -229,54 +230,212 @@ export function createMultiWatcherManager(
   scanOnStart = false,
   onNewChange?: (changeId: string, projectPath: string) => void
 ): MultiWatcherManager {
-  const watchers = new Map<string, WatcherInstance>()
+  // 프로젝트 정보 저장 (projectId -> projectPath)
+  const projects = new Map<string, string>()
+  // projectPath -> projectId 역방향 매핑
+  const pathToId = new Map<string, string>()
+  // 통합 watcher 인스턴스
+  let unifiedWatcher: FSWatcher | null = null
+  // 디바운스 타이머
+  const debounceTimers = new Map<string, NodeJS.Timeout>()
+  // 처리된 새 Change 폴더 추적
+  const processedNewChanges = new Set<string>()
+
+  /**
+   * 파일 경로에서 프로젝트 경로 찾기
+   */
+  const findProjectPath = (filePath: string): string | null => {
+    for (const projectPath of projects.values()) {
+      if (filePath.startsWith(projectPath)) {
+        return projectPath
+      }
+    }
+    return null
+  }
+
+  /**
+   * 파일 변경 핸들러
+   */
+  const handleChange = async (filePath: string) => {
+    const match = filePath.match(/openspec[/\\]changes[/\\]([^/\\]+)[/\\]tasks\.md$/)
+    if (!match) return
+
+    const changeId = match[1]
+    const projectPath = findProjectPath(filePath)
+    if (!projectPath) return
+
+    const timerKey = `${projectPath}:${changeId}`
+    const existingTimer = debounceTimers.get(timerKey)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+    }
+
+    const timer = setTimeout(async () => {
+      debounceTimers.delete(timerKey)
+      console.log(`[Watcher] Syncing ${changeId} due to file change: ${filePath}`)
+      onTasksChange(changeId, filePath, projectPath)
+    }, debounceMs)
+
+    debounceTimers.set(timerKey, timer)
+  }
+
+  /**
+   * 새 Change 폴더 핸들러
+   */
+  const handleNewChangeFolder = async (filePath: string) => {
+    const match = filePath.match(/openspec[/\\]changes[/\\]([^/\\]+)[/\\](proposal|design|tasks)\.md$/)
+    if (!match) return
+
+    const changeId = match[1]
+    const projectPath = findProjectPath(filePath)
+    if (!projectPath) return
+
+    const key = `${projectPath}:${changeId}`
+    if (processedNewChanges.has(key)) return
+    processedNewChanges.add(key)
+
+    console.log(`[Watcher] New change folder detected: ${changeId} in ${projectPath}`)
+    onNewChange?.(changeId, projectPath)
+  }
+
+  /**
+   * Watcher 재시작 (새 프로젝트 추가 시)
+   */
+  const restartWatcher = async () => {
+    // 기존 watcher 중지
+    if (unifiedWatcher) {
+      await unifiedWatcher.close()
+      unifiedWatcher = null
+    }
+
+    // 감시할 경로가 없으면 종료
+    if (projects.size === 0) return
+
+    // 모든 프로젝트의 openspec/changes 경로 수집
+    const watchPaths = Array.from(projects.values())
+      .filter(p => !p.startsWith('/opt/')) // 원격 프로젝트 제외 (SSH로 접근)
+      .map(p => join(p, 'openspec/changes'))
+
+    if (watchPaths.length === 0) return
+
+    // 단일 watcher로 모든 경로 감시
+    unifiedWatcher = watch(watchPaths, {
+      ignoreInitial: !scanOnStart,
+      awaitWriteFinish: {
+        stabilityThreshold: 300,
+        pollInterval: 100,
+      },
+      ignored: [/(^|[/\\])\./, /[/\\]archive[/\\]/, /node_modules/],
+      depth: 2,
+      usePolling: false,
+      persistent: true,
+    })
+
+    unifiedWatcher
+      .on('change', async (filePath) => {
+        if (filePath.endsWith('/tasks.md') || filePath.endsWith('\\tasks.md')) {
+          await handleChange(filePath)
+        }
+      })
+      .on('add', async (filePath) => {
+        if (filePath.endsWith('/tasks.md') || filePath.endsWith('\\tasks.md')) {
+          await handleChange(filePath)
+        }
+        if (onNewChange) {
+          await handleNewChangeFolder(filePath)
+        }
+      })
+      .on('error', (error) => {
+        console.error(`[Watcher] Error:`, error)
+      })
+      .on('ready', () => {
+        console.log(`[Watcher] Unified watcher ready for ${watchPaths.length} project(s)`)
+      })
+  }
+
+  // 지연 시작을 위한 타이머
+  let startTimer: NodeJS.Timeout | null = null
 
   const addProject = (projectId: string, projectPath: string) => {
-    // 이미 감시 중이면 스킵
-    if (watchers.has(projectId)) {
+    if (projects.has(projectId)) {
       console.log(`[MultiWatcher] Project ${projectId} already being watched`)
       return
     }
 
-    const watcher = createTasksWatcher({
-      projectPath,
-      projectId,
-      onTasksChange,
-      onNewChange,
-      debounceMs,
-      scanOnStart,
-    })
-
-    watcher.start()
-    watchers.set(projectId, watcher)
+    projects.set(projectId, projectPath)
+    pathToId.set(projectPath, projectId)
     console.log(`[MultiWatcher] Added project: ${projectId} (${projectPath})`)
-  }
 
-  const removeProject = async (projectId: string) => {
-    const watcher = watchers.get(projectId)
-    if (watcher) {
-      await watcher.stop()
-      watchers.delete(projectId)
-      console.log(`[MultiWatcher] Removed project: ${projectId}`)
+    // 원격 프로젝트가 아닌 경우에만 watcher에 추가
+    if (!projectPath.startsWith('/opt/')) {
+      if (unifiedWatcher) {
+        // watcher가 이미 있으면 경로만 추가
+        const watchPath = join(projectPath, 'openspec/changes')
+        unifiedWatcher.add(watchPath)
+        console.log(`[Watcher] Added path to unified watcher: ${watchPath}`)
+      } else {
+        // 모든 프로젝트가 추가될 때까지 대기 후 한 번에 시작 (debounce)
+        if (startTimer) clearTimeout(startTimer)
+        startTimer = setTimeout(() => {
+          startTimer = null
+          restartWatcher()
+        }, 100)
+      }
     }
   }
 
+  const removeProject = async (projectId: string) => {
+    const projectPath = projects.get(projectId)
+    if (!projectPath) return
+
+    projects.delete(projectId)
+    pathToId.delete(projectPath)
+
+    // 해당 프로젝트의 디바운스 타이머 정리
+    for (const [key, timer] of debounceTimers.entries()) {
+      if (key.startsWith(`${projectPath}:`)) {
+        clearTimeout(timer)
+        debounceTimers.delete(key)
+      }
+    }
+
+    // watcher에서 경로 제거
+    if (unifiedWatcher && !projectPath.startsWith('/opt/')) {
+      const watchPath = join(projectPath, 'openspec/changes')
+      unifiedWatcher.unwatch(watchPath)
+    }
+
+    console.log(`[MultiWatcher] Removed project: ${projectId}`)
+  }
+
   const stopAll = async () => {
-    const stopPromises = Array.from(watchers.values()).map((w) => w.stop())
-    await Promise.all(stopPromises)
-    watchers.clear()
-    console.log('[MultiWatcher] Stopped all watchers')
+    // 모든 타이머 정리
+    for (const timer of debounceTimers.values()) {
+      clearTimeout(timer)
+    }
+    debounceTimers.clear()
+
+    // watcher 종료
+    if (unifiedWatcher) {
+      await unifiedWatcher.close()
+      unifiedWatcher = null
+    }
+
+    projects.clear()
+    pathToId.clear()
+    processedNewChanges.clear()
+    console.log('[MultiWatcher] Stopped unified watcher')
   }
 
   const getWatchedProjects = () => {
-    return Array.from(watchers.entries()).map(([projectId, watcher]) => ({
+    return Array.from(projects.entries()).map(([projectId, projectPath]) => ({
       projectId,
-      projectPath: watcher.projectPath,
+      projectPath,
     }))
   }
 
   const isWatching = (projectId: string) => {
-    return watchers.has(projectId) && watchers.get(projectId)!.isWatching()
+    return projects.has(projectId)
   }
 
   return {

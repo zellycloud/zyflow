@@ -137,6 +137,7 @@ interface FlowTaskFilters {
   status?: string
   standalone?: boolean
   includeArchived?: boolean
+  projectId?: string
 }
 
 export function useFlowTasks(filters: FlowTaskFilters = {}, options?: { enabled?: boolean }) {
@@ -147,6 +148,7 @@ export function useFlowTasks(filters: FlowTaskFilters = {}, options?: { enabled?
   if (filters.status) params.set('status', filters.status)
   if (filters.standalone) params.set('standalone', 'true')
   if (filters.includeArchived) params.set('includeArchived', 'true')
+  if (filters.projectId) params.set('projectId', filters.projectId)
 
   return useQuery({
     queryKey: ['flow', 'tasks', filters],
@@ -392,10 +394,12 @@ export function useSelectedItem() {
 
 // 선택된 항목에 따른 관련 데이터 훅
 export function useSelectedData(selectedItem: SelectedItem | null) {
+  const projectId = selectedItem && 'projectId' in selectedItem ? selectedItem.projectId : undefined
   const { data: changes } = useFlowChanges()
   const { data: tasks } = useFlowTasks({
     changeId: selectedItem?.type === 'change' ? selectedItem.changeId : undefined,
-    standalone: selectedItem?.type === 'standalone-tasks' ? true : undefined
+    standalone: selectedItem?.type === 'standalone-tasks' ? true : undefined,
+    projectId
   })
   const { data: changeDetail } = useFlowChangeDetail(
     selectedItem?.type === 'change' ? (selectedItem.changeId ?? null) : null
@@ -455,6 +459,7 @@ interface ArchiveChangeInput {
   skipSpecs?: boolean
   force?: boolean
   autoFix?: boolean
+  projectId?: string
 }
 
 interface ArchiveChangeResult {
@@ -477,12 +482,12 @@ export function useArchiveChange() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ changeId, skipSpecs, force, autoFix }: ArchiveChangeInput): Promise<ArchiveChangeResult> => {
+    mutationFn: async ({ changeId, skipSpecs, force, autoFix, projectId }: ArchiveChangeInput): Promise<ArchiveChangeResult> => {
       // First attempt
       let res = await fetch(`${API_BASE}/flow/changes/${changeId}/archive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ skipSpecs, force }),
+        body: JSON.stringify({ skipSpecs, force, projectId }),
       })
 
       // Check for validation error (422)
@@ -493,7 +498,7 @@ export function useArchiveChange() {
         const fixRes = await fetch(`${API_BASE}/flow/changes/${changeId}/fix-validation`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ errors: errorJson.validationErrors }),
+          body: JSON.stringify({ errors: errorJson.validationErrors, projectId }),
         })
 
         if (fixRes.ok) {
@@ -501,7 +506,7 @@ export function useArchiveChange() {
           res = await fetch(`${API_BASE}/flow/changes/${changeId}/archive`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ skipSpecs }),
+            body: JSON.stringify({ skipSpecs, projectId }),
           })
         }
       }

@@ -9,7 +9,7 @@ import { readdir, readFile, writeFile, access, stat } from 'fs/promises'
 import { join } from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
-import { getActiveProject } from '../config.js'
+import { getActiveProject, getProjectById } from '../config.js'
 import { parseTasksFile, toggleTaskInFile } from '../parser.js'
 import { initDb, getSqlite } from '../tasks/db/client.js'
 
@@ -255,13 +255,93 @@ changesRouter.get('/archived/:id', async (req, res) => {
 // GET /:id/tasks - Get tasks for a change
 changesRouter.get('/:id/tasks', async (req, res) => {
   try {
-    const paths = await getProjectPaths()
-    if (!paths) {
+    // projectId 쿼리 파라미터가 있으면 해당 프로젝트 사용, 없으면 활성 프로젝트
+    const projectId = req.query.projectId as string | undefined
+    const project = projectId
+      ? await getProjectById(projectId)
+      : await getActiveProject()
+
+    if (!project) {
       return res.status(400).json({ success: false, error: 'No active project' })
     }
 
     const changeId = req.params.id
-    const tasksPath = join(paths.openspecDir, changeId, 'tasks.md')
+
+    // 원격 프로젝트인 경우 DB에서 tasks 조회
+    if (project.remote) {
+      initDb()
+      const sqlite = getSqlite()
+
+      const tasks = sqlite.prepare(`
+        SELECT id, title, status, group_title, group_order, task_order,
+               major_title, sub_order, priority, stage, created_at, updated_at
+        FROM tasks
+        WHERE change_id = ? AND project_id = ?
+        ORDER BY group_order ASC, task_order ASC
+      `).all(changeId, project.id) as Array<{
+        id: string
+        title: string
+        status: string
+        group_title: string | null
+        group_order: number
+        task_order: number
+        major_title: string | null
+        sub_order: number | null
+        priority: string
+        stage: string
+        created_at: number
+        updated_at: number
+      }>
+
+      // 그룹별로 정리
+      const groupMap = new Map<string, {
+        title: string
+        order: number
+        tasks: Array<{
+          id: string
+          title: string
+          completed: boolean
+          order: number
+        }>
+      }>()
+
+      for (const task of tasks) {
+        const groupTitle = task.group_title || 'Tasks'
+        if (!groupMap.has(groupTitle)) {
+          groupMap.set(groupTitle, {
+            title: groupTitle,
+            order: task.group_order,
+            tasks: []
+          })
+        }
+        groupMap.get(groupTitle)!.tasks.push({
+          id: task.id,
+          title: task.title,
+          completed: task.status === 'done',
+          order: task.task_order
+        })
+      }
+
+      const groups = Array.from(groupMap.values())
+        .sort((a, b) => a.order - b.order)
+        .map(g => ({
+          ...g,
+          tasks: g.tasks.sort((a, b) => a.order - b.order)
+        }))
+
+      return res.json({
+        success: true,
+        data: {
+          changeId,
+          groups,
+          remote: true
+        }
+      })
+    }
+
+    // 로컬 프로젝트인 경우 파일에서 직접 읽기
+    const openspecDir = join(project.path, 'openspec', 'changes')
+    const tasksPath = join(openspecDir, changeId, 'tasks.md')
     const content = await readFile(tasksPath, 'utf-8')
     const parsed = parseTasksFile(changeId, content)
 

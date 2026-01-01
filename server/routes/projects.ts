@@ -232,13 +232,13 @@ async function syncLocalProject(project: { id: string; name: string; path: strin
       // proposal.md not found
     }
 
-    // Check if change exists
-    const existing = sqlite.prepare('SELECT id FROM changes WHERE id = ?').get(changeId)
+    // Check if change exists for THIS project (project_id 조건 필수)
+    const existing = sqlite.prepare('SELECT id FROM changes WHERE id = ? AND project_id = ?').get(changeId, project.id)
 
     if (existing) {
       sqlite.prepare(`
-        UPDATE changes SET title = ?, spec_path = ?, status = 'active', updated_at = ? WHERE id = ?
-      `).run(title, specPath, now, changeId)
+        UPDATE changes SET title = ?, spec_path = ?, status = 'active', updated_at = ? WHERE id = ? AND project_id = ?
+      `).run(title, specPath, now, changeId, project.id)
     } else {
       sqlite.prepare(`
         INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
@@ -324,13 +324,13 @@ async function syncRemoteProject(project: { id: string; name: string; path: stri
       // proposal.md not found
     }
 
-    // Check if change exists
-    const existing = sqlite.prepare('SELECT id FROM changes WHERE id = ?').get(changeId)
+    // Check if change exists for THIS project (project_id 조건 필수)
+    const existing = sqlite.prepare('SELECT id FROM changes WHERE id = ? AND project_id = ?').get(changeId, project.id)
 
     if (existing) {
       sqlite.prepare(`
-        UPDATE changes SET title = ?, spec_path = ?, status = 'active', updated_at = ? WHERE id = ?
-      `).run(title, specPath, now, changeId)
+        UPDATE changes SET title = ?, spec_path = ?, status = 'active', updated_at = ? WHERE id = ? AND project_id = ?
+      `).run(title, specPath, now, changeId, project.id)
     } else {
       sqlite.prepare(`
         INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
@@ -357,7 +357,7 @@ async function syncRemoteProject(project: { id: string; name: string; path: stri
   let tasksSynced = 0
   for (const changeId of activeChangeIds) {
     try {
-      const result = await syncRemoteChangeTasksForProject(changeId, project.path, server)
+      const result = await syncRemoteChangeTasksForProject(changeId, project.path, server, project.id)
       tasksSynced += result.tasksCreated + result.tasksUpdated
     } catch {
       // tasks.md가 없거나 파싱 실패 시 무시
@@ -609,7 +609,7 @@ async function getSpecsForProject(projectPath: string) {
 }
 
 // Helper to get changes for a remote project via SSH
-async function getChangesForRemoteProject(projectPath: string, serverId: string) {
+async function getChangesForRemoteProject(projectPath: string, serverId: string, projectId?: string) {
   const server = await getRemoteServerById(serverId)
   if (!server) return []
 
@@ -620,11 +620,12 @@ async function getChangesForRemoteProject(projectPath: string, serverId: string)
   // Get archived change IDs from DB to filter them out
   const archivedChangeIds = new Set<string>()
   try {
-    const projectId = projectPath.toLowerCase().replace(/[^a-z0-9]/g, '-')
+    // projectId가 전달되면 사용, 아니면 경로에서 생성
+    const dbProjectId = projectId || projectPath.toLowerCase().replace(/[^a-z0-9]/g, '-')
     const sqlite = getSqlite()
     const archivedRows = sqlite.prepare(`
       SELECT id FROM changes WHERE project_id = ? AND status = 'archived'
-    `).all(projectId) as { id: string }[]
+    `).all(dbProjectId) as { id: string }[]
     for (const row of archivedRows) {
       archivedChangeIds.add(row.id)
     }
@@ -734,8 +735,8 @@ projectsRouter.get('/all-data', async (_req, res) => {
       let changes, specs
 
       if (project.remote) {
-        // 원격 프로젝트: SSH를 통해 조회
-        changes = await getChangesForRemoteProject(project.path, project.remote.serverId)
+        // 원격 프로젝트: SSH를 통해 조회 (project.id 전달하여 정확한 archived 필터링)
+        changes = await getChangesForRemoteProject(project.path, project.remote.serverId, project.id)
         specs = await getSpecsForRemoteProject(project.path, project.remote.serverId)
       } else {
         // 로컬 프로젝트: 파일시스템에서 조회

@@ -1,8 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { TasksFile, Task, ApiResponse, TasksResponse, ToggleTaskResponse } from '@/types'
 
-async function fetchTasks(changeId: string): Promise<TasksFile> {
-  const response = await fetch(`/api/changes/${changeId}/tasks`)
+async function fetchTasks(changeId: string, projectId?: string): Promise<TasksFile> {
+  const url = projectId
+    ? `/api/changes/${changeId}/tasks?projectId=${encodeURIComponent(projectId)}`
+    : `/api/changes/${changeId}/tasks`
+  const response = await fetch(url)
   const json: ApiResponse<TasksResponse> = await response.json()
 
   if (!json.success || !json.data) {
@@ -28,10 +31,10 @@ async function toggleTask(changeId: string, taskId: string): Promise<Task> {
   return json.data.task
 }
 
-export function useTasks(changeId: string | null) {
+export function useTasks(changeId: string | null, projectId?: string) {
   return useQuery({
-    queryKey: ['tasks', changeId],
-    queryFn: () => fetchTasks(changeId!),
+    queryKey: ['tasks', changeId, projectId],
+    queryFn: () => fetchTasks(changeId!, projectId),
     enabled: !!changeId,
   })
 }

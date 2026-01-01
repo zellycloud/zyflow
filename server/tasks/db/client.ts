@@ -62,9 +62,10 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
   `);
 
   // Create changes table (Flow의 최상위 단위)
+  // 복합 기본키: (id, project_id) - 같은 change id가 다른 프로젝트에서 사용 가능
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS changes (
-      id TEXT PRIMARY KEY,
+      id TEXT NOT NULL,
       project_id TEXT NOT NULL,
       title TEXT NOT NULL,
       spec_path TEXT,
@@ -73,7 +74,8 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
       progress INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
-      archived_at INTEGER
+      archived_at INTEGER,
+      PRIMARY KEY (id, project_id)
     );
   `);
 
@@ -82,6 +84,53 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
     sqlite.exec(`ALTER TABLE changes ADD COLUMN archived_at INTEGER`);
   } catch {
     // Column already exists
+  }
+
+  // Migration: Convert changes table from single id PK to composite (id, project_id) PK
+  try {
+    // Check if current table has single id primary key
+    const tableInfo = sqlite.prepare("PRAGMA table_info(changes)").all() as Array<{ name: string; pk: number }>;
+    const pkColumns = tableInfo.filter(col => col.pk > 0);
+
+    if (pkColumns.length === 1 && pkColumns[0].name === 'id') {
+      console.log('[Migration] Converting changes table to composite primary key (id, project_id)...');
+
+      sqlite.exec(`
+        -- Create new table with composite primary key
+        CREATE TABLE changes_new (
+          id TEXT NOT NULL,
+          project_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          spec_path TEXT,
+          status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'completed', 'archived')),
+          current_stage TEXT NOT NULL DEFAULT 'spec' CHECK(current_stage IN ('spec', 'task', 'code', 'test', 'commit', 'docs')),
+          progress INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          archived_at INTEGER,
+          PRIMARY KEY (id, project_id)
+        );
+
+        -- Copy data from old table
+        INSERT OR IGNORE INTO changes_new SELECT id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at, archived_at FROM changes;
+
+        -- Drop old table
+        DROP TABLE changes;
+
+        -- Rename new table
+        ALTER TABLE changes_new RENAME TO changes;
+
+        -- Recreate indexes
+        CREATE INDEX IF NOT EXISTS idx_changes_project_id ON changes(project_id);
+        CREATE INDEX IF NOT EXISTS idx_changes_status ON changes(status);
+        CREATE INDEX IF NOT EXISTS idx_changes_project_status ON changes(project_id, status);
+        CREATE INDEX IF NOT EXISTS idx_changes_updated_at ON changes(updated_at);
+      `);
+
+      console.log('[Migration] Changes table migration complete');
+    }
+  } catch (err) {
+    console.error('[Migration] Error migrating changes table:', err);
   }
 
   // Create tasks table
