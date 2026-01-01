@@ -22,6 +22,7 @@ import type {
   RiskAssessment,
   RiskLevel,
 } from '../tasks/db/schema.js'
+import { getWorkflowFailureSummary } from './githubActionsPoller.js'
 
 // =============================================
 // Types
@@ -90,7 +91,7 @@ function createActivityLog(
 /**
  * Alert 분석 - 패턴 매칭 기반 근본 원인 분석
  */
-export function analyzeAlert(alert: Alert): AlertAnalysis {
+export async function analyzeAlert(alert: Alert): Promise<AlertAnalysis> {
   const payload = JSON.parse(alert.payload)
   const metadata = JSON.parse(alert.metadata || '{}') as AlertMetadata
 
@@ -107,7 +108,7 @@ export function analyzeAlert(alert: Alert): AlertAnalysis {
   // Source별 분석 로직
   switch (alert.source) {
     case 'github':
-      analyzeGitHubAlert(alert, payload, metadata, analysis)
+      await analyzeGitHubAlert(alert, payload, metadata, analysis)
       break
     case 'vercel':
       analyzeVercelAlert(alert, payload, metadata, analysis)
@@ -123,38 +124,74 @@ export function analyzeAlert(alert: Alert): AlertAnalysis {
   return analysis
 }
 
-function analyzeGitHubAlert(
+async function analyzeGitHubAlert(
   alert: Alert,
   payload: Record<string, unknown>,
-  _metadata: AlertMetadata,
+  metadata: AlertMetadata,
   analysis: AlertAnalysis
-): void {
+): Promise<void> {
   const workflowRun = payload.workflow_run as Record<string, unknown> | undefined
 
   if (alert.type.startsWith('workflow.')) {
     // Workflow 실패 분석
     if (workflowRun) {
       const conclusion = workflowRun.conclusion as string
+      const runId = workflowRun.id as number
+      const repo = metadata.repo
 
-      if (conclusion === 'failure') {
-        // 일반적인 실패 원인 패턴
-        analysis.rootCause = 'GitHub Actions workflow failed during execution'
-        analysis.suggestedFix = 'Check the workflow logs for specific failure details. Common causes include: test failures, linting errors, build errors, or dependency issues.'
-        analysis.confidence = 0.6
+      if (conclusion === 'failure' && repo && runId) {
+        // 실제 GitHub Actions 로그 가져오기
+        try {
+          console.log(`[Analysis] Fetching workflow logs for ${repo} run #${runId}`)
+          const { failedJobs, failedSteps } = await getWorkflowFailureSummary(repo, runId)
 
-        // Retry 가능 여부 판단
+          if (failedJobs.length > 0 || failedSteps.length > 0) {
+            // 실패한 스텝 정보 구성
+            const failedStepNames = failedSteps.map(s => `${s.jobName}: ${s.stepName}`).join(', ')
+            analysis.rootCause = `Workflow failed at: ${failedStepNames || failedJobs.map(j => j.name).join(', ')}`
+
+            // 로그에서 에러 패턴 분석
+            for (const job of failedJobs) {
+              if (job.logs) {
+                const errorInfo = parseGitHubActionsLogs(job.logs)
+                if (errorInfo.errorMessages.length > 0) {
+                  analysis.rootCause = errorInfo.errorMessages[0]
+                  analysis.suggestedFix = errorInfo.suggestedFix || 'Review the error details and fix the issue.'
+                  analysis.relatedFiles = errorInfo.relatedFiles
+                  analysis.confidence = errorInfo.confidence
+                  analysis.autoFixable = errorInfo.autoFixable
+                  analysis.autoFixAction = errorInfo.autoFixAction
+                  break // 첫 번째 에러 분석 사용
+                }
+              }
+            }
+
+            // 로그 분석 실패 시 기본 분석
+            if (!analysis.suggestedFix) {
+              analysis.suggestedFix = `Check the workflow logs for "${failedStepNames || 'the failed job'}". Common causes include: test failures, linting errors, build errors, or dependency issues.`
+              analysis.confidence = 0.7
+            }
+          } else {
+            // Jobs 정보가 없으면 기본 분석
+            analysis.rootCause = 'GitHub Actions workflow failed during execution'
+            analysis.suggestedFix = 'Check the workflow logs for specific failure details.'
+            analysis.confidence = 0.5
+          }
+        } catch (error) {
+          console.error(`[Analysis] Failed to fetch workflow logs:`, error)
+          // 로그 가져오기 실패 시 기본 분석
+          analysis.rootCause = 'GitHub Actions workflow failed during execution'
+          analysis.suggestedFix = 'Check the workflow logs for specific failure details. Common causes include: test failures, linting errors, build errors, or dependency issues.'
+          analysis.confidence = 0.6
+        }
+
+        // Retry 가능 여부 판단 (워크플로우 이름 기반)
         const name = (workflowRun.name as string)?.toLowerCase() || ''
-        if (name.includes('lint') || name.includes('format')) {
-          analysis.autoFixable = true
-          analysis.autoFixAction = 'retry_workflow'
-          analysis.confidence = 0.8
-          analysis.suggestedFix = 'This appears to be a linting/formatting issue. Auto-retry may resolve transient failures.'
-        } else if (name.includes('test')) {
-          analysis.suggestedFix = 'Test failures detected. Review the test logs and fix failing tests.'
-          analysis.confidence = 0.7
-        } else if (name.includes('build') || name.includes('deploy')) {
-          analysis.suggestedFix = 'Build/deploy failure. Check for dependency issues or configuration problems.'
-          analysis.confidence = 0.7
+        if (!analysis.autoFixAction) {
+          if (name.includes('lint') || name.includes('format')) {
+            analysis.autoFixable = true
+            analysis.autoFixAction = 'retry_workflow'
+          }
         }
       }
     }
@@ -164,6 +201,154 @@ function analyzeGitHubAlert(
     analysis.suggestedFix = 'Review the check details and fix the reported issues.'
     analysis.confidence = 0.5
   }
+}
+
+/**
+ * GitHub Actions 로그 파싱 및 에러 분석
+ */
+function parseGitHubActionsLogs(logs: string): {
+  errorMessages: string[]
+  relatedFiles: string[]
+  suggestedFix: string | null
+  confidence: number
+  autoFixable: boolean
+  autoFixAction?: string
+} {
+  const result = {
+    errorMessages: [] as string[],
+    relatedFiles: [] as string[],
+    suggestedFix: null as string | null,
+    confidence: 0.6,
+    autoFixable: false,
+    autoFixAction: undefined as string | undefined,
+  }
+
+  // 에러 패턴 매칭 (우선순위 높은 순서대로)
+  const errorPatterns = [
+    // TypeScript/JavaScript 에러
+    { pattern: /error TS(\d+):\s*(.+)/gi, type: 'typescript', priority: 10 },
+    { pattern: /TypeError:\s*(.+)/gi, type: 'type_error', priority: 9 },
+    { pattern: /ReferenceError:\s*(.+)/gi, type: 'reference_error', priority: 9 },
+    { pattern: /SyntaxError:\s*(.+)/gi, type: 'syntax_error', priority: 9 },
+    // Python 에러
+    { pattern: /Failed to spawn:\s*`?(\w+)`?/gi, type: 'spawn_error', priority: 8 },
+    { pattern: /ModuleNotFoundError:\s*(.+)/gi, type: 'python_import_error', priority: 8 },
+    { pattern: /ImportError:\s*(.+)/gi, type: 'python_import_error', priority: 8 },
+    // 테스트 에러
+    { pattern: /FAIL\s+(.+\.(?:test|spec)\.[jt]sx?)/gi, type: 'test_failure', priority: 7 },
+    { pattern: /✕\s*(.+)/gi, type: 'test_failure', priority: 6 },
+    { pattern: /AssertionError:\s*(.+)/gi, type: 'assertion_error', priority: 7 },
+    { pattern: /pytest.*?(\d+)\s+(?:failed|error)/gi, type: 'pytest_failure', priority: 7 },
+    // ESLint 에러
+    { pattern: /(\d+:\d+)\s+error\s+(.+)\s+(@?[\w/-]+)/gi, type: 'lint_error', priority: 8 },
+    // npm/pnpm 에러
+    { pattern: /npm ERR!\s*(.+)/gi, type: 'npm_error', priority: 6 },
+    { pattern: /ERR_PNPM_[\w]+\s*(.+)/gi, type: 'pnpm_error', priority: 6 },
+    // GitHub Actions 특정 에러
+    { pattern: /HttpError:\s*(.+)/gi, type: 'http_error', priority: 5 },
+    { pattern: /Resource not accessible by integration/gi, type: 'permission_error', priority: 8 },
+    // 일반 에러 (우선순위 낮음)
+    { pattern: /error:\s*(.+)/gi, type: 'build_error', priority: 3 },
+    { pattern: /Error:\s*(.+)/gi, type: 'general_error', priority: 2 },
+  ]
+
+  // 파일 경로 패턴 (최소 하나의 / 포함하거나, src/, test/ 등으로 시작)
+  const filePattern = /(?:^|\s|['"])((?:src|test|tests|lib|app|components|pages|server|packages)\/[a-zA-Z0-9_/.@-]+\.(?:ts|tsx|js|jsx|json|yaml|yml|md)|[a-zA-Z0-9_@-]+\/[a-zA-Z0-9_/.@-]+\.(?:ts|tsx|js|jsx|json|yaml|yml|md))/gm
+
+  for (const { pattern, type } of errorPatterns) {
+    const matches = logs.matchAll(pattern)
+    for (const match of matches) {
+      const errorMsg = match[1] || match[0]
+      if (errorMsg && errorMsg.length < 500) {
+        result.errorMessages.push(errorMsg.trim())
+
+        // 타입별 suggestedFix 설정
+        switch (type) {
+          case 'typescript':
+            result.suggestedFix = `TypeScript error (TS${match[1]}): ${match[2]?.trim() || errorMsg.trim()}. Check type definitions and fix type mismatches.`
+            result.confidence = 0.85
+            break
+          case 'type_error':
+            result.suggestedFix = `Type error detected: ${errorMsg.trim()}. Check for null/undefined values or incorrect type usage.`
+            result.confidence = 0.8
+            break
+          case 'reference_error':
+            result.suggestedFix = `Reference error: ${errorMsg.trim()}. Check for missing imports, undefined variables, or typos.`
+            result.confidence = 0.8
+            break
+          case 'syntax_error':
+            result.suggestedFix = `Syntax error: ${errorMsg.trim()}. Check for missing brackets, semicolons, or invalid syntax.`
+            result.confidence = 0.85
+            break
+          case 'spawn_error':
+            result.suggestedFix = `Failed to spawn "${match[1] || errorMsg}". Install the required tool: pip install ${match[1] || 'the-tool'} or ensure it's in PATH.`
+            result.confidence = 0.75
+            break
+          case 'python_import_error':
+            result.suggestedFix = `Python module not found: ${errorMsg.trim()}. Install the missing package: pip install <package-name>`
+            result.confidence = 0.75
+            break
+          case 'test_failure':
+            result.suggestedFix = `Test failure detected: ${errorMsg.trim()}. Review the failing tests and fix the code or test expectations.`
+            result.confidence = 0.8
+            break
+          case 'pytest_failure':
+            result.suggestedFix = `${match[1]} pytest test(s) failed. Run pytest locally to debug: pytest -v`
+            result.confidence = 0.8
+            break
+          case 'assertion_error':
+            result.suggestedFix = `Assertion error: ${errorMsg.trim()}. Check test assertions and expected values.`
+            result.confidence = 0.8
+            break
+          case 'lint_error':
+            result.suggestedFix = `Linting error: ${match[2]?.trim() || errorMsg.trim()}. Run the linter locally to fix: npm run lint -- --fix`
+            result.autoFixable = true
+            result.autoFixAction = 'run_lint_fix'
+            result.confidence = 0.85
+            break
+          case 'npm_error':
+          case 'pnpm_error':
+            result.suggestedFix = `Package manager error: ${errorMsg.trim()}. Try clearing cache and reinstalling: rm -rf node_modules && npm install`
+            result.confidence = 0.7
+            break
+          case 'http_error':
+            result.suggestedFix = `HTTP error occurred: ${errorMsg.trim()}. Check API endpoints, authentication, and network connectivity.`
+            result.confidence = 0.7
+            break
+          case 'permission_error':
+            result.suggestedFix = `GitHub permission error. The workflow may need additional permissions. Check GITHUB_TOKEN permissions in the workflow file.`
+            result.confidence = 0.85
+            break
+        }
+      }
+      // 첫 번째 에러만 사용
+      if (result.errorMessages.length >= 3) break
+    }
+    if (result.errorMessages.length >= 3) break
+  }
+
+  // 관련 파일 추출 (프로젝트 파일만)
+  const fileMatches = logs.matchAll(filePattern)
+  const files = new Set<string>()
+  const excludePatterns = [
+    'node_modules',
+    '.pnpm',
+    '/home/runner/',
+    '_actions/',
+    '.cache/',
+  ]
+  for (const match of fileMatches) {
+    const file = match[1]
+    if (file && !excludePatterns.some(p => file.includes(p))) {
+      // 상대 경로로 정리
+      const cleanFile = file.replace(/^\.\//, '')
+      files.add(cleanFile)
+    }
+    if (files.size >= 5) break
+  }
+  result.relatedFiles = Array.from(files)
+
+  return result
 }
 
 function analyzeVercelAlert(
@@ -704,7 +889,7 @@ export async function processAlert(alertId: string): Promise<ProcessingResult> {
 
   try {
     // 1. 분석 실행
-    const analysis = analyzeAlert(alert)
+    const analysis = await analyzeAlert(alert)
     result.analyzed = true
 
     sqlite.prepare(`
@@ -756,6 +941,18 @@ export async function processAlert(alertId: string): Promise<ProcessingResult> {
           `).run(JSON.stringify(resolution), Date.now(), Date.now(), alertId)
         }
       }
+    } else {
+      // Auto-fix가 시도되지 않은 이유 기록
+      const reason = !analysis.autoFixable
+        ? `Auto-fix not available: ${analysis.autoFixAction ? `Action "${analysis.autoFixAction}" requires manual intervention` : 'No automated fix for this error type'}`
+        : `Auto-fix skipped: Risk level "${riskAssessment.level}" requires ${riskAssessment.recommendation.replace(/_/g, ' ')}`
+
+      createActivityLog(alertId, 'agent', 'autofix.skipped', reason, {
+        autoFixable: analysis.autoFixable,
+        riskLevel: riskAssessment.level,
+        recommendation: riskAssessment.recommendation,
+        suggestedFix: analysis.suggestedFix,
+      })
     }
 
     // 4. Slack 알림 발송
@@ -776,7 +973,27 @@ export async function processAlert(alertId: string): Promise<ProcessingResult> {
       `).run(Date.now(), alertId)
     }
 
-    createActivityLog(alertId, 'agent', 'processing.completed', 'Alert processing completed')
+    // 처리 완료 요약 로그
+    const summaryParts: string[] = []
+    summaryParts.push(`Analysis: ${Math.round(analysis.confidence * 100)}% confidence`)
+    summaryParts.push(`Risk: ${riskAssessment.level}`)
+    if (result.autoFixAttempted) {
+      summaryParts.push(`Auto-fix: ${result.autoFixSuccess ? 'Success' : 'Failed'}`)
+    } else {
+      summaryParts.push('Auto-fix: Not applicable')
+    }
+    if (currentAlert.status !== 'resolved') {
+      summaryParts.push('Status: Awaiting manual resolution')
+    }
+
+    createActivityLog(alertId, 'agent', 'processing.completed', summaryParts.join(' | '), {
+      analyzed: result.analyzed,
+      riskLevel: result.riskLevel,
+      autoFixAttempted: result.autoFixAttempted,
+      autoFixSuccess: result.autoFixSuccess,
+      notificationSent: result.notificationSent,
+      finalStatus: currentAlert.status === 'resolved' ? 'resolved' : 'pending',
+    })
 
   } catch (error) {
     console.error('Error processing alert:', error)
@@ -804,7 +1021,7 @@ export async function triggerAnalysis(alertId: string): Promise<AlertAnalysis> {
     throw new Error(`Alert not found: ${alertId}`)
   }
 
-  const analysis = analyzeAlert(alert)
+  const analysis = await analyzeAlert(alert)
   const riskAssessment = assessRisk(alert, analysis)
 
   // 유사 Alert 찾기
@@ -1393,4 +1610,293 @@ ${analysis.suggestedFix || 'N/A'}
       error: error instanceof Error ? error.message : 'Unknown error',
     }
   }
+}
+
+// =============================================
+// Agent-based Fix Execution
+// =============================================
+
+interface AgentFixResult {
+  success: boolean
+  sessionId?: string
+  error?: string
+  details?: string
+}
+
+interface AgentFixProgress {
+  alertId: string
+  sessionId: string
+  status: 'starting' | 'running' | 'completed' | 'failed'
+  output: string[]
+  startedAt: string
+  completedAt?: string
+}
+
+// 진행 중인 Agent Fix 세션 추적
+const agentFixSessions: Map<string, AgentFixProgress> = new Map()
+
+/**
+ * Agent를 사용하여 Alert 수정 시도
+ * Auto-fix가 불가능한 경우 Claude CLI를 사용하여 코드 수정
+ */
+export async function executeAgentFix(alertId: string): Promise<AgentFixResult> {
+  const sqlite = getSqlite()
+
+  // Alert 조회
+  const alert = sqlite.prepare('SELECT * FROM alerts WHERE id = ?').get(alertId) as Alert | undefined
+  if (!alert) {
+    return { success: false, error: 'Alert not found' }
+  }
+
+  // 분석 결과 확인
+  if (!alert.analysis) {
+    return { success: false, error: 'Alert has not been analyzed yet. Run analysis first.' }
+  }
+
+  const analysis = JSON.parse(alert.analysis) as AlertAnalysis
+  const metadata = JSON.parse(alert.metadata || '{}') as AlertMetadata
+
+  // 이미 진행 중인 Agent Fix 세션이 있는지 확인
+  const existingSession = agentFixSessions.get(alertId)
+  if (existingSession && existingSession.status === 'running') {
+    return {
+      success: false,
+      error: 'Agent fix is already in progress for this alert',
+      sessionId: existingSession.sessionId
+    }
+  }
+
+  // Activity Log 기록
+  createActivityLog(alertId, 'agent', 'agentfix.started', 'Starting agent-based fix attempt', {
+    rootCause: analysis.rootCause,
+    suggestedFix: analysis.suggestedFix,
+    relatedFiles: analysis.relatedFiles,
+  })
+
+  // Alert 상태를 processing으로 변경
+  sqlite.prepare(`
+    UPDATE alerts SET status = 'processing', updated_at = ? WHERE id = ?
+  `).run(Date.now(), alertId)
+
+  try {
+    // Agent Fix를 위한 프롬프트 생성
+    const prompt = buildAgentFixPrompt(alert, analysis, metadata)
+
+    // CLIProcessManager를 동적으로 import하고 실행
+    const { CLIProcessManager } = await import('../cli-adapter/process-manager.js')
+    const { getProfileManager } = await import('../cli-adapter/profile-manager.js')
+
+    // 프로젝트 경로 결정 (metadata에서 가져오거나 현재 작업 디렉토리 사용)
+    const projectPath = process.cwd()
+    const processManager = new CLIProcessManager(projectPath)
+    const profileManager = getProfileManager(projectPath)
+
+    // 사용 가능한 프로필 확인 (claude 우선)
+    const profiles = await profileManager.getAll()
+    let targetProfile = profiles.find(p => p.id === 'claude')
+    if (!targetProfile) {
+      // available 속성이 없을 수 있으므로 첫 번째 프로필 사용
+      targetProfile = profiles[0]
+    }
+
+    if (!targetProfile) {
+      createActivityLog(alertId, 'agent', 'agentfix.failed', 'No CLI profile available for agent fix', {})
+      return { success: false, error: 'No CLI profile available. Install Claude CLI or another supported CLI.' }
+    }
+
+    // CLI 세션 시작
+    const startResult = await processManager.start({
+      profileId: targetProfile.id,
+      changeId: `alert-fix-${alertId}`,
+      initialPrompt: prompt,
+      model: 'claude-sonnet-4-20250514', // 빠른 응답을 위해 Sonnet 사용
+    })
+
+    if (!startResult.success || !startResult.sessionId) {
+      createActivityLog(alertId, 'agent', 'agentfix.failed', `Failed to start CLI session: ${startResult.error}`, {})
+      return { success: false, error: startResult.error || 'Failed to start CLI session' }
+    }
+
+    const sessionId = startResult.sessionId
+
+    // 진행 상황 추적
+    const progress: AgentFixProgress = {
+      alertId,
+      sessionId,
+      status: 'running',
+      output: [],
+      startedAt: new Date().toISOString(),
+    }
+    agentFixSessions.set(alertId, progress)
+
+    // 출력 수집을 위한 이벤트 리스너
+    const outputCollector = (output: { sessionId: string; type: string; content: string }) => {
+      if (output.sessionId === sessionId) {
+        progress.output.push(output.content)
+      }
+    }
+    processManager.on('output', outputCollector)
+
+    // 세션 종료 대기
+    return new Promise((resolve) => {
+      const sessionEndHandler = (session: { id: string; status: string; exitCode?: number; error?: string }) => {
+        if (session.id !== sessionId) return
+
+        processManager.off('output', outputCollector)
+        processManager.off('session:end', sessionEndHandler)
+
+        progress.status = session.status === 'completed' ? 'completed' : 'failed'
+        progress.completedAt = new Date().toISOString()
+
+        const fullOutput = progress.output.join('')
+
+        if (session.status === 'completed') {
+          createActivityLog(alertId, 'agent', 'agentfix.completed', 'Agent fix completed successfully', {
+            sessionId,
+            outputLength: fullOutput.length,
+          })
+
+          // 해결된 것으로 간주하고 상태 업데이트
+          sqlite.prepare(`
+            UPDATE alerts SET
+              status = 'resolved',
+              updated_at = ?,
+              resolved_at = ?,
+              resolution = ?
+            WHERE id = ?
+          `).run(
+            Date.now(),
+            Date.now(),
+            JSON.stringify({
+              type: 'agent',
+              action: 'agent_fix',
+              details: 'Fixed by AI agent',
+              sessionId,
+            }),
+            alertId
+          )
+
+          resolve({
+            success: true,
+            sessionId,
+            details: 'Agent fix completed successfully'
+          })
+        } else {
+          createActivityLog(alertId, 'agent', 'agentfix.failed', `Agent fix failed: ${session.error || 'Unknown error'}`, {
+            sessionId,
+            exitCode: session.exitCode,
+          })
+
+          // 상태를 pending으로 복원
+          sqlite.prepare(`
+            UPDATE alerts SET status = 'pending', updated_at = ? WHERE id = ?
+          `).run(Date.now(), alertId)
+
+          resolve({
+            success: false,
+            sessionId,
+            error: session.error || 'Agent fix failed'
+          })
+        }
+      }
+
+      processManager.on('session:end', sessionEndHandler)
+
+      // 타임아웃 설정 (5분)
+      setTimeout(() => {
+        if (progress.status === 'running') {
+          processManager.off('output', outputCollector)
+          processManager.off('session:end', sessionEndHandler)
+          processManager.stop(sessionId)
+
+          progress.status = 'failed'
+          progress.completedAt = new Date().toISOString()
+
+          createActivityLog(alertId, 'agent', 'agentfix.timeout', 'Agent fix timed out after 5 minutes', { sessionId })
+
+          // 상태를 pending으로 복원
+          sqlite.prepare(`
+            UPDATE alerts SET status = 'pending', updated_at = ? WHERE id = ?
+          `).run(Date.now(), alertId)
+
+          resolve({
+            success: false,
+            sessionId,
+            error: 'Agent fix timed out after 5 minutes'
+          })
+        }
+      }, 5 * 60 * 1000)
+    })
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    createActivityLog(alertId, 'agent', 'agentfix.failed', `Agent fix error: ${errorMessage}`, {})
+
+    // 상태를 pending으로 복원
+    sqlite.prepare(`
+      UPDATE alerts SET status = 'pending', updated_at = ? WHERE id = ?
+    `).run(Date.now(), alertId)
+
+    return { success: false, error: errorMessage }
+  }
+}
+
+/**
+ * Agent Fix 진행 상황 조회
+ */
+export function getAgentFixProgress(alertId: string): AgentFixProgress | null {
+  return agentFixSessions.get(alertId) || null
+}
+
+/**
+ * Agent Fix용 프롬프트 생성
+ */
+function buildAgentFixPrompt(alert: Alert, analysis: AlertAnalysis, metadata: AlertMetadata): string {
+  const parts: string[] = []
+
+  parts.push(`You are tasked with fixing an error that occurred in a software project.`)
+  parts.push('')
+  parts.push(`## Error Information`)
+  parts.push(`- **Alert Type**: ${alert.type}`)
+  parts.push(`- **Severity**: ${alert.severity}`)
+  parts.push(`- **Source**: ${alert.source}`)
+  parts.push(`- **Title**: ${alert.title}`)
+
+  if (metadata.repo) {
+    parts.push(`- **Repository**: ${metadata.repo}`)
+  }
+  if (metadata.branch) {
+    parts.push(`- **Branch**: ${metadata.branch}`)
+  }
+  if (metadata.environment) {
+    parts.push(`- **Environment**: ${metadata.environment}`)
+  }
+
+  parts.push('')
+  parts.push(`## Root Cause Analysis`)
+  parts.push(analysis.rootCause || 'Not determined')
+
+  if (analysis.relatedFiles && analysis.relatedFiles.length > 0) {
+    parts.push('')
+    parts.push(`## Related Files`)
+    for (const file of analysis.relatedFiles) {
+      parts.push(`- ${file}`)
+    }
+  }
+
+  parts.push('')
+  parts.push(`## Suggested Fix`)
+  parts.push(analysis.suggestedFix || 'No specific fix suggested')
+
+  parts.push('')
+  parts.push(`## Instructions`)
+  parts.push(`1. Analyze the error and the suggested fix`)
+  parts.push(`2. Locate the relevant files in the codebase`)
+  parts.push(`3. Make the necessary code changes to fix the issue`)
+  parts.push(`4. Ensure the fix doesn't break existing functionality`)
+  parts.push(`5. If you cannot fix the issue, explain why and what manual steps might be needed`)
+
+  parts.push('')
+  parts.push(`Please proceed with the fix.`)
+
+  return parts.join('\n')
 }

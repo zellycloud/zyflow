@@ -688,3 +688,121 @@ export function stopBackgroundPoller(): void {
 export function isPollerRunning(): boolean {
   return pollerInterval !== null
 }
+
+// =============================================
+// Workflow Logs Fetching
+// =============================================
+
+interface WorkflowJob {
+  id: number
+  name: string
+  status: string
+  conclusion: string | null
+  started_at: string
+  completed_at: string | null
+  steps: Array<{
+    name: string
+    status: string
+    conclusion: string | null
+    number: number
+  }>
+}
+
+interface WorkflowJobsResponse {
+  total_count: number
+  jobs: WorkflowJob[]
+}
+
+/**
+ * 워크플로우 실행의 Jobs 목록 가져오기
+ */
+export async function getWorkflowJobs(repo: string, runId: number): Promise<WorkflowJob[]> {
+  try {
+    const response = await fetchGitHubApi<WorkflowJobsResponse>(
+      `/repos/${repo}/actions/runs/${runId}/jobs`
+    )
+    return response.jobs || []
+  } catch (error) {
+    console.error(`Failed to get jobs for run ${runId}:`, error)
+    return []
+  }
+}
+
+/**
+ * 특정 Job의 로그 가져오기
+ */
+export async function getJobLogs(repo: string, jobId: number): Promise<string | null> {
+  const token = getGitHubToken()
+
+  try {
+    if (token) {
+      // GitHub API로 로그 다운로드 URL 가져오기
+      const response = await fetch(
+        `https://api.github.com/repos/${repo}/actions/jobs/${jobId}/logs`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+          redirect: 'follow',
+        }
+      )
+
+      if (response.ok) {
+        const logs = await response.text()
+        // 로그가 너무 길면 마지막 부분만 (에러 부분 포함)
+        const maxLength = 10000
+        if (logs.length > maxLength) {
+          return '...(truncated)\n' + logs.slice(-maxLength)
+        }
+        return logs
+      }
+    } else {
+      // gh CLI 폴백
+      const { stdout } = await execAsync(`gh api repos/${repo}/actions/jobs/${jobId}/logs`)
+      return stdout
+    }
+  } catch (error) {
+    console.error(`Failed to get logs for job ${jobId}:`, error)
+  }
+
+  return null
+}
+
+/**
+ * 워크플로우 실행의 실패 로그 요약 가져오기
+ */
+export async function getWorkflowFailureSummary(
+  repo: string,
+  runId: number
+): Promise<{
+  failedJobs: Array<{ name: string; logs: string | null }>
+  failedSteps: Array<{ jobName: string; stepName: string; stepNumber: number }>
+}> {
+  const jobs = await getWorkflowJobs(repo, runId)
+
+  const failedJobs: Array<{ name: string; logs: string | null }> = []
+  const failedSteps: Array<{ jobName: string; stepName: string; stepNumber: number }> = []
+
+  for (const job of jobs) {
+    if (job.conclusion === 'failure') {
+      // 실패한 스텝 찾기
+      for (const step of job.steps || []) {
+        if (step.conclusion === 'failure') {
+          failedSteps.push({
+            jobName: job.name,
+            stepName: step.name,
+            stepNumber: step.number,
+          })
+        }
+      }
+
+      // 실패한 Job의 로그 가져오기
+      const logs = await getJobLogs(repo, job.id)
+      failedJobs.push({ name: job.name, logs })
+    }
+  }
+
+  return { failedJobs, failedSteps }
+}

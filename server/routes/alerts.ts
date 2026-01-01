@@ -21,6 +21,8 @@ import {
   getTrends,
   getAdvancedStats,
   createPullRequest,
+  executeAgentFix,
+  getAgentFixProgress,
 } from '../services/alertProcessor.js'
 import {
   checkGhAuth,
@@ -892,6 +894,53 @@ alertsRouter.post('/:id/process', async (req, res) => {
   } catch (error) {
     console.error('Error processing alert:', error)
     res.status(500).json({ success: false, error: 'Failed to process alert' })
+  }
+})
+
+// POST /alerts/:id/agent-fix - Trigger agent-based fix
+alertsRouter.post('/:id/agent-fix', async (req, res) => {
+  try {
+    const alertId = req.params.id
+
+    // Agent fix 실행 (비동기로 진행됨)
+    const result = await executeAgentFix(alertId)
+
+    const sqlite = getSqlite()
+    const alert = sqlite.prepare('SELECT * FROM alerts WHERE id = ?').get(alertId)
+
+    // WebSocket 브로드캐스트
+    if (broadcastAlert && alert) {
+      broadcastAlert({
+        type: result.success ? 'alert.agentfix.completed' : 'alert.agentfix.started',
+        alert,
+        result
+      })
+    }
+
+    res.json({ success: true, data: { alert, result } })
+  } catch (error) {
+    console.error('Error executing agent fix:', error)
+    res.status(500).json({ success: false, error: 'Failed to execute agent fix' })
+  }
+})
+
+// GET /alerts/:id/agent-fix/progress - Get agent fix progress
+alertsRouter.get('/:id/agent-fix/progress', async (req, res) => {
+  try {
+    const alertId = req.params.id
+    const progress = getAgentFixProgress(alertId)
+
+    if (!progress) {
+      return res.json({
+        success: true,
+        data: { status: 'no_session', message: 'No agent fix session found for this alert' }
+      })
+    }
+
+    res.json({ success: true, data: progress })
+  } catch (error) {
+    console.error('Error getting agent fix progress:', error)
+    res.status(500).json({ success: false, error: 'Failed to get agent fix progress' })
   }
 })
 
