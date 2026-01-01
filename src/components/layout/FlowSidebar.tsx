@@ -9,6 +9,7 @@ import {
   GitBranch,
   ArrowDown,
   RefreshCw,
+  Server,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -208,7 +209,11 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                               )}
                             </span>
                           </CollapsibleTrigger>
-                          <FolderOpen className="size-4 shrink-0" />
+                          {project.remote ? (
+                            <Server className="size-4 shrink-0 text-blue-500" />
+                          ) : (
+                            <FolderOpen className="size-4 shrink-0" />
+                          )}
                           <span className="truncate font-medium flex-1">{project.name}</span>
                           {projectChangeCount > 0 && (
                             <SidebarMenuBadge>{projectChangeCount}</SidebarMenuBadge>
