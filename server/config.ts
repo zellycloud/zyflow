@@ -8,6 +8,13 @@ export interface Project {
   name: string
   path: string
   addedAt: string
+  // 원격 프로젝트 정보 (optional)
+  remote?: {
+    type: 'ssh'
+    serverId: string
+    host: string
+    user: string
+  }
 }
 
 export interface Config {

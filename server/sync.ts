@@ -15,6 +15,7 @@ import { getSqlite } from './tasks/db/client.js'
 import { getActiveProject } from './config.js'
 import { getChangeLogManager } from './change-log.js'
 import { validateGroupStructure, reorderGroups, resolveDuplicateGroupTitles } from './parser-utils.js'
+import type { RemoteServer } from './remote/types.js'
 
 export interface SyncResult {
   changeId: string
@@ -697,4 +698,173 @@ export async function syncAllChangesOnStartup(): Promise<{
   console.log(`[Sync] Initial sync complete: ${totalCreated} created, ${totalUpdated} updated across ${projectsSynced} project(s)`)
 
   return { totalCreated, totalUpdated, projectsSynced }
+}
+
+/**
+ * 원격 프로젝트의 Change tasks.md를 DB에 동기화
+ * SSH를 통해 원격 서버에서 파일을 읽어 동기화
+ */
+export async function syncRemoteChangeTasksForProject(
+  changeId: string,
+  remotePath: string,
+  server: RemoteServer
+): Promise<SyncResult> {
+  // Dynamic import to avoid circular dependency
+  const { readRemoteFile } = await import('./remote/ssh-manager.js')
+
+  const tasksPath = `${remotePath}/openspec/changes/${changeId}/tasks.md`
+  const sqlite = getSqlite()
+  const now = Date.now()
+
+  let tasksCreated = 0
+  let tasksUpdated = 0
+
+  // 이벤트 로깅 시작
+  await safeLogSyncOperation({
+    operationType: 'REMOTE_TO_LOCAL',
+    tableName: 'tasks',
+    recordId: changeId,
+    status: 'STARTED'
+  }, 'INFO')
+
+  try {
+    const tasksContent = await readRemoteFile(server, tasksPath)
+    const parsed = parseTasksFile(changeId, tasksContent)
+
+    // tasks.md에 있는 모든 태스크 제목 수집 (삭제된 태스크 정리용)
+    const taskTitlesInFile = new Set<string>()
+    for (const group of parsed.groups as ExtendedTaskGroup[]) {
+      for (const task of group.tasks) {
+        taskTitlesInFile.add(task.title)
+      }
+    }
+
+    for (const group of parsed.groups as ExtendedTaskGroup[]) {
+      // 3단계 계층 정보 추출
+      const majorOrder = group.majorOrder ?? 1
+      const majorTitle = group.majorTitle ?? group.title
+      const subOrder = group.subOrder ?? 1
+      const groupTitle = group.title
+
+      for (let taskIdx = 0; taskIdx < group.tasks.length; taskIdx++) {
+        const task = group.tasks[taskIdx]
+        const taskOrder = taskIdx + 1
+
+        // 우선순위 1: title + group_title로 매칭
+        // 우선순위 2: group_title + task_order로 매칭
+        let existingTask = sqlite.prepare(`
+          SELECT id, status, title FROM tasks WHERE change_id = ? AND title = ? AND group_title = ?
+        `).get(changeId, task.title, groupTitle) as { id: number; status: string; title: string } | undefined
+
+        if (!existingTask) {
+          existingTask = sqlite.prepare(`
+            SELECT id, status, title FROM tasks WHERE change_id = ? AND group_title = ? AND task_order = ?
+          `).get(changeId, groupTitle, taskOrder) as { id: number; status: string; title: string } | undefined
+        }
+
+        const newStatus = task.completed ? 'done' : 'todo'
+
+        if (existingTask) {
+          // 기존 태스크 업데이트
+          sqlite.prepare(`
+            UPDATE tasks
+            SET title = ?,
+                status = ?,
+                group_title = ?,
+                group_order = ?,
+                task_order = ?,
+                major_title = ?,
+                sub_order = ?,
+                updated_at = ?
+            WHERE id = ?
+          `).run(
+            task.title,
+            newStatus,
+            groupTitle,
+            majorOrder,
+            taskOrder,
+            majorTitle,
+            subOrder,
+            now,
+            existingTask.id
+          )
+          tasksUpdated++
+        } else {
+          // 새 태스크 생성
+          sqlite.prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_openspec'`).run()
+          const seqResult = sqlite.prepare(`SELECT value FROM sequences WHERE name = 'task_openspec'`).get() as { value: number }
+          const newId = seqResult.value
+
+          sqlite.prepare(`
+            INSERT INTO tasks (
+              id, change_id, stage, title, status, priority, "order",
+              group_title, group_order, task_order, major_title, sub_order,
+              origin, created_at, updated_at
+            )
+            VALUES (?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
+          `).run(
+            newId,
+            changeId,
+            task.title,
+            newStatus,
+            task.lineNumber,
+            groupTitle,
+            majorOrder,
+            taskOrder,
+            majorTitle,
+            subOrder,
+            now,
+            now
+          )
+          tasksCreated++
+        }
+      }
+    }
+
+    // tasks.md에 없는 태스크 삭제
+    let tasksDeleted = 0
+    if (taskTitlesInFile.size > 0) {
+      const existingTasks = sqlite.prepare(`
+        SELECT id, title FROM tasks WHERE change_id = ? AND origin = 'openspec'
+      `).all(changeId) as Array<{ id: number; title: string }>
+
+      for (const task of existingTasks) {
+        if (!taskTitlesInFile.has(task.title)) {
+          sqlite.prepare('DELETE FROM tasks WHERE id = ?').run(task.id)
+          tasksDeleted++
+        }
+      }
+    }
+
+    console.log(`[Sync Remote] ${changeId}: ${tasksCreated} created, ${tasksUpdated} updated, ${tasksDeleted} deleted`)
+
+    await safeLogSyncOperation({
+      operationType: 'REMOTE_TO_LOCAL',
+      tableName: 'tasks',
+      recordId: changeId,
+      status: 'COMPLETED',
+      result: {
+        recordsProcessed: tasksCreated + tasksUpdated + tasksDeleted,
+        recordsSucceeded: tasksCreated + tasksUpdated + tasksDeleted,
+        recordsFailed: 0,
+        duration: Date.now() - now
+      }
+    }, 'INFO')
+  } catch (error) {
+    console.warn(`[Sync Remote] Error syncing ${changeId}:`, error)
+
+    await safeLogSyncOperation({
+      operationType: 'REMOTE_TO_LOCAL',
+      tableName: 'tasks',
+      recordId: changeId,
+      status: 'FAILED',
+      error: {
+        code: 'SYNC_FAILED',
+        message: (error as Error).message,
+        details: { changeId, remotePath, tasksPath }
+      }
+    }, 'ERROR')
+  }
+
+  return { changeId, tasksCreated, tasksUpdated }
 }

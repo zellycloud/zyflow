@@ -23,8 +23,12 @@ import {
 import { initDb } from '../tasks/index.js'
 import { getSqlite } from '../tasks/db/client.js'
 import { getGlobalMultiWatcher } from '../watcher.js'
-import { syncChangeTasksForProject } from '../sync.js'
+import { syncChangeTasksForProject, syncRemoteChangeTasksForProject } from '../sync.js'
 import { parseTasksFile } from '../parser.js'
+import {
+  getRemoteServerById,
+  listDirectory,
+} from '../remote/index.js'
 
 const execAsync = promisify(exec)
 
@@ -158,96 +162,30 @@ projectsRouter.put('/:id/activate', async (req, res) => {
     // 프로젝트 활성화 시 OpenSpec 동기화 수행 (Git pull은 수동으로)
     if (project) {
       try {
-        initDb(project.path)
-        const openspecDir = join(project.path, 'openspec', 'changes')
-        let entries: Dirent[] = []
-        try {
-          entries = await readdir(openspecDir, { withFileTypes: true })
-        } catch {
-          entries = []
-        }
-
-        const sqlite = getSqlite()
-        const now = Date.now()
-        const activeChangeIds: string[] = []
-
-        for (const entry of entries) {
-          if (!entry.isDirectory() || entry.name === 'archive') continue
-
-          const changeId = entry.name
-          activeChangeIds.push(changeId)
-          const changeDir = join(openspecDir, changeId)
-
-          // Read proposal.md for title
-          let title = changeId
-          const specPath = `openspec/changes/${changeId}/proposal.md`
-          try {
-            const proposalPath = join(changeDir, 'proposal.md')
-            const proposalContent = await readFile(proposalPath, 'utf-8')
-            const titleMatch = proposalContent.match(/^#\s+(?:Change:\s+)?(.+)$/m)
-            if (titleMatch) {
-              title = titleMatch[1].trim()
-            }
-          } catch {
-            // proposal.md not found
-          }
-
-          // Check if change exists
-          const existing = sqlite.prepare('SELECT id FROM changes WHERE id = ?').get(changeId)
-
-          if (existing) {
-            sqlite.prepare(`
-              UPDATE changes SET title = ?, spec_path = ?, status = 'active', updated_at = ? WHERE id = ?
-            `).run(title, specPath, now, changeId)
-          } else {
-            sqlite.prepare(`
-              INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
-              VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
-            `).run(changeId, project.id, title, specPath, now, now)
-          }
-        }
-
-        // 파일시스템에 없는 Change는 archived로 변경
-        if (activeChangeIds.length > 0) {
-          const placeholders = activeChangeIds.map(() => '?').join(',')
-          sqlite.prepare(`
-            UPDATE changes SET status = 'archived', updated_at = ?
-            WHERE project_id = ? AND status = 'active' AND id NOT IN (${placeholders})
-          `).run(now, project.id, ...activeChangeIds)
+        // 원격 프로젝트 여부 확인
+        if (project.remote) {
+          // 원격 프로젝트 동기화
+          await syncRemoteProject(project)
         } else {
-          // 모든 Change가 없으면 전부 archived
-          sqlite.prepare(`
-            UPDATE changes SET status = 'archived', updated_at = ?
-            WHERE project_id = ? AND status = 'active'
-          `).run(now, project.id)
+          // 로컬 프로젝트 동기화
+          await syncLocalProject(project)
         }
-
-        // tasks.md 동기화 - 모든 Change에 대해 수행
-        let tasksSynced = 0
-        for (const changeId of activeChangeIds) {
-          try {
-            const result = await syncChangeTasksForProject(changeId, project.path)
-            tasksSynced += result.tasksCreated + result.tasksUpdated
-          } catch {
-            // tasks.md가 없거나 파싱 실패 시 무시
-          }
-        }
-
-        console.log(`[Auto-sync] Project "${project.name}" synced on activation (${activeChangeIds.length} changes, ${tasksSynced} tasks)`)
       } catch (syncError) {
         console.error('Error auto-syncing project:', syncError)
         // sync 실패해도 활성화는 성공으로 처리
       }
 
-      // Multi-Watcher에 프로젝트 추가 (이미 감시 중이면 스킵)
-      try {
-        const multiWatcher = getGlobalMultiWatcher()
-        if (multiWatcher && !multiWatcher.isWatching(project.id)) {
-          multiWatcher.addProject(project.id, project.path)
+      // Multi-Watcher에 프로젝트 추가 (로컬 프로젝트만, 이미 감시 중이면 스킵)
+      if (!project.remote) {
+        try {
+          const multiWatcher = getGlobalMultiWatcher()
+          if (multiWatcher && !multiWatcher.isWatching(project.id)) {
+            multiWatcher.addProject(project.id, project.path)
+          }
+        } catch (watcherError) {
+          console.warn(`[Watcher] Failed to add watcher for "${project.name}":`, watcherError)
+          // watcher 실패해도 활성화는 성공으로 처리
         }
-      } catch (watcherError) {
-        console.warn(`[Watcher] Failed to add watcher for "${project.name}":`, watcherError)
-        // watcher 실패해도 활성화는 성공으로 처리
       }
     }
 
@@ -257,6 +195,177 @@ projectsRouter.put('/:id/activate', async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to activate project' })
   }
 })
+
+// 로컬 프로젝트 동기화 헬퍼
+async function syncLocalProject(project: { id: string; name: string; path: string }) {
+  initDb(project.path)
+  const openspecDir = join(project.path, 'openspec', 'changes')
+  let entries: Dirent[] = []
+  try {
+    entries = await readdir(openspecDir, { withFileTypes: true })
+  } catch {
+    entries = []
+  }
+
+  const sqlite = getSqlite()
+  const now = Date.now()
+  const activeChangeIds: string[] = []
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === 'archive') continue
+
+    const changeId = entry.name
+    activeChangeIds.push(changeId)
+    const changeDir = join(openspecDir, changeId)
+
+    // Read proposal.md for title
+    let title = changeId
+    const specPath = `openspec/changes/${changeId}/proposal.md`
+    try {
+      const proposalPath = join(changeDir, 'proposal.md')
+      const proposalContent = await readFile(proposalPath, 'utf-8')
+      const titleMatch = proposalContent.match(/^#\s+(?:Change:\s+)?(.+)$/m)
+      if (titleMatch) {
+        title = titleMatch[1].trim()
+      }
+    } catch {
+      // proposal.md not found
+    }
+
+    // Check if change exists
+    const existing = sqlite.prepare('SELECT id FROM changes WHERE id = ?').get(changeId)
+
+    if (existing) {
+      sqlite.prepare(`
+        UPDATE changes SET title = ?, spec_path = ?, status = 'active', updated_at = ? WHERE id = ?
+      `).run(title, specPath, now, changeId)
+    } else {
+      sqlite.prepare(`
+        INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
+      `).run(changeId, project.id, title, specPath, now, now)
+    }
+  }
+
+  // 파일시스템에 없는 Change는 archived로 변경
+  if (activeChangeIds.length > 0) {
+    const placeholders = activeChangeIds.map(() => '?').join(',')
+    sqlite.prepare(`
+      UPDATE changes SET status = 'archived', updated_at = ?
+      WHERE project_id = ? AND status = 'active' AND id NOT IN (${placeholders})
+    `).run(now, project.id, ...activeChangeIds)
+  } else {
+    sqlite.prepare(`
+      UPDATE changes SET status = 'archived', updated_at = ?
+      WHERE project_id = ? AND status = 'active'
+    `).run(now, project.id)
+  }
+
+  // tasks.md 동기화 - 모든 Change에 대해 수행
+  let tasksSynced = 0
+  for (const changeId of activeChangeIds) {
+    try {
+      const result = await syncChangeTasksForProject(changeId, project.path)
+      tasksSynced += result.tasksCreated + result.tasksUpdated
+    } catch {
+      // tasks.md가 없거나 파싱 실패 시 무시
+    }
+  }
+
+  console.log(`[Auto-sync] Local project "${project.name}" synced (${activeChangeIds.length} changes, ${tasksSynced} tasks)`)
+}
+
+// 원격 프로젝트 동기화 헬퍼
+async function syncRemoteProject(project: { id: string; name: string; path: string; remote?: { type: string; serverId: string; host: string; user: string } }) {
+  if (!project.remote) return
+
+  const server = await getRemoteServerById(project.remote.serverId)
+  if (!server) {
+    console.error(`[Sync Remote] Server not found: ${project.remote.serverId}`)
+    return
+  }
+
+  initDb(project.path)
+
+  // 원격 서버에서 openspec/changes 디렉토리 조회
+  const openspecDir = `${project.path}/openspec/changes`
+  let listing
+  try {
+    listing = await listDirectory(server, openspecDir)
+  } catch (err) {
+    console.warn(`[Sync Remote] Cannot list ${openspecDir}:`, err)
+    return
+  }
+
+  const sqlite = getSqlite()
+  const now = Date.now()
+  const activeChangeIds: string[] = []
+
+  // 원격 파일 읽기 함수
+  const { readRemoteFile } = await import('../remote/ssh-manager.js')
+
+  for (const entry of listing.entries) {
+    if (entry.type !== 'directory' || entry.name === 'archive') continue
+
+    const changeId = entry.name
+    activeChangeIds.push(changeId)
+
+    // Read proposal.md for title via SSH
+    let title = changeId
+    const specPath = `openspec/changes/${changeId}/proposal.md`
+    try {
+      const proposalPath = `${openspecDir}/${changeId}/proposal.md`
+      const proposalContent = await readRemoteFile(server, proposalPath)
+      const titleMatch = proposalContent.match(/^#\s+(?:Change:\s+)?(.+)$/m)
+      if (titleMatch) {
+        title = titleMatch[1].trim()
+      }
+    } catch {
+      // proposal.md not found
+    }
+
+    // Check if change exists
+    const existing = sqlite.prepare('SELECT id FROM changes WHERE id = ?').get(changeId)
+
+    if (existing) {
+      sqlite.prepare(`
+        UPDATE changes SET title = ?, spec_path = ?, status = 'active', updated_at = ? WHERE id = ?
+      `).run(title, specPath, now, changeId)
+    } else {
+      sqlite.prepare(`
+        INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
+      `).run(changeId, project.id, title, specPath, now, now)
+    }
+  }
+
+  // 원격에 없는 Change는 archived로 변경
+  if (activeChangeIds.length > 0) {
+    const placeholders = activeChangeIds.map(() => '?').join(',')
+    sqlite.prepare(`
+      UPDATE changes SET status = 'archived', updated_at = ?
+      WHERE project_id = ? AND status = 'active' AND id NOT IN (${placeholders})
+    `).run(now, project.id, ...activeChangeIds)
+  } else {
+    sqlite.prepare(`
+      UPDATE changes SET status = 'archived', updated_at = ?
+      WHERE project_id = ? AND status = 'active'
+    `).run(now, project.id)
+  }
+
+  // tasks.md 동기화 - SSH를 통해 원격 파일 읽기
+  let tasksSynced = 0
+  for (const changeId of activeChangeIds) {
+    try {
+      const result = await syncRemoteChangeTasksForProject(changeId, project.path, server)
+      tasksSynced += result.tasksCreated + result.tasksUpdated
+    } catch {
+      // tasks.md가 없거나 파싱 실패 시 무시
+    }
+  }
+
+  console.log(`[Auto-sync] Remote project "${project.name}" synced via SSH (${activeChangeIds.length} changes, ${tasksSynced} tasks)`)
+}
 
 // PUT /:id/path - Update project path
 projectsRouter.put('/:id/path', async (req, res) => {
@@ -499,6 +608,122 @@ async function getSpecsForProject(projectPath: string) {
   return specs
 }
 
+// Helper to get changes for a remote project via SSH
+async function getChangesForRemoteProject(projectPath: string, serverId: string) {
+  const server = await getRemoteServerById(serverId)
+  if (!server) return []
+
+  const { readRemoteFile } = await import('../remote/ssh-manager.js')
+  const openspecDir = `${projectPath}/openspec/changes`
+  const changes = []
+
+  // Get archived change IDs from DB to filter them out
+  const archivedChangeIds = new Set<string>()
+  try {
+    const projectId = projectPath.toLowerCase().replace(/[^a-z0-9]/g, '-')
+    const sqlite = getSqlite()
+    const archivedRows = sqlite.prepare(`
+      SELECT id FROM changes WHERE project_id = ? AND status = 'archived'
+    `).all(projectId) as { id: string }[]
+    for (const row of archivedRows) {
+      archivedChangeIds.add(row.id)
+    }
+  } catch {
+    // DB not initialized yet
+  }
+
+  let listing
+  try {
+    listing = await listDirectory(server, openspecDir)
+  } catch {
+    return []
+  }
+
+  for (const entry of listing.entries) {
+    if (entry.type !== 'directory' || entry.name === 'archive') continue
+
+    const changeId = entry.name
+    if (archivedChangeIds.has(changeId)) continue
+
+    let title = changeId
+    let relatedSpecs: string[] = []
+    try {
+      const proposalPath = `${openspecDir}/${changeId}/proposal.md`
+      const proposalContent = await readRemoteFile(server, proposalPath)
+      const titleMatch = proposalContent.match(/^#\s+(?:Change:\s+)?(.+)$/m)
+      if (titleMatch) {
+        title = titleMatch[1].trim()
+      }
+      relatedSpecs = parseAffectedSpecs(proposalContent)
+    } catch {
+      // proposal.md not found
+    }
+
+    let totalTasks = 0
+    let completedTasks = 0
+    try {
+      const tasksPath = `${openspecDir}/${changeId}/tasks.md`
+      const tasksContent = await readRemoteFile(server, tasksPath)
+      const parsed = parseTasksFile(changeId, tasksContent)
+      for (const group of parsed.groups) {
+        totalTasks += group.tasks.length
+        completedTasks += group.tasks.filter((t) => t.completed).length
+      }
+    } catch {
+      // tasks.md not found
+    }
+
+    const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+    const updatedAt = new Date().toISOString() // Remote doesn't have git log easily
+
+    changes.push({ id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt })
+  }
+
+  return changes
+}
+
+// Helper to get specs for a remote project via SSH
+async function getSpecsForRemoteProject(projectPath: string, serverId: string) {
+  const server = await getRemoteServerById(serverId)
+  if (!server) return []
+
+  const { readRemoteFile } = await import('../remote/ssh-manager.js')
+  const specsDir = `${projectPath}/openspec/specs`
+  const specs = []
+
+  let listing
+  try {
+    listing = await listDirectory(server, specsDir)
+  } catch {
+    return []
+  }
+
+  for (const entry of listing.entries) {
+    if (entry.type !== 'directory') continue
+
+    const specId = entry.name
+    let title = specId
+    let requirementsCount = 0
+
+    try {
+      const specPath = `${specsDir}/${specId}/spec.md`
+      const specContent = await readRemoteFile(server, specPath)
+      const titleMatch = specContent.match(/^#\s+(.+)$/m)
+      if (titleMatch) {
+        title = titleMatch[1].trim()
+      }
+      const reqMatches = specContent.match(/^###\s+Requirement:/gm)
+      requirementsCount = reqMatches ? reqMatches.length : 0
+    } catch {
+      // spec.md not found
+    }
+
+    specs.push({ id: specId, title, requirementsCount })
+  }
+
+  return specs
+}
+
 // GET /all-data - Get all projects with their changes and specs
 projectsRouter.get('/all-data', async (_req, res) => {
   try {
@@ -506,8 +731,18 @@ projectsRouter.get('/all-data', async (_req, res) => {
     const projectsData = []
 
     for (const project of config.projects) {
-      const changes = await getChangesForProject(project.path)
-      const specs = await getSpecsForProject(project.path)
+      let changes, specs
+
+      if (project.remote) {
+        // 원격 프로젝트: SSH를 통해 조회
+        changes = await getChangesForRemoteProject(project.path, project.remote.serverId)
+        specs = await getSpecsForRemoteProject(project.path, project.remote.serverId)
+      } else {
+        // 로컬 프로젝트: 파일시스템에서 조회
+        changes = await getChangesForProject(project.path)
+        specs = await getSpecsForProject(project.path)
+      }
+
       projectsData.push({
         ...project,
         changes,

@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { FolderOpen, Key, Terminal } from 'lucide-react'
+import { FolderOpen, Key, Terminal, Server } from 'lucide-react'
 import { ProjectsSettings } from './ProjectsSettings'
 import { IntegrationsSettings } from './IntegrationsSettings'
 import { CLISettings } from './CLISettings'
+import { RemoteServerList } from '@/components/remote'
 
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState('projects')
@@ -31,6 +32,10 @@ export function SettingsPage() {
             <Key className="h-4 w-4" />
             Accounts
           </TabsTrigger>
+          <TabsTrigger value="remote" className="flex items-center gap-2">
+            <Server className="h-4 w-4" />
+            Remote
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="projects" className="space-y-4">
@@ -43,6 +48,10 @@ export function SettingsPage() {
 
         <TabsContent value="accounts" className="space-y-4">
           <IntegrationsSettings />
+        </TabsContent>
+
+        <TabsContent value="remote" className="space-y-4">
+          <RemoteServerList />
         </TabsContent>
       </Tabs>
     </div>

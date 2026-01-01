@@ -139,12 +139,60 @@ export interface SpecContentResponse {
   content: string
 }
 
+// =============================================
+// 원격 연결 타입
+// =============================================
+export type RemoteConnectionType = 'ssh' | 'docker' | 'wsl'
+export type RemoteAuthType = 'password' | 'privateKey' | 'agent'
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
+
+export interface SSHAuthConfig {
+  type: RemoteAuthType
+  username: string
+  password?: string
+  privateKeyPath?: string
+  passphrase?: string
+}
+
+export interface RemoteServer {
+  id: string
+  name: string
+  host: string
+  port: number
+  auth: SSHAuthConfig
+  createdAt: string
+  lastConnectedAt?: string
+  status?: ConnectionStatus
+  error?: string
+}
+
+export interface RemoteFileEntry {
+  name: string
+  path: string
+  type: 'file' | 'directory' | 'symlink'
+  size: number
+  modifiedAt: string
+  permissions: string
+}
+
+export interface RemoteDirectoryListing {
+  path: string
+  entries: RemoteFileEntry[]
+}
+
 // Project
 export interface Project {
   id: string
   name: string
   path: string
   addedAt: string
+  // 원격 연결 정보 (optional - 로컬 프로젝트는 없음)
+  remote?: {
+    type: RemoteConnectionType
+    serverId: string
+    host: string
+    user: string
+  }
 }
 
 export interface ProjectsResponse {
@@ -270,6 +318,56 @@ export interface ArchivedChangeDetail {
 export interface ArchivedChangeDetailResponse {
   id: string
   files: Record<string, string>
+}
+
+// =============================================
+// Remote Server API 타입
+// =============================================
+export interface RemoteServersResponse {
+  servers: RemoteServer[]
+}
+
+export interface RemoteServerResponse {
+  server: RemoteServer
+}
+
+export interface TestConnectionResponse {
+  success: boolean
+  message: string
+  serverInfo?: {
+    os: string
+    hostname: string
+  }
+}
+
+export interface BrowseRemoteResponse {
+  listing: RemoteDirectoryListing
+}
+
+export interface AddRemoteServerRequest {
+  name: string
+  host: string
+  port?: number
+  auth: SSHAuthConfig
+}
+
+export interface AddRemoteProjectRequest {
+  serverId: string
+  name: string
+  path: string
+}
+
+// SSH Config Host (from ~/.ssh/config)
+export interface SSHConfigHost {
+  name: string
+  hostName: string
+  user: string
+  port: number
+  identityFile?: string
+}
+
+export interface SSHConfigResponse {
+  hosts: SSHConfigHost[]
 }
 
 // =============================================

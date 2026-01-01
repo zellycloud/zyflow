@@ -46,6 +46,7 @@ import { changesRouter } from './routes/changes.js'
 import { flowRouter } from './routes/flow.js'
 import { alertsRouter, setBroadcastAlert } from './routes/alerts.js'
 import { aiRouter } from './ai/index.js'
+import remoteRouter from './routes/remote.js'
 import { OpenSpecPromptBuilder } from './claude-flow/prompt-builder.js'
 import * as pty from 'node-pty'
 const execAsync = promisify(exec)
@@ -129,6 +130,9 @@ app.use('/api/flow', flowRouter)
 
 // Alerts API 라우터 등록
 app.use('/api/alerts', alertsRouter)
+
+// Remote Server API 라우터 등록
+app.use('/api/remote', remoteRouter)
 
 // Alert WebSocket broadcast 설정
 setBroadcastAlert((data) => {
