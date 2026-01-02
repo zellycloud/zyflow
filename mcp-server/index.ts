@@ -24,6 +24,8 @@ import {
   handleTaskSearch,
   handleTaskDelete,
   handleTaskView,
+  handleTaskArchive,
+  handleTaskUnarchive,
 } from './task-tools.js'
 
 // Integration Hub imports
@@ -781,8 +783,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // Task management tools (SQLite-based)
       case 'task_list': {
-        initTaskDb(PROJECT_PATH)
-        const result = handleTaskList(args as Parameters<typeof handleTaskList>[0])
+        const { projectPath, ...restArgs } = args as { projectPath?: string } & Parameters<typeof handleTaskList>[0]
+        const effectivePath = projectPath || PROJECT_PATH
+        initTaskDb(effectivePath)
+        const result = handleTaskList(restArgs, effectivePath)
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
           isError: !result.success,
@@ -790,8 +794,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'task_create': {
-        initTaskDb(PROJECT_PATH)
-        const result = handleTaskCreate(args as Parameters<typeof handleTaskCreate>[0])
+        const { projectPath, ...restArgs } = args as { projectPath?: string } & Parameters<typeof handleTaskCreate>[0]
+        const effectivePath = projectPath || PROJECT_PATH
+        initTaskDb(effectivePath)
+        const result = handleTaskCreate(restArgs, effectivePath)
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
           isError: !result.success,
@@ -799,8 +805,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'task_update': {
-        initTaskDb(PROJECT_PATH)
-        const result = handleTaskUpdate(args as Parameters<typeof handleTaskUpdate>[0])
+        const { projectPath, ...restArgs } = args as { projectPath?: string } & Parameters<typeof handleTaskUpdate>[0]
+        const effectivePath = projectPath || PROJECT_PATH
+        initTaskDb(effectivePath)
+        const result = handleTaskUpdate(restArgs, effectivePath)
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
           isError: !result.success,
@@ -808,8 +816,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'task_search': {
-        initTaskDb(PROJECT_PATH)
-        const result = handleTaskSearch(args as Parameters<typeof handleTaskSearch>[0])
+        const { projectPath, ...restArgs } = args as { projectPath?: string } & Parameters<typeof handleTaskSearch>[0]
+        const effectivePath = projectPath || PROJECT_PATH
+        initTaskDb(effectivePath)
+        const result = handleTaskSearch(restArgs, effectivePath)
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
           isError: !result.success,
@@ -817,8 +827,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'task_delete': {
-        initTaskDb(PROJECT_PATH)
-        const result = handleTaskDelete(args as { id: string })
+        const { projectPath, id } = args as { projectPath?: string; id: string }
+        const effectivePath = projectPath || PROJECT_PATH
+        initTaskDb(effectivePath)
+        const result = handleTaskDelete({ id }, effectivePath)
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
           isError: !result.success,
@@ -826,8 +838,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'task_view': {
-        initTaskDb(PROJECT_PATH)
-        const result = handleTaskView(args as { id: string })
+        const { projectPath, id } = args as { projectPath?: string; id: string }
+        const effectivePath = projectPath || PROJECT_PATH
+        initTaskDb(effectivePath)
+        const result = handleTaskView({ id }, effectivePath)
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'task_archive': {
+        const { projectPath, id } = args as { projectPath?: string; id: string }
+        const effectivePath = projectPath || PROJECT_PATH
+        initTaskDb(effectivePath)
+        const result = handleTaskArchive({ id }, effectivePath)
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        }
+      }
+
+      case 'task_unarchive': {
+        const { projectPath, id } = args as { projectPath?: string; id: string }
+        const effectivePath = projectPath || PROJECT_PATH
+        initTaskDb(effectivePath)
+        const result = handleTaskUnarchive({ id }, effectivePath)
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
           isError: !result.success,

@@ -12,6 +12,7 @@ import {
   Task,
   TaskStatus,
   TaskPriority,
+  TaskOrigin,
 } from '../server/tasks/index.js';
 
 export interface TaskToolResult {
@@ -41,10 +42,25 @@ export function handleTaskList(args: {
   limit?: number;
   kanban?: boolean;
   includeArchived?: boolean;
-}): TaskToolResult {
+  origin?: string; // 'inbox' | 'openspec' | 'imported'
+}, overrideProjectPath?: string): TaskToolResult {
   try {
+    // overrideProjectPath가 주어지면 그 경로 기준으로 projectId 계산
+    let projectId = currentProjectId || undefined;
+    if (overrideProjectPath) {
+      projectId = overrideProjectPath.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    }
+
     if (args.kanban) {
-      const tasksByStatus = getTasksByStatus(currentProjectId || undefined, args.includeArchived);
+      const tasksByStatus = getTasksByStatus(projectId, args.includeArchived);
+      // origin 필터 적용
+      if (args.origin) {
+        for (const status of Object.keys(tasksByStatus) as TaskStatus[]) {
+          tasksByStatus[status] = tasksByStatus[status].filter(
+            (t) => t.origin === args.origin
+          );
+        }
+      }
       const data: Record<string, Task[]> = {
         todo: tasksByStatus['todo'],
         'in-progress': tasksByStatus['in-progress'],
@@ -61,11 +77,13 @@ export function handleTaskList(args: {
     }
 
     const tasks = listTasks({
+      projectId, // 현재 프로젝트로 필터링
       status: args.status as TaskStatus | undefined,
       priority: args.priority as TaskPriority | undefined,
       tags: args.tags,
       limit: args.limit,
       includeArchived: args.includeArchived,
+      origin: args.origin as TaskOrigin | undefined, // origin 필터 추가
     });
 
     return {
@@ -86,10 +104,15 @@ export function handleTaskCreate(args: {
   priority?: string;
   tags?: string[];
   assignee?: string;
-}): TaskToolResult {
+}, overrideProjectPath?: string): TaskToolResult {
   try {
+    // overrideProjectPath가 주어지면 그 경로 기준으로 projectId 계산
+    let projectId = currentProjectId || 'default';
+    if (overrideProjectPath) {
+      projectId = overrideProjectPath.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    }
     const task = createTask({
-      projectId: currentProjectId || 'default',
+      projectId,
       title: args.title,
       description: args.description,
       priority: args.priority as TaskPriority | undefined,
@@ -117,8 +140,31 @@ export function handleTaskUpdate(args: {
   priority?: string;
   tags?: string[];
   assignee?: string;
-}): TaskToolResult {
+}, overrideProjectPath?: string): TaskToolResult {
   try {
+    // overrideProjectPath가 주어지면 그 경로 기준으로 projectId 계산
+    let projectId = currentProjectId;
+    if (overrideProjectPath) {
+      projectId = overrideProjectPath.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    }
+
+    // 먼저 태스크가 현재 프로젝트에 속하는지 확인
+    const existing = getTask(args.id);
+    if (!existing) {
+      return {
+        success: false,
+        error: `Task not found: ${args.id}`,
+      };
+    }
+
+    // 현재 프로젝트의 태스크만 수정 가능
+    if (projectId && existing.projectId !== projectId) {
+      return {
+        success: false,
+        error: `Task ${args.id} belongs to a different project`,
+      };
+    }
+
     const task = updateTask(args.id, {
       title: args.title,
       description: args.description,
@@ -128,16 +174,9 @@ export function handleTaskUpdate(args: {
       assignee: args.assignee,
     });
 
-    if (!task) {
-      return {
-        success: false,
-        error: `Task not found: ${args.id}`,
-      };
-    }
-
     return {
       success: true,
-      data: { task, message: `Updated task ${task.id}` },
+      data: { task, message: `Updated task ${task!.id}` },
     };
   } catch (error) {
     return {
@@ -152,12 +191,21 @@ export function handleTaskSearch(args: {
   status?: string;
   priority?: string;
   limit?: number;
-}): TaskToolResult {
+  includeArchived?: boolean;
+}, overrideProjectPath?: string): TaskToolResult {
   try {
+    // overrideProjectPath가 주어지면 그 경로 기준으로 projectId 계산
+    let projectId = currentProjectId || undefined;
+    if (overrideProjectPath) {
+      projectId = overrideProjectPath.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    }
+
     const tasks = searchTasks(args.query, {
+      projectId, // 현재 프로젝트로 필터링
       status: args.status,
       priority: args.priority,
       limit: args.limit,
+      includeArchived: args.includeArchived,
     });
 
     return {
@@ -172,13 +220,27 @@ export function handleTaskSearch(args: {
   }
 }
 
-export function handleTaskDelete(args: { id: string }): TaskToolResult {
+export function handleTaskDelete(args: { id: string }, overrideProjectPath?: string): TaskToolResult {
   try {
+    // overrideProjectPath가 주어지면 그 경로 기준으로 projectId 계산
+    let projectId = currentProjectId;
+    if (overrideProjectPath) {
+      projectId = overrideProjectPath.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    }
+
     const task = getTask(args.id);
     if (!task) {
       return {
         success: false,
         error: `Task not found: ${args.id}`,
+      };
+    }
+
+    // 현재 프로젝트의 태스크만 삭제 가능
+    if (projectId && task.projectId !== projectId) {
+      return {
+        success: false,
+        error: `Task ${args.id} belongs to a different project`,
       };
     }
 
@@ -196,13 +258,27 @@ export function handleTaskDelete(args: { id: string }): TaskToolResult {
   }
 }
 
-export function handleTaskView(args: { id: string }): TaskToolResult {
+export function handleTaskView(args: { id: string }, overrideProjectPath?: string): TaskToolResult {
   try {
+    // overrideProjectPath가 주어지면 그 경로 기준으로 projectId 계산
+    let projectId = currentProjectId;
+    if (overrideProjectPath) {
+      projectId = overrideProjectPath.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    }
+
     const task = getTask(args.id);
     if (!task) {
       return {
         success: false,
         error: `Task not found: ${args.id}`,
+      };
+    }
+
+    // 현재 프로젝트의 태스크만 조회 가능
+    if (projectId && task.projectId !== projectId) {
+      return {
+        success: false,
+        error: `Task ${args.id} belongs to a different project`,
       };
     }
 
@@ -218,19 +294,36 @@ export function handleTaskView(args: { id: string }): TaskToolResult {
   }
 }
 
-export function handleTaskArchive(args: { id: string }): TaskToolResult {
+export function handleTaskArchive(args: { id: string }, overrideProjectPath?: string): TaskToolResult {
   try {
-    const task = archiveTask(args.id);
-    if (!task) {
+    // overrideProjectPath가 주어지면 그 경로 기준으로 projectId 계산
+    let projectId = currentProjectId;
+    if (overrideProjectPath) {
+      projectId = overrideProjectPath.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    }
+
+    // 먼저 태스크가 현재 프로젝트에 속하는지 확인
+    const existing = getTask(args.id);
+    if (!existing) {
       return {
         success: false,
         error: `Task not found: ${args.id}`,
       };
     }
 
+    // 현재 프로젝트의 태스크만 아카이브 가능
+    if (projectId && existing.projectId !== projectId) {
+      return {
+        success: false,
+        error: `Task ${args.id} belongs to a different project`,
+      };
+    }
+
+    const task = archiveTask(args.id);
+
     return {
       success: true,
-      data: { task, message: `Archived task ${task.id}` },
+      data: { task, message: `Archived task ${task!.id}` },
     };
   } catch (error) {
     return {
@@ -240,19 +333,43 @@ export function handleTaskArchive(args: { id: string }): TaskToolResult {
   }
 }
 
-export function handleTaskUnarchive(args: { id: string }): TaskToolResult {
+export function handleTaskUnarchive(args: { id: string }, overrideProjectPath?: string): TaskToolResult {
   try {
-    const task = unarchiveTask(args.id);
-    if (!task) {
+    // overrideProjectPath가 주어지면 그 경로 기준으로 projectId 계산
+    let projectId = currentProjectId;
+    if (overrideProjectPath) {
+      projectId = overrideProjectPath.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    }
+
+    // 먼저 태스크가 현재 프로젝트에 속하는지 확인
+    const existing = getTask(args.id);
+    if (!existing) {
       return {
         success: false,
-        error: `Task not found or not archived: ${args.id}`,
+        error: `Task not found: ${args.id}`,
       };
     }
 
+    // 현재 프로젝트의 태스크만 복원 가능
+    if (projectId && existing.projectId !== projectId) {
+      return {
+        success: false,
+        error: `Task ${args.id} belongs to a different project`,
+      };
+    }
+
+    if (existing.status !== 'archived') {
+      return {
+        success: false,
+        error: `Task ${args.id} is not archived`,
+      };
+    }
+
+    const task = unarchiveTask(args.id);
+
     return {
       success: true,
-      data: { task, message: `Unarchived task ${task.id}` },
+      data: { task, message: `Unarchived task ${task!.id}` },
     };
   } catch (error) {
     return {
@@ -266,7 +383,7 @@ export function handleTaskUnarchive(args: { id: string }): TaskToolResult {
 export const taskToolDefinitions = [
   {
     name: 'task_list',
-    description: '태스크 목록을 조회합니다. 상태, 우선순위, 태그로 필터링할 수 있습니다.',
+    description: '태스크 목록을 조회합니다. 상태, 우선순위, 태그, 출처(origin)로 필터링할 수 있습니다. inbox만 보려면 origin: "inbox" 사용.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -296,6 +413,15 @@ export const taskToolDefinitions = [
         includeArchived: {
           type: 'boolean',
           description: '아카이브된 태스크 포함 여부 (기본: false)',
+        },
+        origin: {
+          type: 'string',
+          enum: ['inbox', 'openspec', 'imported'],
+          description: '태스크 출처로 필터링. inbox: 수동 생성, openspec: tasks.md에서 동기화, imported: 외부에서 가져옴',
+        },
+        projectPath: {
+          type: 'string',
+          description: '프로젝트 경로 (선택, 현재 작업 디렉토리). MCP를 통해 특정 프로젝트의 태스크만 조회할 때 사용',
         },
       },
       required: [],
@@ -328,6 +454,10 @@ export const taskToolDefinitions = [
         assignee: {
           type: 'string',
           description: '담당자',
+        },
+        projectPath: {
+          type: 'string',
+          description: '프로젝트 경로 (선택, 현재 작업 디렉토리)',
         },
       },
       required: ['title'],
@@ -370,6 +500,10 @@ export const taskToolDefinitions = [
           type: 'string',
           description: '새 담당자',
         },
+        projectPath: {
+          type: 'string',
+          description: '프로젝트 경로 (선택, 현재 작업 디렉토리)',
+        },
       },
       required: ['id'],
     },
@@ -402,6 +536,10 @@ export const taskToolDefinitions = [
           type: 'boolean',
           description: '아카이브된 태스크 포함 여부 (기본: false)',
         },
+        projectPath: {
+          type: 'string',
+          description: '프로젝트 경로 (선택, 현재 작업 디렉토리)',
+        },
       },
       required: ['query'],
     },
@@ -415,6 +553,10 @@ export const taskToolDefinitions = [
         id: {
           type: 'string',
           description: '삭제할 태스크 ID',
+        },
+        projectPath: {
+          type: 'string',
+          description: '프로젝트 경로 (선택, 현재 작업 디렉토리)',
         },
       },
       required: ['id'],
@@ -430,6 +572,10 @@ export const taskToolDefinitions = [
           type: 'string',
           description: '태스크 ID',
         },
+        projectPath: {
+          type: 'string',
+          description: '프로젝트 경로 (선택, 현재 작업 디렉토리)',
+        },
       },
       required: ['id'],
     },
@@ -444,6 +590,10 @@ export const taskToolDefinitions = [
           type: 'string',
           description: '아카이브할 태스크 ID',
         },
+        projectPath: {
+          type: 'string',
+          description: '프로젝트 경로 (선택, 현재 작업 디렉토리)',
+        },
       },
       required: ['id'],
     },
@@ -457,6 +607,10 @@ export const taskToolDefinitions = [
         id: {
           type: 'string',
           description: '복원할 태스크 ID',
+        },
+        projectPath: {
+          type: 'string',
+          description: '프로젝트 경로 (선택, 현재 작업 디렉토리)',
         },
       },
       required: ['id'],

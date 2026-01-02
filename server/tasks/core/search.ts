@@ -14,6 +14,8 @@ export interface SearchOptions {
   limit?: number;
   status?: string;
   priority?: string;
+  projectId?: string; // 프로젝트별 필터링
+  includeArchived?: boolean; // archived 포함 여부
 }
 
 export function searchTasks(query: string, options: SearchOptions = {}): Task[] {
@@ -56,8 +58,11 @@ export function searchTasks(query: string, options: SearchOptions = {}): Task[] 
     const task = db.select().from(tasks).where(eq(tasks.id, id)).get();
     if (task) {
       // Apply additional filters
+      if (options.projectId && task.projectId !== options.projectId) continue;
       if (options.status && task.status !== options.status) continue;
       if (options.priority && task.priority !== options.priority) continue;
+      // 기본적으로 archived 제외 (includeArchived가 true가 아닌 경우)
+      if (!options.includeArchived && task.status === 'archived') continue;
       fullTasks.push(task);
     }
   }
