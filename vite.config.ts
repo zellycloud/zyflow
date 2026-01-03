@@ -12,9 +12,10 @@ export default defineConfig({
     },
   },
   server: {
+    port: 3100,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3000',
         changeOrigin: true,
       },
     },
@@ -25,12 +26,42 @@ export default defineConfig({
   },
   // 프리뷰 서버에도 동일 적용
   preview: {
+    port: 3100,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3000',
         changeOrigin: true,
       },
     },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // React core
+          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) {
+            return 'vendor-react'
+          }
+          // UI framework - Radix
+          if (id.includes('node_modules/@radix-ui')) {
+            return 'vendor-radix'
+          }
+          // Data fetching - TanStack
+          if (id.includes('node_modules/@tanstack')) {
+            return 'vendor-tanstack'
+          }
+          // Drag and drop
+          if (id.includes('node_modules/@dnd-kit')) {
+            return 'vendor-dnd'
+          }
+          // Heavy visualization
+          if (id.includes('node_modules/mermaid')) {
+            return 'vendor-mermaid'
+          }
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600,
   },
   test: {
     globals: true,
