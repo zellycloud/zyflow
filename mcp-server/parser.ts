@@ -48,10 +48,12 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
       /^#{3,4}\s+(.+)$/                         // "### Subsection" (plain)
     ],
     // 태스크: - [x] task-1-1: Title 또는 - [ ] Title
+    // OpenSpec 방식: 줄 시작이 '-'인 것만 (들여쓰기된 서브태스크 무시)
+    // 서브태스크는 부모 태스크의 세부 구현 내용으로 취급
     tasks: [
-      /^(\s*)-\s+\[([ xX])\]\s*(?:task-[\d-]+:\s*)?(.+)$/,  // task-X-X: 프리픽스 무시
-      /^(\s*)-\s+\[([ xX])\]\s*[\d.]+\s+(.+)$/,              // 숫자 프리픽스 무시
-      /^(\s*)-\s+\[([ xX])\]\s*(.+)$/                        // 일반 태스크
+      /^-\s+\[([ xX])\]\s*(?:task-[\d-]+:\s*)?(.+)$/,  // task-X-X: 프리픽스 무시
+      /^-\s+\[([ xX])\]\s*[\d.]+\s+(.+)$/,              // 숫자 프리픽스 무시
+      /^-\s+\[([ xX])\]\s*(.+)$/                        // 일반 태스크
     ]
   }
 
@@ -119,14 +121,14 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
 
     if (matched) continue
 
-    // 태스크 확인
+    // 태스크 확인 (줄 시작이 '-'인 것만, 들여쓰기된 서브태스크 무시)
     if (currentGroup) {
       for (const pattern of patterns.tasks) {
         const match = line.match(pattern)
         if (match) {
-          const indent = match[1] || ''
-          const completed = match[2]?.toLowerCase() === 'x'
-          const taskTitle = match[3]?.trim() || ''
+          // OpenSpec 방식: 들여쓰기 캡처 그룹 제거됨
+          const completed = match[1]?.toLowerCase() === 'x'
+          const taskTitle = match[2]?.trim() || ''
 
           if (taskTitle) {
             const task: Task = {
@@ -135,7 +137,7 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
               completed,
               groupId: '',  // 나중에 설정
               lineNumber,
-              indent: indent.length
+              indent: 0  // 줄 시작 태스크만 파싱하므로 항상 0
             }
 
             currentGroup.tasks.push(task)
