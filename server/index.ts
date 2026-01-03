@@ -10,7 +10,7 @@ import { syncChangeTasksForProject, ensureChangeExists, syncAllChangesOnStartup 
 import { loadConfig } from './config.js'
 import { initWebSocket, emit } from './websocket.js'
 
-const PORT = 3001
+const PORT = 3000
 
 // 처리되지 않은 예외 핸들러 - 서버 크래시 방지 및 로깅
 process.on('uncaughtException', (error) => {

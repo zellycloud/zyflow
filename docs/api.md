@@ -1,6 +1,6 @@
 # ZyFlow REST API Documentation
 
-Base URL: `http://localhost:3001/api`
+Base URL: `http://localhost:3000/api`
 
 ## Projects API
 

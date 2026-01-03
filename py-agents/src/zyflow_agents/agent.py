@@ -35,7 +35,7 @@ class AgentConfig:
     model_type: ModelType = ModelType.CLAUDE_SONNET
     temperature: float = 0.0
     max_tokens: int = 4096
-    zyflow_api_url: str = "http://localhost:3001"
+    zyflow_api_url: str = "http://localhost:3000"
     include_proposal: bool = True
     include_design: bool = True
     include_spec: bool = True
@@ -213,7 +213,7 @@ def create_zyflow_agent(
     model_type: ModelType = ModelType.CLAUDE_SONNET,
     temperature: float = 0.0,
     max_tokens: int = 4096,
-    zyflow_api_url: str = "http://localhost:3001",
+    zyflow_api_url: str = "http://localhost:3000",
     include_proposal: bool = True,
     include_design: bool = True,
     include_spec: bool = True,

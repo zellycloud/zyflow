@@ -106,7 +106,7 @@ class ExecutionEngine:
     def __init__(
         self,
         model_type: ModelType = ModelType.CLAUDE_SONNET,
-        zyflow_api_url: str = "http://localhost:3001",
+        zyflow_api_url: str = "http://localhost:3000",
         tools: Optional[list[Any]] = None,
     ):
         """Initialize the execution engine.
@@ -436,7 +436,7 @@ def get_engine() -> ExecutionEngine:
 
 def create_engine(
     model_type: ModelType = ModelType.CLAUDE_SONNET,
-    zyflow_api_url: str = "http://localhost:3001",
+    zyflow_api_url: str = "http://localhost:3000",
     tools: Optional[list[Any]] = None,
 ) -> ExecutionEngine:
     """Create a new execution engine.

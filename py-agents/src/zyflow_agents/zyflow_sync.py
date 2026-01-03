@@ -16,7 +16,7 @@ class ZyFlowSyncError(Exception):
 class ZyFlowClient:
     """Client for ZyFlow API communication."""
 
-    def __init__(self, base_url: str = "http://localhost:3001"):
+    def __init__(self, base_url: str = "http://localhost:3000"):
         """Initialize the client.
 
         Args:

@@ -21,7 +21,7 @@ import {
 } from '../server/integrations/local/index.js'
 
 // Integration Hub 서버 API 기본 URL
-const API_BASE = 'http://localhost:3001/api/integrations'
+const API_BASE = 'http://localhost:3000/api/integrations'
 
 // =============================================
 // Tool Definitions

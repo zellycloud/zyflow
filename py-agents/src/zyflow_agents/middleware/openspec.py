@@ -25,7 +25,7 @@ class OpenSpecMiddlewareConfig:
 
     project_path: str
     change_id: str
-    zyflow_api_url: str = "http://localhost:3001"
+    zyflow_api_url: str = "http://localhost:3000"
     sync_on_complete: bool = True
     include_proposal: bool = True
     include_design: bool = True

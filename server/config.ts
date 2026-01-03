@@ -116,7 +116,7 @@ export async function setActiveProject(projectId: string): Promise<void> {
 async function applyGitConfigForProject(project: Project): Promise<void> {
   try {
     // Integration Hub API에서 프로젝트 컨텍스트 조회
-    const res = await fetch(`http://localhost:3001/api/integrations/projects/${project.id}/context`)
+    const res = await fetch(`http://localhost:3000/api/integrations/projects/${project.id}/context`)
     if (!res.ok) return
 
     const data = await res.json() as { context?: { github?: { username?: string; email?: string } } }

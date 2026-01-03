@@ -2,12 +2,12 @@
  * API Configuration
  *
  * 환경변수 기반 API 엔드포인트 중앙 관리
- * - 개발: http://localhost:3001
+ * - 개발: http://localhost:3000
  * - 프로덕션: 환경변수로 설정
  */
 
 // API Base URL (환경변수 우선, 없으면 개발 서버 기본값)
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
 
 // API 엔드포인트
 export const API_ENDPOINTS = {
@@ -58,7 +58,7 @@ export const API_ENDPOINTS = {
 } as const
 
 // WebSocket URL
-export const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:3001'
+export const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:3000'
 export const WS_ENDPOINT = `${WS_BASE_URL}/ws`
 
 // Helper: 동적 URL 생성

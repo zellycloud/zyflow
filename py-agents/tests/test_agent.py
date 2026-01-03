@@ -62,7 +62,7 @@ def test_agent_config_defaults():
     assert config.model_type == ModelType.CLAUDE_SONNET
     assert config.temperature == 0.0
     assert config.max_tokens == 4096
-    assert config.zyflow_api_url == "http://localhost:3001"
+    assert config.zyflow_api_url == "http://localhost:3000"
     assert config.include_proposal is True
     assert config.include_design is True
     assert config.include_spec is True

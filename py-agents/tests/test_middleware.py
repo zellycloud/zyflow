@@ -174,7 +174,7 @@ def test_middleware_config_defaults():
         change_id="test-change",
     )
 
-    assert config.zyflow_api_url == "http://localhost:3001"
+    assert config.zyflow_api_url == "http://localhost:3000"
     assert config.sync_on_complete is True
     assert config.include_proposal is True
     assert config.include_design is True
