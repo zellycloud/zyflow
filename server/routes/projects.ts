@@ -505,66 +505,65 @@ async function getChangesForProject(projectPath: string) {
     return []
   }
 
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name === 'archive') continue
+  // Filter valid entries first
+  const validEntries = entries.filter(
+    (entry) => entry.isDirectory() && entry.name !== 'archive' && !archivedChangeIds.has(entry.name)
+  )
 
+  // Process all changes in parallel for better performance
+  const changePromises = validEntries.map(async (entry) => {
     const changeId = entry.name
-
-    // Skip archived changes (based on DB status)
-    if (archivedChangeIds.has(changeId)) continue
     const changeDir = join(openspecDir, changeId)
 
+    // Read proposal and tasks files in parallel
+    const [proposalResult, tasksResult, gitResult] = await Promise.allSettled([
+      // Read proposal.md
+      readFile(join(changeDir, 'proposal.md'), 'utf-8'),
+      // Read tasks.md
+      readFile(join(changeDir, 'tasks.md'), 'utf-8'),
+      // Get git log
+      execAsync(`git log -1 --format="%aI" -- "openspec/changes/${changeId}"`, { cwd: projectPath }),
+    ])
+
+    // Parse proposal
     let title = changeId
     let relatedSpecs: string[] = []
-    try {
-      const proposalPath = join(changeDir, 'proposal.md')
-      const proposalContent = await readFile(proposalPath, 'utf-8')
-      // Try to match "# Change: ..." or just first "# ..." heading
-      const titleMatch = proposalContent.match(/^#\s+(?:Change:\s+)?(.+)$/m)
-      if (titleMatch) {
-        title = titleMatch[1].trim()
-      }
-      // Parse affected specs
-      relatedSpecs = parseAffectedSpecs(proposalContent)
-    } catch {
-      // proposal.md not found
+    if (proposalResult.status === 'fulfilled') {
+      const titleMatch = proposalResult.value.match(/^#\s+(?:Change:\s+)?(.+)$/m)
+      if (titleMatch) title = titleMatch[1].trim()
+      relatedSpecs = parseAffectedSpecs(proposalResult.value)
     }
 
+    // Parse tasks
     let totalTasks = 0
     let completedTasks = 0
-    try {
-      const tasksPath = join(changeDir, 'tasks.md')
-      const tasksContent = await readFile(tasksPath, 'utf-8')
-      const parsed = parseTasksFile(changeId, tasksContent)
+    if (tasksResult.status === 'fulfilled') {
+      const parsed = parseTasksFile(changeId, tasksResult.value)
       for (const group of parsed.groups) {
         totalTasks += group.tasks.length
         completedTasks += group.tasks.filter((t) => t.completed).length
       }
-    } catch {
-      // tasks.md not found
     }
 
-    // Get last modified date from git
+    // Get updatedAt
     let updatedAt: string | null = null
-    try {
-      const relativeChangeDir = `openspec/changes/${changeId}`
-      const gitCmd = `git log -1 --format="%aI" -- "${relativeChangeDir}"`
-      const { stdout } = await execAsync(gitCmd, { cwd: projectPath })
-      if (stdout.trim()) {
-        updatedAt = stdout.trim()
-      } else {
-        // Fallback to file stat
-        const tasksPath = join(changeDir, 'tasks.md')
-        const stat = await import('fs/promises').then(fs => fs.stat(tasksPath))
+    if (gitResult.status === 'fulfilled' && gitResult.value.stdout.trim()) {
+      updatedAt = gitResult.value.stdout.trim()
+    } else {
+      try {
+        const stat = await import('fs/promises').then((fs) => fs.stat(join(changeDir, 'tasks.md')))
         updatedAt = stat.mtime.toISOString()
+      } catch {
+        updatedAt = new Date().toISOString()
       }
-    } catch {
-      updatedAt = new Date().toISOString()
     }
 
     const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-    changes.push({ id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt })
-  }
+    return { id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt }
+  })
+
+  const results = await Promise.all(changePromises)
+  changes.push(...results)
 
   return changes
 }

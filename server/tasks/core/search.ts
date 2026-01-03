@@ -1,6 +1,6 @@
 import { getSqlite, getDb } from '../db/client.js';
 import { tasks, Task } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { inArray, eq, and, ne } from 'drizzle-orm';
 
 export interface SearchResult {
   id: string;
@@ -50,24 +50,25 @@ export function searchTasks(query: string, options: SearchOptions = {}): Task[] 
     return [];
   }
 
-  // Fetch full task data
+  // Fetch full task data with IN clause (fix N+1 query)
   const taskIds = searchResults.map((r) => r.id);
-  const fullTasks: Task[] = [];
 
-  for (const id of taskIds) {
-    const task = db.select().from(tasks).where(eq(tasks.id, id)).get();
-    if (task) {
-      // Apply additional filters
-      if (options.projectId && task.projectId !== options.projectId) continue;
-      if (options.status && task.status !== options.status) continue;
-      if (options.priority && task.priority !== options.priority) continue;
-      // 기본적으로 archived 제외 (includeArchived가 true가 아닌 경우)
-      if (!options.includeArchived && task.status === 'archived') continue;
-      fullTasks.push(task);
-    }
-  }
+  // Build filter conditions
+  const conditions = [inArray(tasks.id, taskIds)];
+  if (options.projectId) conditions.push(eq(tasks.projectId, options.projectId));
+  if (options.status) conditions.push(eq(tasks.status, options.status));
+  if (options.priority) conditions.push(eq(tasks.priority, options.priority));
+  if (!options.includeArchived) conditions.push(ne(tasks.status, 'archived'));
 
-  return fullTasks;
+  const fullTasks = db
+    .select()
+    .from(tasks)
+    .where(and(...conditions))
+    .all();
+
+  // Maintain original search ranking order
+  const taskMap = new Map(fullTasks.map((t) => [t.id, t]));
+  return taskIds.map((id) => taskMap.get(id)).filter((t): t is Task => !!t);
 }
 
 export function rebuildSearchIndex(): void {

@@ -50,82 +50,67 @@ changesRouter.get('/', async (_req, res) => {
       return res.json({ success: true, data: { changes: [] } })
     }
 
-    const changes = []
+    // Filter valid entries
+    const validEntries = entries.filter(
+      (entry) => entry.isDirectory() && entry.name !== 'archive'
+    )
 
-    for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name === 'archive') continue
+    // Process all changes in parallel
+    const changes = await Promise.all(
+      validEntries.map(async (entry) => {
+        const changeId = entry.name
+        const changeDir = join(paths.openspecDir, changeId)
 
-      const changeId = entry.name
-      const changeDir = join(paths.openspecDir, changeId)
+        // Read proposal, tasks, and git log in parallel
+        const [proposalResult, tasksResult, gitResult] = await Promise.allSettled([
+          readFile(join(changeDir, 'proposal.md'), 'utf-8'),
+          readFile(join(changeDir, 'tasks.md'), 'utf-8'),
+          execAsync(`git log -1 --format="%aI" -- "openspec/changes/${changeId}"`, {
+            cwd: paths.projectPath,
+          }),
+        ])
 
-      // Read proposal.md for title
-      let title = changeId
-      try {
-        const proposalPath = join(changeDir, 'proposal.md')
-        const proposalContent = await readFile(proposalPath, 'utf-8')
-        const titleMatch = proposalContent.match(/^#\s+Change:\s+(.+)$/m)
-        if (titleMatch) {
-          title = titleMatch[1].trim()
+        // Parse proposal
+        let title = changeId
+        if (proposalResult.status === 'fulfilled') {
+          const titleMatch = proposalResult.value.match(/^#\s+Change:\s+(.+)$/m)
+          if (titleMatch) title = titleMatch[1].trim()
         }
-      } catch {
-        // No proposal.md, use directory name
-      }
 
-      // Read tasks.md for progress
-      let totalTasks = 0
-      let completedTasks = 0
-      try {
-        const tasksPath = join(changeDir, 'tasks.md')
-        const tasksContent = await readFile(tasksPath, 'utf-8')
-        const parsed = parseTasksFile(changeId, tasksContent)
-
-        for (const group of parsed.groups) {
-          totalTasks += group.tasks.length
-          completedTasks += group.tasks.filter((t) => t.completed).length
-        }
-      } catch {
-        // No tasks.md
-      }
-
-      const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-
-      // Get last modified date from git (latest commit in change directory)
-      let updatedAt: string | null = null
-      try {
-        // Get latest commit date for any file in the change directory
-        // Use relative path from project root for git command
-        const relativeChangeDir = `openspec/changes/${changeId}`
-        const gitCmd = `git log -1 --format="%aI" -- "${relativeChangeDir}"`
-        const { stdout } = await execAsync(gitCmd, { cwd: paths.projectPath })
-        if (stdout.trim()) {
-          updatedAt = stdout.trim()
-        } else {
-          // Fallback to file stat of tasks.md or proposal.md
-          const tasksPath = join(changeDir, 'tasks.md')
-          const proposalPath = join(changeDir, 'proposal.md')
-          try {
-            const s = await stat(tasksPath)
-            updatedAt = s.mtime.toISOString()
-          } catch {
-            const s = await stat(proposalPath)
-            updatedAt = s.mtime.toISOString()
+        // Parse tasks
+        let totalTasks = 0
+        let completedTasks = 0
+        if (tasksResult.status === 'fulfilled') {
+          const parsed = parseTasksFile(changeId, tasksResult.value)
+          for (const group of parsed.groups) {
+            totalTasks += group.tasks.length
+            completedTasks += group.tasks.filter((t) => t.completed).length
           }
         }
-      } catch (err) {
-        // If all fails, use current time
-        console.error('Git log error:', err)
-        updatedAt = new Date().toISOString()
-      }
 
-      changes.push({
-        id: changeId,
-        title,
-        progress,
-        totalTasks,
-        completedTasks,
-        updatedAt,
+        const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+        // Get updatedAt
+        let updatedAt: string | null = null
+        if (gitResult.status === 'fulfilled' && gitResult.value.stdout.trim()) {
+          updatedAt = gitResult.value.stdout.trim()
+        } else {
+          try {
+            const s = await stat(join(changeDir, 'tasks.md'))
+            updatedAt = s.mtime.toISOString()
+          } catch {
+            try {
+              const s = await stat(join(changeDir, 'proposal.md'))
+              updatedAt = s.mtime.toISOString()
+            } catch {
+              updatedAt = new Date().toISOString()
+            }
+          }
+        }
+
+        return { id: changeId, title, progress, totalTasks, completedTasks, updatedAt }
       })
-    }
+    )
 
     res.json({ success: true, data: { changes } })
   } catch (error) {
