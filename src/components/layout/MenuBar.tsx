@@ -102,6 +102,20 @@ export function MenuBar({
         className
       )}
     >
+      {/* Inbox Button */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className={cn(
+          'h-7 gap-1 text-xs',
+          isInboxActive && 'bg-accent'
+        )}
+        onClick={() => handleSelect('standalone-tasks')}
+      >
+        <Inbox className="h-3.5 w-3.5" />
+        Inbox
+      </Button>
+
       {/* Changes Menu */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -127,13 +141,6 @@ export function MenuBar({
             Active Changes
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => handleSelect('standalone-tasks')}
-            className={cn(isInboxActive && 'bg-accent')}
-          >
-            <Inbox className="h-4 w-4 mr-2" />
-            Inbox
-          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => handleSelect('archived')}
             className={cn(isArchivedActive && 'bg-accent')}
