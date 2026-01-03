@@ -47,7 +47,7 @@ function ApiStatusIndicator() {
       if (!res.ok) throw new Error('API server not responding')
       return res.json()
     },
-    refetchInterval: 10000,
+    refetchInterval: 30000, // 30초마다 (성능 최적화)
     retry: false,
   })
 

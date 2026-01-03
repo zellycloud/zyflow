@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -72,27 +72,31 @@ export function KanbanBoard({
     })
   );
 
-  // Filter tasks by search query
-  const filteredTasks = tasks.filter((task) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      task.title.toLowerCase().includes(query) ||
-      task.description?.toLowerCase().includes(query) ||
-      String(task.id).includes(query)
-    );
-  });
+  // Memoize filtered tasks to avoid recalculating on every render
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      if (!searchQuery) return true;
+      const query = searchQuery.toLowerCase();
+      return (
+        task.title.toLowerCase().includes(query) ||
+        task.description?.toLowerCase().includes(query) ||
+        String(task.id).includes(query)
+      );
+    });
+  }, [tasks, searchQuery]);
 
-  // Group tasks by status
-  const tasksByStatus = STATUS_ORDER.reduce(
-    (acc, status) => {
-      acc[status] = filteredTasks
-        .filter((t) => t.status === status)
-        .sort((a, b) => a.order - b.order);
-      return acc;
-    },
-    {} as Record<TaskStatus, Task[]>
-  );
+  // Memoize grouped tasks by status
+  const tasksByStatus = useMemo(() => {
+    return STATUS_ORDER.reduce(
+      (acc, status) => {
+        acc[status] = filteredTasks
+          .filter((t) => t.status === status)
+          .sort((a, b) => a.order - b.order);
+        return acc;
+      },
+      {} as Record<TaskStatus, Task[]>
+    );
+  }, [filteredTasks]);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as number);

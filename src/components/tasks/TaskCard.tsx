@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, MoreVertical, Pencil, Trash2, Archive } from 'lucide-react';
@@ -43,7 +44,10 @@ export function TaskCard({ task, onEdit, onDelete, onArchive }: TaskCardProps) {
     opacity: isDragging ? 0 : 1,
   };
 
-  const tags = task.tags ? JSON.parse(task.tags) as string[] : [];
+  // Memoize JSON.parse to avoid parsing on every render
+  const tags = useMemo(() => {
+    return task.tags ? JSON.parse(task.tags) as string[] : [];
+  }, [task.tags]);
 
   return (
     <Card

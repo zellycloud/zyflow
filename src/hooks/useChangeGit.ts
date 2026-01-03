@@ -548,7 +548,7 @@ export function useConflicts(options?: { enabled?: boolean }) {
     queryKey: ['git', 'conflicts'],
     queryFn: fetchConflicts,
     enabled: options?.enabled ?? true,
-    refetchInterval: 5000, // 5초마다 확인
+    refetchInterval: 30000, // 30초마다 확인 (성능 최적화)
   })
 }
 

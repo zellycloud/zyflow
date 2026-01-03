@@ -71,7 +71,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
             ws.close()
             return
           }
-          console.log('[WebSocket] Connected')
           setIsConnected(true)
           reconnectAttemptsRef.current = 0
           optionsRef.current.onConnect?.()
@@ -80,7 +79,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         ws.onclose = () => {
           if (!isMounted) return
 
-          console.log('[WebSocket] Disconnected')
           setIsConnected(false)
           wsRef.current = null
           optionsRef.current.onDisconnect?.()
@@ -90,7 +88,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
               isMounted &&
               reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttemptsRef.current++
-            console.log(`[WebSocket] Reconnecting... (${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`)
             reconnectTimeoutRef.current = setTimeout(connect, RECONNECT_INTERVAL)
           }
         }

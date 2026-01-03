@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { FolderOpen, Loader2 } from 'lucide-react'
 import type { SelectedItem } from '@/App'
 import { ProjectDashboard } from './ProjectDashboard'
@@ -5,13 +6,25 @@ import { ChangeDetail } from './ChangeDetail'
 import { StandaloneTasks } from './StandaloneTasks'
 import { SettingsPage } from '@/components/settings'
 import { ProjectSettings } from '@/components/settings/ProjectSettings'
-import { AgentPage } from '@/components/agent'
-import { PostTaskView } from '@/components/post-task'
-import { ArchivedChangesPage } from '@/components/dashboard/ArchivedChangesPage'
-import { DocsViewer } from '@/components/docs'
-import { AlertCenter } from '@/components/alerts'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { useSelectedData } from '@/hooks/useFlowChanges'
+
+// Lazy load heavy components to reduce initial bundle size
+const AgentPage = lazy(() => import('@/components/agent').then(m => ({ default: m.AgentPage })))
+const PostTaskView = lazy(() => import('@/components/post-task').then(m => ({ default: m.PostTaskView })))
+const ArchivedChangesPage = lazy(() => import('@/components/dashboard/ArchivedChangesPage').then(m => ({ default: m.ArchivedChangesPage })))
+const DocsViewer = lazy(() => import('@/components/docs').then(m => ({ default: m.DocsViewer })))
+const AlertCenter = lazy(() => import('@/components/alerts').then(m => ({ default: m.AlertCenter })))
+
+// Loading fallback for lazy components
+function LazyLoader() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+      <Loader2 className="h-8 w-8 mb-4 animate-spin opacity-50" />
+      <p>로딩 중...</p>
+    </div>
+  )
+}
 
 interface FlowContentProps {
   selectedItem: SelectedItem
@@ -93,25 +106,31 @@ export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
       return <ProjectSettings project={selectedProject} />
     case 'agent':
       return (
-        <AgentPage
-          projectId={selectedItem.projectId}
-          changeId={selectedItem.changeId}
-          projectPath={selectedProject?.path}
-        />
+        <Suspense fallback={<LazyLoader />}>
+          <AgentPage
+            projectId={selectedItem.projectId}
+            changeId={selectedItem.changeId}
+            projectPath={selectedProject?.path}
+          />
+        </Suspense>
       )
     case 'post-task':
       return (
-        <PostTaskView
-          projectId={selectedItem.projectId}
-          projectPath={selectedProject?.path ?? ''}
-        />
+        <Suspense fallback={<LazyLoader />}>
+          <PostTaskView
+            projectId={selectedItem.projectId}
+            projectPath={selectedProject?.path ?? ''}
+          />
+        </Suspense>
       )
     case 'archived':
       return (
-        <ArchivedChangesPage
-          projectId={selectedItem.projectId}
-          initialArchivedChangeId={selectedItem.archivedChangeId}
-        />
+        <Suspense fallback={<LazyLoader />}>
+          <ArchivedChangesPage
+            projectId={selectedItem.projectId}
+            initialArchivedChangeId={selectedItem.archivedChangeId}
+          />
+        </Suspense>
       )
     case 'docs':
       if (!selectedProject?.path) {
@@ -121,9 +140,17 @@ export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
           </div>
         )
       }
-      return <DocsViewer projectPath={selectedProject.path} />
+      return (
+        <Suspense fallback={<LazyLoader />}>
+          <DocsViewer projectPath={selectedProject.path} />
+        </Suspense>
+      )
     case 'alerts':
-      return <AlertCenter projectId={selectedItem.projectId} />
+      return (
+        <Suspense fallback={<LazyLoader />}>
+          <AlertCenter projectId={selectedItem.projectId} />
+        </Suspense>
+      )
     default:
       return null
   }

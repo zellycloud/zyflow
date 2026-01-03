@@ -74,9 +74,8 @@ export function ProjectDiagramTab({ projectId, projectPath }: ProjectDiagramTabP
   }
 
   // Handle node click - open file in editor
-  const handleNodeClick = (nodeId: string, path: string) => {
+  const handleNodeClick = (_nodeId: string, _path: string) => {
     // In VSCode extension context, this would open the file
-    console.log('Node clicked:', nodeId, path)
     // TODO: Integrate with VSCode to open file
   }
 

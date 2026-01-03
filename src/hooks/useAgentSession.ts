@@ -174,8 +174,7 @@ export function useAgentSession(initialSessionId?: string) {
             break
 
           default:
-            // Log unknown events for debugging
-            console.log('Unknown SSE event:', data)
+            // Unknown events are silently ignored in production
         }
       } catch (e) {
         console.error('Failed to parse SSE message:', e)
