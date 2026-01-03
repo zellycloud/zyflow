@@ -209,18 +209,20 @@ async function syncLocalProject(project: { id: string; name: string; path: strin
 
   const sqlite = getSqlite()
   const now = Date.now()
-  const activeChangeIds: string[] = []
 
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name === 'archive') continue
+  // 디렉토리만 필터링
+  const changeEntries = entries.filter(
+    (entry) => entry.isDirectory() && entry.name !== 'archive'
+  )
+  const activeChangeIds = changeEntries.map((e) => e.name)
 
+  // 1단계: 모든 proposal.md 병렬 읽기
+  const changeDataPromises = changeEntries.map(async (entry) => {
     const changeId = entry.name
-    activeChangeIds.push(changeId)
     const changeDir = join(openspecDir, changeId)
-
-    // Read proposal.md for title
-    let title = changeId
     const specPath = `openspec/changes/${changeId}/proposal.md`
+    let title = changeId
+
     try {
       const proposalPath = join(changeDir, 'proposal.md')
       const proposalContent = await readFile(proposalPath, 'utf-8')
@@ -232,19 +234,24 @@ async function syncLocalProject(project: { id: string; name: string; path: strin
       // proposal.md not found
     }
 
-    // Check if change exists for THIS project (project_id 조건 필수)
-    const existing = sqlite.prepare('SELECT id FROM changes WHERE id = ? AND project_id = ?').get(changeId, project.id)
+    return { changeId, title, specPath }
+  })
 
-    if (existing) {
-      sqlite.prepare(`
-        UPDATE changes SET title = ?, spec_path = ?, status = 'active', updated_at = ? WHERE id = ? AND project_id = ?
-      `).run(title, specPath, now, changeId, project.id)
-    } else {
-      sqlite.prepare(`
-        INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
-      `).run(changeId, project.id, title, specPath, now, now)
-    }
+  const changeDataList = await Promise.all(changeDataPromises)
+
+  // 2단계: DB 업데이트 (SQLite는 순차 처리 필요)
+  const upsertStmt = sqlite.prepare(`
+    INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
+    ON CONFLICT(id, project_id) DO UPDATE SET
+      title = excluded.title,
+      spec_path = excluded.spec_path,
+      status = 'active',
+      updated_at = excluded.updated_at
+  `)
+
+  for (const { changeId, title, specPath } of changeDataList) {
+    upsertStmt.run(changeId, project.id, title, specPath, now, now)
   }
 
   // 파일시스템에 없는 Change는 archived로 변경
@@ -261,16 +268,17 @@ async function syncLocalProject(project: { id: string; name: string; path: strin
     `).run(now, project.id)
   }
 
-  // tasks.md 동기화 - 모든 Change에 대해 수행
-  let tasksSynced = 0
-  for (const changeId of activeChangeIds) {
-    try {
-      const result = await syncChangeTasksForProject(changeId, project.path)
-      tasksSynced += result.tasksCreated + result.tasksUpdated
-    } catch {
-      // tasks.md가 없거나 파싱 실패 시 무시
+  // 3단계: tasks.md 동기화 병렬 수행
+  const syncResults = await Promise.allSettled(
+    activeChangeIds.map((changeId) => syncChangeTasksForProject(changeId, project.path))
+  )
+
+  const tasksSynced = syncResults.reduce((sum, result) => {
+    if (result.status === 'fulfilled') {
+      return sum + result.value.tasksCreated + result.value.tasksUpdated
     }
-  }
+    return sum
+  }, 0)
 
   console.log(`[Auto-sync] Local project "${project.name}" synced (${activeChangeIds.length} changes, ${tasksSynced} tasks)`)
 }
