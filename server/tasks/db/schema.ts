@@ -10,7 +10,8 @@ export type ChangeStatus = 'active' | 'completed' | 'archived';
 // - openspec: tasks.md에서 동기화된 태스크
 // - inbox: 수동으로 생성된 독립 태스크
 // - imported: 외부 시스템에서 가져온 태스크
-export type TaskOrigin = 'openspec' | 'inbox' | 'imported';
+// - backlog: backlog/*.md 파일에서 동기화된 태스크
+export type TaskOrigin = 'openspec' | 'inbox' | 'imported' | 'backlog';
 
 // =============================================
 // Change Log 관련 타입 정의
@@ -96,7 +97,7 @@ export const tasks = sqliteTable('tasks', {
   }).notNull().default('task'), // 기본값 'task' (기존 칸반 호환)
   // 태스크 출처 구분
   origin: text('origin', {
-    enum: ['openspec', 'inbox', 'imported']
+    enum: ['openspec', 'inbox', 'imported', 'backlog']
   }).notNull().default('inbox'),
   // 기존 필드
   title: text('title').notNull(),
@@ -114,6 +115,19 @@ export const tasks = sqliteTable('tasks', {
   groupTitle: text('group_title'), // 작업 그룹의 제목
   groupOrder: integer('group_order').notNull().default(0), // 그룹 내 순서
   taskOrder: integer('task_order').notNull().default(0), // 그룹 내 작업 순서
+
+  // =============================================
+  // Backlog.md 확장 필드 (origin='backlog' 전용)
+  // =============================================
+  parentTaskId: integer('parent_task_id'), // 서브태스크 부모 ID
+  blockedBy: text('blocked_by'), // JSON array of task IDs: ["task-001", "task-002"]
+  plan: text('plan'), // ## Plan 섹션 내용 (마크다운)
+  acceptanceCriteria: text('acceptance_criteria'), // ## Acceptance Criteria 섹션 (마크다운)
+  notes: text('notes'), // ## Notes 섹션 (마크다운)
+  dueDate: integer('due_date', { mode: 'timestamp' }), // 마감일
+  milestone: text('milestone'), // 마일스톤/스프린트 이름
+  backlogFileId: text('backlog_file_id'), // backlog/*.md 파일의 task-id (예: "task-007")
+
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
   archivedAt: integer('archived_at', { mode: 'timestamp' }), // null if not archived
@@ -121,6 +135,11 @@ export const tasks = sqliteTable('tasks', {
   // 인덱스 정의
   groupTitleIdx: index('idx_tasks_group_title').on(table.groupTitle),
   groupTaskOrderIdx: index('idx_tasks_group_task_order').on(table.groupOrder, table.taskOrder),
+  // Backlog 관련 인덱스
+  originIdx: index('idx_tasks_origin').on(table.origin),
+  parentTaskIdIdx: index('idx_tasks_parent_task_id').on(table.parentTaskId),
+  backlogFileIdIdx: index('idx_tasks_backlog_file_id').on(table.backlogFileId),
+  milestoneIdx: index('idx_tasks_milestone').on(table.milestone),
 }));
 
 export type Task = typeof tasks.$inferSelect;

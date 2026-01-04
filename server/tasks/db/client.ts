@@ -240,6 +240,71 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
     // Column already exists, ignore
   }
 
+  // =============================================
+  // Backlog.md 관련 컬럼 마이그레이션
+  // =============================================
+
+  // Migration: Add backlogFileId column (task-007 형식)
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN backlogFileId TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add parentTaskId column for subtask relationship
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN parentTaskId INTEGER`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add blockedBy column for dependencies (JSON array)
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN blockedBy TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add plan column for plan section content
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN plan TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add acceptanceCriteria column for AC section
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN acceptanceCriteria TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add notes column for notes section
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN notes TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add dueDate column for deadline
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN dueDate INTEGER`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add milestone column for sprint/milestone grouping
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN milestone TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Backlog indexes for performance
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_backlog_file_id ON tasks(backlogFileId);`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_parent_task_id ON tasks(parentTaskId);`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_milestone ON tasks(milestone);`);
+
   // Migration: Set default project_id for existing tasks
   try {
     sqlite.exec(`
@@ -819,4 +884,29 @@ export function closeDb(): void {
     db = null;
     currentDbPath = null;
   }
+}
+
+/**
+ * Get next task ID for a specific origin type
+ * Uses sequences table to track and increment IDs
+ */
+export function getNextTaskId(origin: 'inbox' | 'openspec' | 'backlog' = 'backlog'): number {
+  const db = getSqlite();
+  const sequenceName = `task_${origin}`;
+
+  // Ensure sequence exists
+  db.prepare(`
+    INSERT OR IGNORE INTO sequences (name, value) VALUES (?, 0)
+  `).run(sequenceName);
+
+  // Increment and get next value
+  db.prepare(`
+    UPDATE sequences SET value = value + 1 WHERE name = ?
+  `).run(sequenceName);
+
+  const result = db.prepare(`
+    SELECT value FROM sequences WHERE name = ?
+  `).get(sequenceName) as { value: number };
+
+  return result.value;
 }
