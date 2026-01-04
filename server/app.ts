@@ -40,7 +40,6 @@ import type { Stage, ChangeStatus } from './tasks/db/schema.js'
 import { cliRoutes } from './cli-adapter/index.js'
 import { postTaskRouter } from './routes/post-task.js'
 import { docsRouter } from './routes/docs.js'
-import { claudeFlowRouter } from './claude-flow/index.js'
 import { projectsRouter } from './routes/projects.js'
 import { changesRouter } from './routes/changes.js'
 import { flowRouter } from './routes/flow.js'
@@ -111,9 +110,6 @@ app.use('/api/cli', cliRoutes)
 
 // Post-Task API 라우터 등록
 app.use('/api/post-task', postTaskRouter)
-
-// Claude-Flow API 라우터 등록
-app.use('/api/claude-flow', claudeFlowRouter)
 
 // AI Execution API 라우터 등록 (단일 Provider 실행)
 app.use('/api/ai', aiRouter)
