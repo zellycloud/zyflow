@@ -2,6 +2,105 @@
 
 All notable changes to ZyFlow will be documented in this file.
 
+## [0.5.0] - 2026-01-04
+
+v0.4.0 이후 123개 커밋을 포함한 대규모 업데이트입니다.
+
+### Added
+
+#### 🌐 원격 SSH 프로젝트 지원
+- SSH 기반 원격 서버 연결 및 프로젝트 관리
+- 원격 파일시스템 브라우징 및 파일 읽기/쓰기
+- 원격 Git 상태 조회 및 pull/push 지원
+- 원격 프로젝트 tasks.md 동기화
+- SSH config (~/.ssh/config) 자동 파싱
+
+#### 🤖 Claude Code 통합
+- Claude CLI 직접 실행 및 실시간 스트리밍 (node-pty)
+- 태스크 실행 다이얼로그 UI
+- 모델 선택 UI 및 실행 기록 기능
+- 프롬프트 빌더 개선
+
+#### 📋 Backlog 시스템
+- Backlog.md 파일 파싱 및 동기화
+- Inbox → Backlog 마이그레이션 도구
+- Backlog 전용 UI 컴포넌트
+- snake_case 컬럼 및 Drizzle ORM 통합
+
+#### 🚨 Alert 시스템
+- GitHub Actions 실패 알림 자동 수집
+- 프로젝트별 Alert 필터링
+- Agent Fix 자동 처리 기능
+- Webhook 기반 외부 연동 지원
+- Alert 패턴 분석 및 트렌드 추적
+
+#### 🖥️ UI/UX 개선
+- MenuBar 기반 새로운 레이아웃
+- 접이식 사이드바 및 채팅 패널
+- 아카이브된 변경사항 뷰어
+- 문서 뷰어 기능
+- CLI 설정 페이지 (모델 선택, 프로필 관리)
+- 드래그앤드롭 프로필 재정렬
+
+#### 🔧 Post-Task Agent
+- 자동화된 작업 후 처리 시스템
+- 코드 품질, 테스트, CI/CD 분석 태스크
+- 데드 코드 격리 시스템
+- 리포트 생성 시스템
+
+#### 🎨 GitDiagram 통합
+- Mermaid 기반 프로젝트 다이어그램 생성
+- Google Gemini LLM 어댑터 지원
+- MCP 다이어그램 도구
+
+#### 🤝 Multi-AI Provider
+- 다중 AI 프로바이더 지원 (Claude, OpenAI, Gemini 등)
+- 태스크 유형별 자동 라우팅
+- Consensus (다중 AI 합의) UI
+
+#### ⚙️ 시스템 통합
+- 전역 .env 파일 스캔 기능
+- .git/config GitHub 사용자명 추출
+- 시스템 설정 Import 기능
+
+### Changed
+
+#### 성능 개선
+- 프로젝트 전환 시 병렬화 처리
+- API 병렬 처리 및 배치 쿼리 최적화
+- Vite 수동 청크 설정으로 빌드 최적화
+- 프론트엔드 렌더링 및 폴링 주기 최적화
+
+#### 코드 구조 개선
+- 라우터 모듈화 (projects, changes, flow 분리)
+- API 엔드포인트 중앙화
+- API 클라이언트 추상화 레이어
+- ESM 모듈 형식 전환
+
+### Fixed
+
+- 원격 프로젝트 사이드바 날짜 표시 ("방금 전" 대신 실제 git 커밋 날짜)
+- 원격 SSH 프로젝트 sync 엔드포인트 지원
+- OpenSpec 방식 태스크 파싱 로직 통일
+- 중복 태스크 생성 방지 (displayId 기반 매칭)
+- 아카이브 validation 에러 처리
+- TaskExecutionDialog 무한 루프 방지
+- AppleScript 폴더 선택 다이얼로그 개선
+- API 포트 3001 → 3000 변경
+
+### Removed
+
+- zywiki 통합 제거
+- 미사용 dashboard 컴포넌트 정리
+
+---
+
+## [0.4.0] - 2024-12-15
+
+(이전 릴리스)
+
+---
+
 ## [0.1.0] - 2024-11-30
 
 ### Added
