@@ -15,7 +15,8 @@ import { initDb } from '../tasks/index.js'
 import { getSqlite } from '../tasks/db/client.js'
 import type { Stage, ChangeStatus, TaskOrigin } from '../tasks/db/schema.js'
 import { emit } from '../websocket.js'
-import { syncChangeTasksFromFile, syncChangeTasksForProject } from '../sync.js'
+import { syncChangeTasksFromFile, syncChangeTasksForProject, syncRemoteChangeTasksForProject } from '../sync.js'
+import { getRemoteServerById } from '../remote/remote-config.js'
 import {
   syncBacklogToDb,
   saveTaskToBacklogFile,
@@ -878,7 +879,19 @@ flowRouter.post('/changes/:id/sync', async (req, res) => {
       return res.status(400).json({ success: false, error: 'No active project' })
     }
 
-    const result = await syncChangeTasksFromFile(changeId)
+    let result: { tasksCreated: number; tasksUpdated: number }
+
+    // 원격 프로젝트인 경우 SSH를 통해 동기화
+    if (project.remote?.serverId) {
+      const server = await getRemoteServerById(project.remote.serverId)
+      if (!server) {
+        return res.status(400).json({ success: false, error: 'Remote server not found' })
+      }
+      result = await syncRemoteChangeTasksForProject(changeId, project.path, server, project.id)
+    } else {
+      // 로컬 프로젝트
+      result = await syncChangeTasksFromFile(changeId)
+    }
 
     emit('change:synced', {
       changeId,
