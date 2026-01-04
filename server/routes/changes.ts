@@ -12,6 +12,8 @@ import { promisify } from 'util'
 import { getActiveProject, getProjectById } from '../config.js'
 import { parseTasksFile, toggleTaskInFile } from '../parser.js'
 import { initDb, getSqlite } from '../tasks/db/client.js'
+import { getRemoteServerById } from '../remote/remote-config.js'
+import { listDirectory, readRemoteFile, executeCommand } from '../remote/ssh-manager.js'
 
 const execAsync = promisify(exec)
 
@@ -38,6 +40,85 @@ async function getProjectPaths() {
 // GET / - List all changes
 changesRouter.get('/', async (_req, res) => {
   try {
+    const project = await getActiveProject()
+    if (!project) {
+      return res.json({ success: true, data: { changes: [] } })
+    }
+
+    // 원격 프로젝트인 경우
+    if (project.remote) {
+      const server = await getRemoteServerById(project.remote.serverId)
+      if (!server) {
+        return res.json({ success: true, data: { changes: [] } })
+      }
+
+      const openspecDir = `${project.path}/openspec/changes`
+
+      // 원격 디렉토리 목록 조회
+      let listing
+      try {
+        listing = await listDirectory(server, openspecDir)
+      } catch {
+        return res.json({ success: true, data: { changes: [] } })
+      }
+
+      // 디렉토리만 필터링 (archive 제외)
+      const validEntries = listing.entries.filter(
+        (entry) => entry.type === 'directory' && entry.name !== 'archive'
+      )
+
+      // 병렬로 각 change 처리
+      const changes = await Promise.all(
+        validEntries.map(async (entry) => {
+          const changeId = entry.name
+          const changeDir = `${openspecDir}/${changeId}`
+
+          // 원격에서 proposal.md, tasks.md 읽기 및 git log 실행
+          const [proposalResult, tasksResult, gitResult] = await Promise.allSettled([
+            readRemoteFile(server, `${changeDir}/proposal.md`),
+            readRemoteFile(server, `${changeDir}/tasks.md`),
+            executeCommand(server, `git log -1 --format="%aI" -- "openspec/changes/${changeId}"`, {
+              cwd: project.path,
+            }),
+          ])
+
+          // Parse proposal
+          let title = changeId
+          if (proposalResult.status === 'fulfilled') {
+            const titleMatch = proposalResult.value.match(/^#\s+Change:\s+(.+)$/m)
+            if (titleMatch) title = titleMatch[1].trim()
+          }
+
+          // Parse tasks
+          let totalTasks = 0
+          let completedTasks = 0
+          if (tasksResult.status === 'fulfilled') {
+            const parsed = parseTasksFile(changeId, tasksResult.value)
+            for (const group of parsed.groups) {
+              totalTasks += group.tasks.length
+              completedTasks += group.tasks.filter((t) => t.completed).length
+            }
+          }
+
+          const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+          // Get updatedAt from git log or file modifiedAt
+          let updatedAt: string | null = null
+          if (gitResult.status === 'fulfilled' && gitResult.value.stdout.trim()) {
+            updatedAt = gitResult.value.stdout.trim()
+          } else {
+            // 폴백: listDirectory에서 가져온 modifiedAt 사용
+            updatedAt = entry.modifiedAt || new Date().toISOString()
+          }
+
+          return { id: changeId, title, progress, totalTasks, completedTasks, updatedAt }
+        })
+      )
+
+      return res.json({ success: true, data: { changes } })
+    }
+
+    // 로컬 프로젝트인 경우
     const paths = await getProjectPaths()
     if (!paths) {
       return res.json({ success: true, data: { changes: [] } })
