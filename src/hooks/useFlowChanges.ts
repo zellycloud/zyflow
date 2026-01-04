@@ -307,6 +307,7 @@ export type SelectedItem =
   | { type: 'project'; projectId: string }
   | { type: 'change'; projectId: string; changeId: string }
   | { type: 'standalone-tasks'; projectId: string }
+  | { type: 'backlog'; projectId: string }
   | { type: 'project-settings'; projectId: string }
   | { type: 'agent'; projectId: string; changeId?: string }
   | { type: 'post-task'; projectId: string }
@@ -355,6 +356,13 @@ export function useSelectedItem() {
       case 'standalone-tasks':
         queryClient.invalidateQueries({
           queryKey: ['flow', 'tasks', { standalone: true }],
+          refetchType: 'active'
+        })
+        break
+
+      case 'backlog':
+        queryClient.invalidateQueries({
+          queryKey: ['backlog'],
           refetchType: 'active'
         })
         break
@@ -529,6 +537,319 @@ export function useArchiveChange() {
       queryClient.invalidateQueries({ queryKey: ['flow', 'changes', 'counts'] })
       queryClient.invalidateQueries({ queryKey: ['projects'] })
       queryClient.invalidateQueries({ queryKey: ['projects-all-data'] })
+    },
+  })
+}
+
+// =============================================
+// Backlog API
+// =============================================
+
+interface BacklogTaskFilters {
+  projectId?: string
+  includeArchived?: boolean
+}
+
+// Backlog 태스크 조회 (origin=backlog 필터 사용)
+export function useBacklogTasks(filters: BacklogTaskFilters = {}, options?: { enabled?: boolean }) {
+  const { enabled = true } = options || {}
+  const params = new URLSearchParams()
+  params.set('origin', 'backlog')
+  if (filters.projectId) params.set('projectId', filters.projectId)
+  if (filters.includeArchived) params.set('includeArchived', 'true')
+
+  return useQuery({
+    queryKey: ['backlog', 'tasks', filters],
+    queryFn: async (): Promise<FlowTask[]> => {
+      const res = await fetch(`${API_BASE}/flow/tasks?${params}`)
+      const json: ApiResponse<{ tasks: FlowTask[] }> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data?.tasks ?? []
+    },
+    enabled,
+    staleTime: 30000,
+    gcTime: 300000,
+  })
+}
+
+// Backlog 통계
+interface BacklogStats {
+  total: number
+  byStatus: Record<string, number>
+  byPriority: Record<string, number>
+  byMilestone: Record<string, number>
+}
+
+export function useBacklogStats(options?: { enabled?: boolean }) {
+  const { enabled = true } = options || {}
+
+  return useQuery({
+    queryKey: ['backlog', 'stats'],
+    queryFn: async (): Promise<BacklogStats> => {
+      const res = await fetch(`${API_BASE}/flow/backlog/stats`)
+      const json: ApiResponse<BacklogStats> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    enabled,
+    staleTime: 30000,
+    gcTime: 300000,
+  })
+}
+
+// Backlog 동기화
+interface BacklogSyncResult {
+  synced: number
+  created: number
+  updated: number
+  deleted: number
+}
+
+export function useSyncBacklog() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (): Promise<BacklogSyncResult> => {
+      const res = await fetch(`${API_BASE}/flow/backlog/sync`, { method: 'POST' })
+      const json: ApiResponse<BacklogSyncResult> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backlog'] })
+      queryClient.invalidateQueries({ queryKey: ['flow', 'tasks'] })
+    },
+  })
+}
+
+// Backlog 태스크 생성
+interface CreateBacklogTaskInput {
+  title: string
+  description?: string
+  status?: string
+  priority?: 'low' | 'medium' | 'high'
+  assignees?: string[]
+  labels?: string[]
+  blockedBy?: string[]
+  parent?: string
+  dueDate?: string
+  milestone?: string
+  plan?: string
+  acceptanceCriteria?: string
+  notes?: string
+}
+
+interface CreateBacklogTaskResult {
+  backlogFileId: string
+  filePath: string
+  synced: BacklogSyncResult
+}
+
+export function useCreateBacklogTask() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: CreateBacklogTaskInput): Promise<CreateBacklogTaskResult> => {
+      const res = await fetch(`${API_BASE}/flow/backlog/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      const json: ApiResponse<CreateBacklogTaskResult> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backlog'] })
+      queryClient.invalidateQueries({ queryKey: ['flow', 'tasks'] })
+    },
+  })
+}
+
+// Backlog 태스크 수정
+interface UpdateBacklogTaskInput {
+  backlogFileId: string
+  title?: string
+  description?: string
+  status?: string
+  priority?: 'low' | 'medium' | 'high'
+  assignees?: string[]
+  labels?: string[]
+  blockedBy?: string[]
+  parent?: string
+  dueDate?: string
+  milestone?: string
+  plan?: string
+  acceptanceCriteria?: string
+  notes?: string
+}
+
+export function useUpdateBacklogTask() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ backlogFileId, ...data }: UpdateBacklogTaskInput): Promise<CreateBacklogTaskResult> => {
+      const res = await fetch(`${API_BASE}/flow/backlog/tasks/${backlogFileId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      const json: ApiResponse<CreateBacklogTaskResult> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backlog'] })
+      queryClient.invalidateQueries({ queryKey: ['flow', 'tasks'] })
+    },
+  })
+}
+
+// Backlog 태스크 삭제
+interface DeleteBacklogTaskInput {
+  backlogFileId: string
+  archive?: boolean
+}
+
+export function useDeleteBacklogTask() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ backlogFileId, archive = false }: DeleteBacklogTaskInput): Promise<void> => {
+      const params = archive ? '?archive=true' : ''
+      const res = await fetch(`${API_BASE}/flow/backlog/tasks/${backlogFileId}${params}`, {
+        method: 'DELETE',
+      })
+      const json: ApiResponse<unknown> = await res.json()
+      if (!json.success) throw new Error(json.error)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backlog'] })
+      queryClient.invalidateQueries({ queryKey: ['flow', 'tasks'] })
+    },
+  })
+}
+
+// Backlog 태스크 상세
+interface BacklogTaskDetail extends FlowTask {
+  subtasks?: Array<{
+    id: number
+    title: string
+    status: string
+    priority: string
+  }>
+}
+
+export function useBacklogTaskDetail(backlogFileId: string | null, options?: { enabled?: boolean }) {
+  const { enabled = true } = options || {}
+
+  return useQuery({
+    queryKey: ['backlog', 'tasks', backlogFileId],
+    queryFn: async (): Promise<BacklogTaskDetail | null> => {
+      if (!backlogFileId) return null
+      const res = await fetch(`${API_BASE}/flow/backlog/tasks/${backlogFileId}`)
+      if (res.status === 404) return null
+      const json: ApiResponse<{ task: BacklogTaskDetail }> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data?.task ?? null
+    },
+    enabled: enabled && !!backlogFileId,
+    staleTime: 30000,
+    gcTime: 300000,
+  })
+}
+
+// =============================================
+// Migration API Hooks
+// =============================================
+
+// 마이그레이션 미리보기 결과
+interface MigrationPreview {
+  count: number
+  tasks: Array<{
+    id: number
+    title: string
+    description: string | null
+    status: string
+    priority: string
+    tags: string | null
+    assignee: string | null
+    createdAt: string
+    updatedAt: string
+  }>
+}
+
+// 마이그레이션 대상 Inbox 태스크 미리보기
+export function useMigrationPreview(options?: { enabled?: boolean }) {
+  const { enabled = true } = options || {}
+
+  return useQuery({
+    queryKey: ['backlog', 'migration', 'preview'],
+    queryFn: async (): Promise<MigrationPreview> => {
+      const res = await fetch(`${API_BASE}/flow/backlog/migration/preview`)
+      const json: ApiResponse<MigrationPreview> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    enabled,
+    staleTime: 30000,
+    gcTime: 300000,
+  })
+}
+
+// 마이그레이션 결과
+interface MigrationResult {
+  success: boolean
+  migratedCount: number
+  skippedCount: number
+  errors: string[]
+  tasks: Array<{
+    id: number
+    title: string
+    backlogFileId: string
+    status: 'migrated' | 'skipped' | 'error'
+    reason?: string
+  }>
+}
+
+// Inbox 전체를 Backlog로 마이그레이션
+export function useMigrateAllToBacklog() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (): Promise<MigrationResult> => {
+      const res = await fetch(`${API_BASE}/flow/backlog/migration`, {
+        method: 'POST',
+      })
+      const json: ApiResponse<MigrationResult> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backlog'] })
+      queryClient.invalidateQueries({ queryKey: ['flow', 'tasks'] })
+    },
+  })
+}
+
+// 선택된 Inbox 태스크들만 Backlog로 마이그레이션
+export function useMigrateSelectedToBacklog() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (taskIds: number[]): Promise<MigrationResult> => {
+      const res = await fetch(`${API_BASE}/flow/backlog/migration/selected`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskIds }),
+      })
+      const json: ApiResponse<MigrationResult> = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return json.data!
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backlog'] })
+      queryClient.invalidateQueries({ queryKey: ['flow', 'tasks'] })
     },
   })
 }

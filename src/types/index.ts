@@ -30,11 +30,15 @@ export interface FlowChange {
   stages?: Record<Stage, StageInfo>
 }
 
+// Task Origin 타입
+export type TaskOrigin = 'openspec' | 'inbox' | 'imported' | 'backlog'
+
 // Flow Task (DB 기반)
 export interface FlowTask {
   id: number
   changeId?: string // null이면 독립 태스크
   stage: Stage
+  origin?: TaskOrigin // 태스크 출처
   title: string
   description?: string
   status: FlowTaskStatus
@@ -49,6 +53,19 @@ export interface FlowTask {
   majorTitle?: string // ## 1. 대제목 (Major Section)
   subOrder?: number // ### 1.x에서 x 값 (Sub Section 순서)
   displayId?: string // 표시용 ID (예: "1.1.1") - 순서 기반 자동 생성
+
+  // =============================================
+  // Backlog.md 확장 필드 (origin='backlog' 전용)
+  // =============================================
+  parentTaskId?: number // 서브태스크 부모 ID
+  blockedBy?: string[] // 의존하는 태스크 ID 목록
+  plan?: string // ## Plan 섹션 (마크다운)
+  acceptanceCriteria?: string // ## Acceptance Criteria 섹션 (마크다운)
+  notes?: string // ## Notes 섹션 (마크다운)
+  dueDate?: string // 마감일 (ISO 8601)
+  milestone?: string // 마일스톤/스프린트 이름
+  backlogFileId?: string // backlog/*.md 파일의 task-id (예: "task-007")
+
   createdAt: string
   updatedAt: string
   archivedAt?: string

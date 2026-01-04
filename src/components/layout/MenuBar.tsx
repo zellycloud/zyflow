@@ -15,6 +15,7 @@ import {
   Settings,
   ChevronDown,
   Bell,
+  ClipboardList,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -84,12 +85,16 @@ export function MenuBar({
       case 'alerts':
         onSelectItem({ type: 'alerts', projectId: activeProjectId })
         break
+      case 'backlog':
+        onSelectItem({ type: 'backlog', projectId: activeProjectId })
+        break
     }
   }
 
   // 현재 선택된 메뉴 확인
   const isChangesActive = selectedItem?.type === 'project' || selectedItem?.type === 'change'
   const isInboxActive = selectedItem?.type === 'standalone-tasks'
+  const isBacklogActive = selectedItem?.type === 'backlog'
   const isArchivedActive = selectedItem?.type === 'archived'
   const isToolsActive = selectedItem?.type === 'agent' || selectedItem?.type === 'post-task'
   const isViewActive = selectedItem?.type === 'docs' || selectedItem?.type === 'project-settings'
@@ -114,6 +119,20 @@ export function MenuBar({
       >
         <Inbox className="h-3.5 w-3.5" />
         Inbox
+      </Button>
+
+      {/* Backlog Button */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className={cn(
+          'h-7 gap-1 text-xs',
+          isBacklogActive && 'bg-accent'
+        )}
+        onClick={() => handleSelect('backlog')}
+      >
+        <ClipboardList className="h-3.5 w-3.5" />
+        Backlog
       </Button>
 
       {/* Changes Menu */}

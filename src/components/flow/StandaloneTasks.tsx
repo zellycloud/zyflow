@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Loader2, ListTodo, Plus, GripVertical, MoreVertical, Pencil, Trash2, Archive, ArrowRight, RotateCcw, Search, X, Calendar, User, RefreshCw, CheckCircle } from 'lucide-react'
+import { Loader2, ListTodo, Plus, GripVertical, MoreVertical, Pencil, Trash2, Archive, ArrowRight, RotateCcw, Search, X, Calendar, User, RefreshCw, CheckCircle, FileUp } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -54,7 +54,7 @@ import {
 } from '@dnd-kit/sortable'
 import { useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { useFlowTasks, useUpdateFlowTask, useCreateFlowTask } from '@/hooks/useFlowChanges'
+import { useFlowTasks, useUpdateFlowTask, useCreateFlowTask, useMigrationPreview, useMigrateAllToBacklog } from '@/hooks/useFlowChanges'
 import { cn } from '@/lib/utils'
 import { TaskDialog } from '@/components/tasks/TaskDialog'
 import type { FlowTask, FlowTaskStatus } from '@/types'
@@ -85,6 +85,10 @@ export function StandaloneTasks({ projectId: _projectId }: StandaloneTasksProps)
   const updateTask = useUpdateFlowTask()
   const createTask = useCreateFlowTask()
 
+  // Migration hooks
+  const { data: migrationPreview } = useMigrationPreview()
+  const migrateToBacklog = useMigrateAllToBacklog()
+
   // Tab state
   const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active')
 
@@ -107,6 +111,7 @@ export function StandaloneTasks({ projectId: _projectId }: StandaloneTasksProps)
   const [createDefaultStatus, setCreateDefaultStatus] = useState<FlowTaskStatus>('todo')
   const [viewDialogOpen, setViewDialogOpen] = useState(false)
   const [viewTask, setViewTask] = useState<FlowTask | null>(null)
+  const [migrationDialogOpen, setMigrationDialogOpen] = useState(false)
 
   // projectId는 향후 확장용으로 유지
   void _projectId
@@ -192,14 +197,14 @@ export function StandaloneTasks({ projectId: _projectId }: StandaloneTasksProps)
   const handleRefresh = async () => {
     setIsRefreshing(true)
     setShowRefreshSuccess(false)
-    
+
     try {
       await refetch()
-      
+
       // 성공 아이콘 표시
       setShowRefreshSuccess(true)
       toast.success('작업 목록이 새로고침되었습니다.')
-      
+
       // 1.5초 후 성공 아이콘 숨기기
       setTimeout(() => {
         setShowRefreshSuccess(false)
@@ -209,6 +214,24 @@ export function StandaloneTasks({ projectId: _projectId }: StandaloneTasksProps)
       toast.error('작업 목록을 새로고침하는데 실패했습니다.')
     } finally {
       setIsRefreshing(false)
+    }
+  }
+
+  const handleMigration = async () => {
+    try {
+      const result = await migrateToBacklog.mutateAsync()
+      setMigrationDialogOpen(false)
+
+      if (result.migratedCount > 0) {
+        toast.success(`${result.migratedCount}개의 작업이 Backlog로 마이그레이션되었습니다.`)
+      } else {
+        toast.info('마이그레이션할 작업이 없습니다.')
+      }
+
+      await refetch()
+    } catch (error) {
+      console.error('Migration failed:', error)
+      toast.error('마이그레이션에 실패했습니다.')
     }
   }
 
@@ -372,10 +395,25 @@ export function StandaloneTasks({ projectId: _projectId }: StandaloneTasksProps)
           </Button>
           
           {activeTab === 'active' && (
-            <Button onClick={() => handleAddTask('todo')}>
-              <Plus className="h-4 w-4 mr-2" />
-              작업 추가
-            </Button>
+            <>
+              {(migrationPreview?.count ?? 0) > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={() => setMigrationDialogOpen(true)}
+                  className="gap-2"
+                >
+                  <FileUp className="h-4 w-4" />
+                  Backlog로 이전
+                  <Badge variant="secondary" className="text-xs">
+                    {migrationPreview?.count}
+                  </Badge>
+                </Button>
+              )}
+              <Button onClick={() => handleAddTask('todo')}>
+                <Plus className="h-4 w-4 mr-2" />
+                작업 추가
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -560,6 +598,61 @@ export function StandaloneTasks({ projectId: _projectId }: StandaloneTasksProps)
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Migration Dialog */}
+      <AlertDialog open={migrationDialogOpen} onOpenChange={setMigrationDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Inbox → Backlog 마이그레이션</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  현재 Inbox에 있는 <strong>{migrationPreview?.count ?? 0}개</strong>의
+                  작업을 Backlog 파일로 변환합니다.
+                </p>
+                <div className="bg-muted rounded-lg p-3 text-sm">
+                  <p className="font-medium mb-2">변환 대상:</p>
+                  <ul className="list-disc list-inside space-y-1 text-muted-foreground max-h-32 overflow-y-auto">
+                    {migrationPreview?.tasks.slice(0, 5).map((task) => (
+                      <li key={task.id} className="truncate">
+                        {task.title}
+                      </li>
+                    ))}
+                    {(migrationPreview?.count ?? 0) > 5 && (
+                      <li className="text-muted-foreground/70">
+                        외 {(migrationPreview?.count ?? 0) - 5}개...
+                      </li>
+                    )}
+                  </ul>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  변환 후 작업들은 <code className="bg-muted px-1 rounded">backlog/</code>{' '}
+                  폴더에 마크다운 파일로 저장됩니다.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleMigration}
+              disabled={migrateToBacklog.isPending}
+            >
+              {migrateToBacklog.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  마이그레이션 중...
+                </>
+              ) : (
+                <>
+                  <FileUp className="h-4 w-4 mr-2" />
+                  마이그레이션
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

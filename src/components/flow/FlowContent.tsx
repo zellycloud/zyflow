@@ -15,6 +15,7 @@ const PostTaskView = lazy(() => import('@/components/post-task').then(m => ({ de
 const ArchivedChangesPage = lazy(() => import('@/components/dashboard/ArchivedChangesPage').then(m => ({ default: m.ArchivedChangesPage })))
 const DocsViewer = lazy(() => import('@/components/docs').then(m => ({ default: m.DocsViewer })))
 const AlertCenter = lazy(() => import('@/components/alerts').then(m => ({ default: m.AlertCenter })))
+const BacklogView = lazy(() => import('./BacklogView').then(m => ({ default: m.BacklogView })))
 
 // Loading fallback for lazy components
 function LazyLoader() {
@@ -149,6 +150,12 @@ export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
       return (
         <Suspense fallback={<LazyLoader />}>
           <AlertCenter projectId={selectedItem.projectId} />
+        </Suspense>
+      )
+    case 'backlog':
+      return (
+        <Suspense fallback={<LazyLoader />}>
+          <BacklogView projectId={selectedItem.projectId} />
         </Suspense>
       )
     default:
