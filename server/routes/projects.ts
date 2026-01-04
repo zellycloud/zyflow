@@ -254,18 +254,18 @@ async function syncLocalProject(project: { id: string; name: string; path: strin
     upsertStmt.run(changeId, project.id, title, specPath, now, now)
   }
 
-  // 파일시스템에 없는 Change는 archived로 변경
+  // 파일시스템에 없는 Change는 archived로 변경 (archived_at도 설정)
   if (activeChangeIds.length > 0) {
     const placeholders = activeChangeIds.map(() => '?').join(',')
     sqlite.prepare(`
-      UPDATE changes SET status = 'archived', updated_at = ?
+      UPDATE changes SET status = 'archived', archived_at = COALESCE(archived_at, ?), updated_at = ?
       WHERE project_id = ? AND status = 'active' AND id NOT IN (${placeholders})
-    `).run(now, project.id, ...activeChangeIds)
+    `).run(now, now, project.id, ...activeChangeIds)
   } else {
     sqlite.prepare(`
-      UPDATE changes SET status = 'archived', updated_at = ?
+      UPDATE changes SET status = 'archived', archived_at = COALESCE(archived_at, ?), updated_at = ?
       WHERE project_id = ? AND status = 'active'
-    `).run(now, project.id)
+    `).run(now, now, project.id)
   }
 
   // 3단계: tasks.md 동기화 병렬 수행
@@ -347,18 +347,18 @@ async function syncRemoteProject(project: { id: string; name: string; path: stri
     }
   }
 
-  // 원격에 없는 Change는 archived로 변경
+  // 원격에 없는 Change는 archived로 변경 (archived_at도 설정)
   if (activeChangeIds.length > 0) {
     const placeholders = activeChangeIds.map(() => '?').join(',')
     sqlite.prepare(`
-      UPDATE changes SET status = 'archived', updated_at = ?
+      UPDATE changes SET status = 'archived', archived_at = COALESCE(archived_at, ?), updated_at = ?
       WHERE project_id = ? AND status = 'active' AND id NOT IN (${placeholders})
-    `).run(now, project.id, ...activeChangeIds)
+    `).run(now, now, project.id, ...activeChangeIds)
   } else {
     sqlite.prepare(`
-      UPDATE changes SET status = 'archived', updated_at = ?
+      UPDATE changes SET status = 'archived', archived_at = COALESCE(archived_at, ?), updated_at = ?
       WHERE project_id = ? AND status = 'active'
-    `).run(now, project.id)
+    `).run(now, now, project.id)
   }
 
   // tasks.md 동기화 - SSH를 통해 원격 파일 읽기

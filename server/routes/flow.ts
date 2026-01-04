@@ -5,17 +5,30 @@
  */
 
 import { Router } from 'express'
-import { readdir, readFile, writeFile, access } from 'fs/promises'
-import { join } from 'path'
+import { readdir, readFile, writeFile, access, unlink, rename } from 'fs/promises'
+import { join, basename } from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { loadConfig, getActiveProject, getProjectById } from '../config.js'
 import { parseTasksFile } from '../parser.js'
 import { initDb } from '../tasks/index.js'
 import { getSqlite } from '../tasks/db/client.js'
-import type { Stage, ChangeStatus } from '../tasks/db/schema.js'
+import type { Stage, ChangeStatus, TaskOrigin } from '../tasks/db/schema.js'
 import { emit } from '../websocket.js'
 import { syncChangeTasksFromFile, syncChangeTasksForProject } from '../sync.js'
+import {
+  syncBacklogToDb,
+  saveTaskToBacklogFile,
+  generateNewBacklogTaskId,
+  getBacklogPath,
+  ensureBacklogDir,
+  type BacklogTask,
+  // Migration
+  previewMigration,
+  migrateInboxToBacklog,
+  migrateSelectedInboxTasks,
+} from '../backlog/index.js'
+import { serializeBacklogTask, generateBacklogFilename } from '../backlog/parser.js'
 
 const execAsync = promisify(exec)
 
@@ -540,7 +553,7 @@ flowRouter.post('/sync', async (_req, res) => {
 flowRouter.get('/tasks', async (req, res) => {
   try {
     await initTaskDb()
-    const { changeId, stage, status, standalone, includeArchived, projectId } = req.query
+    const { changeId, stage, status, standalone, includeArchived, projectId, origin } = req.query
 
     // projectId 쿼리 파라미터가 있으면 해당 프로젝트 사용, 없으면 활성 프로젝트
     const project = projectId
@@ -562,6 +575,12 @@ flowRouter.get('/tasks', async (req, res) => {
       params.push(changeId)
     }
 
+    // origin 필터 지원 (backlog, inbox, openspec, imported)
+    if (origin) {
+      sql += ' AND origin = ?'
+      params.push(origin)
+    }
+
     if (stage) {
       sql += ' AND stage = ?'
       params.push(stage)
@@ -580,6 +599,7 @@ flowRouter.get('/tasks', async (req, res) => {
       id: number
       change_id: string | null
       stage: Stage
+      origin: TaskOrigin | null
       title: string
       description: string | null
       status: string
@@ -588,6 +608,15 @@ flowRouter.get('/tasks', async (req, res) => {
       assignee: string | null
       order: number
       display_id: string | null
+      // Backlog 확장 필드
+      parent_task_id: number | null
+      blocked_by: string | null
+      plan: string | null
+      acceptance_criteria: string | null
+      notes: string | null
+      due_date: number | null
+      milestone: string | null
+      backlog_file_id: string | null
       created_at: number
       updated_at: number
       archived_at: number | null
@@ -597,6 +626,7 @@ flowRouter.get('/tasks', async (req, res) => {
       id: t.id,
       changeId: t.change_id,
       stage: t.stage,
+      origin: t.origin,
       title: t.title,
       description: t.description,
       status: t.status,
@@ -605,6 +635,15 @@ flowRouter.get('/tasks', async (req, res) => {
       assignee: t.assignee,
       order: t.order,
       displayId: t.display_id,
+      // Backlog 확장 필드
+      parentTaskId: t.parent_task_id,
+      blockedBy: t.blocked_by ? JSON.parse(t.blocked_by) : null,
+      plan: t.plan,
+      acceptanceCriteria: t.acceptance_criteria,
+      notes: t.notes,
+      dueDate: t.due_date ? new Date(t.due_date).toISOString() : null,
+      milestone: t.milestone,
+      backlogFileId: t.backlog_file_id,
       createdAt: new Date(t.created_at).toISOString(),
       updatedAt: new Date(t.updated_at).toISOString(),
       archivedAt: t.archived_at ? new Date(t.archived_at).toISOString() : null,
@@ -1185,5 +1224,525 @@ flowRouter.post('/changes/:id/fix-validation', async (req, res) => {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to fix validation',
     })
+  }
+})
+
+// =============================================
+// Backlog API 엔드포인트
+// =============================================
+
+// POST /backlog/sync - Backlog 파일을 DB에 동기화
+flowRouter.post('/backlog/sync', async (_req, res) => {
+  try {
+    await initTaskDb()
+    const project = await getActiveProject()
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const result = await syncBacklogToDb(project.id, project.path)
+
+    emit('backlog:synced', {
+      projectId: project.id,
+      ...result,
+    })
+
+    res.json({
+      success: true,
+      data: result,
+    })
+  } catch (error) {
+    console.error('Error syncing backlog:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to sync backlog',
+    })
+  }
+})
+
+// POST /backlog/tasks - Backlog 태스크 생성 (마크다운 파일 생성)
+flowRouter.post('/backlog/tasks', async (req, res) => {
+  try {
+    await initTaskDb()
+    const project = await getActiveProject()
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const {
+      title,
+      description,
+      status = 'todo',
+      priority = 'medium',
+      assignees,
+      labels,
+      blockedBy,
+      parent,
+      dueDate,
+      milestone,
+      plan,
+      acceptanceCriteria,
+      notes,
+    } = req.body
+
+    if (!title) {
+      return res.status(400).json({ success: false, error: 'Title is required' })
+    }
+
+    // 새 backlogFileId 생성
+    const backlogFileId = await generateNewBacklogTaskId(project.path)
+
+    // BacklogTask 객체 생성
+    const task: BacklogTask = {
+      backlogFileId,
+      title,
+      description,
+      status,
+      priority,
+      assignees,
+      labels,
+      blockedBy,
+      parent,
+      dueDate,
+      milestone,
+      plan,
+      acceptanceCriteria,
+      notes,
+      filePath: '', // saveTaskToBacklogFile에서 설정됨
+    }
+
+    // 마크다운 파일 저장
+    const filePath = await saveTaskToBacklogFile(project.path, task)
+    task.filePath = filePath
+
+    // DB에 동기화
+    const result = await syncBacklogToDb(project.id, project.path)
+
+    emit('backlog:task:created', {
+      projectId: project.id,
+      backlogFileId,
+      filePath,
+    })
+
+    res.json({
+      success: true,
+      data: {
+        backlogFileId,
+        filePath,
+        synced: result,
+      },
+    })
+  } catch (error) {
+    console.error('Error creating backlog task:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create backlog task',
+    })
+  }
+})
+
+// PATCH /backlog/tasks/:backlogFileId - Backlog 태스크 수정 (마크다운 파일 수정)
+flowRouter.patch('/backlog/tasks/:backlogFileId', async (req, res) => {
+  try {
+    await initTaskDb()
+    const project = await getActiveProject()
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { backlogFileId } = req.params
+    const updates = req.body
+
+    // 기존 태스크 조회
+    const sqlite = getSqlite()
+    const existing = sqlite.prepare(`
+      SELECT * FROM tasks
+      WHERE project_id = ? AND backlog_file_id = ? AND origin = 'backlog'
+    `).get(project.id, backlogFileId) as {
+      id: number
+      title: string
+      description: string | null
+      status: string
+      priority: string
+      tags: string | null
+      assignee: string | null
+      parent_task_id: number | null
+      blocked_by: string | null
+      plan: string | null
+      acceptance_criteria: string | null
+      notes: string | null
+      due_date: number | null
+      milestone: string | null
+      backlog_file_id: string
+    } | undefined
+
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Backlog task not found' })
+    }
+
+    // BacklogTask 객체 생성 (기존 + 업데이트)
+    const task: BacklogTask = {
+      backlogFileId: existing.backlog_file_id,
+      title: updates.title ?? existing.title,
+      description: updates.description ?? existing.description ?? undefined,
+      status: updates.status ?? existing.status,
+      priority: updates.priority ?? existing.priority,
+      assignees: updates.assignees ?? (existing.assignee ? [existing.assignee] : undefined),
+      labels: updates.labels ?? (existing.tags ? JSON.parse(existing.tags) : undefined),
+      blockedBy: updates.blockedBy ?? (existing.blocked_by ? JSON.parse(existing.blocked_by) : undefined),
+      parent: updates.parent,
+      dueDate: updates.dueDate ?? (existing.due_date ? new Date(existing.due_date).toISOString().split('T')[0] : undefined),
+      milestone: updates.milestone ?? existing.milestone ?? undefined,
+      plan: updates.plan ?? existing.plan ?? undefined,
+      acceptanceCriteria: updates.acceptanceCriteria ?? existing.acceptance_criteria ?? undefined,
+      notes: updates.notes ?? existing.notes ?? undefined,
+      filePath: '',
+    }
+
+    // 마크다운 파일 저장
+    const filePath = await saveTaskToBacklogFile(project.path, task)
+
+    // DB에 동기화
+    const result = await syncBacklogToDb(project.id, project.path)
+
+    emit('backlog:task:updated', {
+      projectId: project.id,
+      backlogFileId,
+      filePath,
+    })
+
+    res.json({
+      success: true,
+      data: {
+        backlogFileId,
+        filePath,
+        synced: result,
+      },
+    })
+  } catch (error) {
+    console.error('Error updating backlog task:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update backlog task',
+    })
+  }
+})
+
+// DELETE /backlog/tasks/:backlogFileId - Backlog 태스크 삭제 (마크다운 파일 삭제)
+flowRouter.delete('/backlog/tasks/:backlogFileId', async (req, res) => {
+  try {
+    await initTaskDb()
+    const project = await getActiveProject()
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { backlogFileId } = req.params
+    const { archive = false } = req.query
+
+    // 기존 태스크 조회
+    const sqlite = getSqlite()
+    const existing = sqlite.prepare(`
+      SELECT id, title FROM tasks
+      WHERE project_id = ? AND backlog_file_id = ? AND origin = 'backlog'
+    `).get(project.id, backlogFileId) as { id: number; title: string } | undefined
+
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Backlog task not found' })
+    }
+
+    const backlogPath = getBacklogPath(project.path)
+    const filename = generateBacklogFilename(backlogFileId, existing.title)
+    const filePath = join(backlogPath, filename)
+
+    if (archive === 'true') {
+      // 아카이브 폴더로 이동
+      const archivePath = join(backlogPath, 'archive')
+      await ensureBacklogDir(join(project.path, 'backlog', 'archive').replace('/backlog/archive', ''))
+      try {
+        await access(archivePath)
+      } catch {
+        const { mkdir } = await import('fs/promises')
+        await mkdir(archivePath, { recursive: true })
+      }
+      await rename(filePath, join(archivePath, filename))
+    } else {
+      // 파일 삭제
+      await unlink(filePath)
+    }
+
+    // DB에 동기화 (삭제된 파일은 archived로 처리됨)
+    const result = await syncBacklogToDb(project.id, project.path)
+
+    emit('backlog:task:deleted', {
+      projectId: project.id,
+      backlogFileId,
+      archived: archive === 'true',
+    })
+
+    res.json({
+      success: true,
+      data: {
+        backlogFileId,
+        deleted: true,
+        archived: archive === 'true',
+        synced: result,
+      },
+    })
+  } catch (error) {
+    console.error('Error deleting backlog task:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete backlog task',
+    })
+  }
+})
+
+// GET /backlog/tasks/:backlogFileId - Backlog 태스크 상세 조회
+flowRouter.get('/backlog/tasks/:backlogFileId', async (req, res) => {
+  try {
+    await initTaskDb()
+    const project = await getActiveProject()
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { backlogFileId } = req.params
+
+    const sqlite = getSqlite()
+    const task = sqlite.prepare(`
+      SELECT * FROM tasks
+      WHERE project_id = ? AND backlog_file_id = ? AND origin = 'backlog'
+    `).get(project.id, backlogFileId) as {
+      id: number
+      change_id: string | null
+      stage: Stage
+      origin: TaskOrigin | null
+      title: string
+      description: string | null
+      status: string
+      priority: string
+      tags: string | null
+      assignee: string | null
+      order: number
+      parent_task_id: number | null
+      blocked_by: string | null
+      plan: string | null
+      acceptance_criteria: string | null
+      notes: string | null
+      due_date: number | null
+      milestone: string | null
+      backlog_file_id: string | null
+      created_at: number
+      updated_at: number
+      archived_at: number | null
+    } | undefined
+
+    if (!task) {
+      return res.status(404).json({ success: false, error: 'Backlog task not found' })
+    }
+
+    // 서브태스크 조회
+    const subtasks = sqlite.prepare(`
+      SELECT id, title, status, priority FROM tasks
+      WHERE project_id = ? AND parent_task_id = ? AND origin = 'backlog' AND status != 'archived'
+    `).all(project.id, task.id) as Array<{
+      id: number
+      title: string
+      status: string
+      priority: string
+    }>
+
+    const formatted = {
+      id: task.id,
+      changeId: task.change_id,
+      stage: task.stage,
+      origin: task.origin,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      tags: task.tags ? JSON.parse(task.tags) : [],
+      assignee: task.assignee,
+      order: task.order,
+      parentTaskId: task.parent_task_id,
+      blockedBy: task.blocked_by ? JSON.parse(task.blocked_by) : null,
+      plan: task.plan,
+      acceptanceCriteria: task.acceptance_criteria,
+      notes: task.notes,
+      dueDate: task.due_date ? new Date(task.due_date).toISOString() : null,
+      milestone: task.milestone,
+      backlogFileId: task.backlog_file_id,
+      subtasks,
+      createdAt: new Date(task.created_at).toISOString(),
+      updatedAt: new Date(task.updated_at).toISOString(),
+      archivedAt: task.archived_at ? new Date(task.archived_at).toISOString() : null,
+    }
+
+    res.json({ success: true, data: { task: formatted } })
+  } catch (error) {
+    console.error('Error getting backlog task:', error)
+    res.status(500).json({ success: false, error: 'Failed to get backlog task' })
+  }
+})
+
+// GET /backlog/stats - Backlog 통계
+flowRouter.get('/backlog/stats', async (_req, res) => {
+  try {
+    await initTaskDb()
+    const project = await getActiveProject()
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const sqlite = getSqlite()
+
+    // 상태별 집계
+    const byStatus = sqlite.prepare(`
+      SELECT status, COUNT(*) as count
+      FROM tasks
+      WHERE project_id = ? AND origin = 'backlog' AND status != 'archived'
+      GROUP BY status
+    `).all(project.id) as Array<{ status: string; count: number }>
+
+    // 우선순위별 집계
+    const byPriority = sqlite.prepare(`
+      SELECT priority, COUNT(*) as count
+      FROM tasks
+      WHERE project_id = ? AND origin = 'backlog' AND status != 'archived'
+      GROUP BY priority
+    `).all(project.id) as Array<{ priority: string; count: number }>
+
+    // 마일스톤별 집계
+    const byMilestone = sqlite.prepare(`
+      SELECT milestone, COUNT(*) as count
+      FROM tasks
+      WHERE project_id = ? AND origin = 'backlog' AND status != 'archived' AND milestone IS NOT NULL
+      GROUP BY milestone
+    `).all(project.id) as Array<{ milestone: string; count: number }>
+
+    // 총 태스크 수
+    const total = sqlite.prepare(`
+      SELECT COUNT(*) as count
+      FROM tasks
+      WHERE project_id = ? AND origin = 'backlog' AND status != 'archived'
+    `).get(project.id) as { count: number }
+
+    res.json({
+      success: true,
+      data: {
+        total: total.count,
+        byStatus: Object.fromEntries(byStatus.map(r => [r.status, r.count])),
+        byPriority: Object.fromEntries(byPriority.map(r => [r.priority, r.count])),
+        byMilestone: Object.fromEntries(byMilestone.map(r => [r.milestone, r.count])),
+      },
+    })
+  } catch (error) {
+    console.error('Error getting backlog stats:', error)
+    res.status(500).json({ success: false, error: 'Failed to get backlog stats' })
+  }
+})
+
+// =============================================
+// Migration API 엔드포인트
+// =============================================
+
+// GET /backlog/migration/preview - 마이그레이션 대상 Inbox 태스크 미리보기
+flowRouter.get('/backlog/migration/preview', async (_req, res) => {
+  try {
+    await initTaskDb()
+    const project = await getActiveProject()
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const preview = previewMigration(project.id)
+
+    res.json({
+      success: true,
+      data: preview,
+    })
+  } catch (error) {
+    console.error('Error previewing migration:', error)
+    res.status(500).json({ success: false, error: 'Failed to preview migration' })
+  }
+})
+
+// POST /backlog/migration - Inbox 전체를 Backlog로 마이그레이션
+flowRouter.post('/backlog/migration', async (_req, res) => {
+  try {
+    await initTaskDb()
+    const project = await getActiveProject()
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const result = await migrateInboxToBacklog(project.id, project.path)
+
+    // 마이그레이션 성공 시 WebSocket 이벤트 발생
+    if (result.migratedCount > 0) {
+      emit('backlog:synced', {
+        projectId: project.id,
+        synced: result.migratedCount,
+        created: result.migratedCount,
+        updated: 0,
+        deleted: 0,
+      })
+    }
+
+    res.json({
+      success: result.success,
+      data: result,
+    })
+  } catch (error) {
+    console.error('Error migrating inbox to backlog:', error)
+    res.status(500).json({ success: false, error: 'Failed to migrate inbox to backlog' })
+  }
+})
+
+// POST /backlog/migration/selected - 선택된 Inbox 태스크만 Backlog로 마이그레이션
+flowRouter.post('/backlog/migration/selected', async (req, res) => {
+  try {
+    await initTaskDb()
+    const project = await getActiveProject()
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { taskIds } = req.body
+
+    if (!Array.isArray(taskIds) || taskIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'taskIds array is required' })
+    }
+
+    const result = await migrateSelectedInboxTasks(project.id, project.path, taskIds)
+
+    // 마이그레이션 성공 시 WebSocket 이벤트 발생
+    if (result.migratedCount > 0) {
+      emit('backlog:synced', {
+        projectId: project.id,
+        synced: result.migratedCount,
+        created: result.migratedCount,
+        updated: 0,
+        deleted: 0,
+      })
+    }
+
+    res.json({
+      success: result.success,
+      data: result,
+    })
+  } catch (error) {
+    console.error('Error migrating selected tasks:', error)
+    res.status(500).json({ success: false, error: 'Failed to migrate selected tasks' })
   }
 })
