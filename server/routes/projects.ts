@@ -28,6 +28,7 @@ import { parseTasksFile } from '../parser.js'
 import {
   getRemoteServerById,
   listDirectory,
+  executeCommand,
 } from '../remote/index.js'
 
 const execAsync = promisify(exec)
@@ -622,7 +623,6 @@ async function getChangesForRemoteProject(projectPath: string, serverId: string,
 
   const { readRemoteFile } = await import('../remote/ssh-manager.js')
   const openspecDir = `${projectPath}/openspec/changes`
-  const changes = []
 
   // Get archived change IDs from DB to filter them out
   const archivedChangeIds = new Set<string>()
@@ -647,45 +647,66 @@ async function getChangesForRemoteProject(projectPath: string, serverId: string,
     return []
   }
 
-  for (const entry of listing.entries) {
-    if (entry.type !== 'directory' || entry.name === 'archive') continue
+  // 디렉토리만 필터링 (archive 제외)
+  const validEntries = listing.entries.filter(
+    (entry) => entry.type === 'directory' && entry.name !== 'archive' && !archivedChangeIds.has(entry.name)
+  )
 
-    const changeId = entry.name
-    if (archivedChangeIds.has(changeId)) continue
+  // 병렬로 각 change 처리
+  const changes = await Promise.all(
+    validEntries.map(async (entry) => {
+      const changeId = entry.name
+      const changeDir = `${openspecDir}/${changeId}`
 
-    let title = changeId
-    let relatedSpecs: string[] = []
-    try {
-      const proposalPath = `${openspecDir}/${changeId}/proposal.md`
-      const proposalContent = await readRemoteFile(server, proposalPath)
-      const titleMatch = proposalContent.match(/^#\s+(?:Change:\s+)?(.+)$/m)
-      if (titleMatch) {
-        title = titleMatch[1].trim()
+      // 원격에서 proposal.md, tasks.md 읽기 및 git log 실행
+      const [proposalResult, tasksResult, gitResult] = await Promise.allSettled([
+        readRemoteFile(server, `${changeDir}/proposal.md`),
+        readRemoteFile(server, `${changeDir}/tasks.md`),
+        executeCommand(server, `git log -1 --format="%aI" -- "openspec/changes/${changeId}"`, {
+          cwd: projectPath,
+        }),
+      ])
+
+      // Parse proposal
+      let title = changeId
+      let relatedSpecs: string[] = []
+      if (proposalResult.status === 'fulfilled') {
+        const titleMatch = proposalResult.value.match(/^#\s+(?:Change:\s+)?(.+)$/m)
+        if (titleMatch) title = titleMatch[1].trim()
+        relatedSpecs = parseAffectedSpecs(proposalResult.value)
       }
-      relatedSpecs = parseAffectedSpecs(proposalContent)
-    } catch {
-      // proposal.md not found
-    }
 
-    let totalTasks = 0
-    let completedTasks = 0
-    try {
-      const tasksPath = `${openspecDir}/${changeId}/tasks.md`
-      const tasksContent = await readRemoteFile(server, tasksPath)
-      const parsed = parseTasksFile(changeId, tasksContent)
-      for (const group of parsed.groups) {
-        totalTasks += group.tasks.length
-        completedTasks += group.tasks.filter((t) => t.completed).length
+      // Parse tasks
+      let totalTasks = 0
+      let completedTasks = 0
+      if (tasksResult.status === 'fulfilled') {
+        const parsed = parseTasksFile(changeId, tasksResult.value)
+        for (const group of parsed.groups) {
+          totalTasks += group.tasks.length
+          completedTasks += group.tasks.filter((t) => t.completed).length
+        }
       }
-    } catch {
-      // tasks.md not found
-    }
 
-    const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-    const updatedAt = new Date().toISOString() // Remote doesn't have git log easily
+      const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
 
-    changes.push({ id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt })
-  }
+      // Get updatedAt from git log or file modifiedAt
+      let updatedAt: string | null = null
+      if (gitResult.status === 'fulfilled') {
+        const stdout = gitResult.value.stdout.trim()
+        if (stdout) {
+          updatedAt = stdout
+        } else {
+          // git log 결과가 비어있으면 modifiedAt 사용
+          updatedAt = entry.modifiedAt || new Date().toISOString()
+        }
+      } else {
+        // git log 실패 시 modifiedAt 사용
+        updatedAt = entry.modifiedAt || new Date().toISOString()
+      }
+
+      return { id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt }
+    })
+  )
 
   return changes
 }

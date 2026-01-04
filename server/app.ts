@@ -47,6 +47,8 @@ import { flowRouter } from './routes/flow.js'
 import { alertsRouter, setBroadcastAlert } from './routes/alerts.js'
 import { aiRouter } from './ai/index.js'
 import remoteRouter from './routes/remote.js'
+import { getRemoteServerById } from './remote/remote-config.js'
+import { listDirectory, readRemoteFile, executeCommand } from './remote/ssh-manager.js'
 import { OpenSpecPromptBuilder } from './claude-flow/prompt-builder.js'
 import * as pty from 'node-pty'
 const execAsync = promisify(exec)
@@ -511,25 +513,112 @@ function parseAffectedSpecs(proposalContent: string): string[] {
   return specs
 }
 
-// Helper to get changes for a specific project path
-async function getChangesForProject(projectPath: string) {
-  const openspecDir = join(projectPath, 'openspec', 'changes')
-  const changes = []
+// Helper to get changes for a specific project (supports both local and remote)
+async function getChangesForProject(project: { id: string; path: string; remote?: { serverId: string } }) {
+  const projectPath = project.path
 
   // Get archived change IDs from DB to filter them out
   const archivedChangeIds = new Set<string>()
   try {
-    const projectId = projectPath.toLowerCase().replace(/[^a-z0-9]/g, '-')
     const sqlite = getSqlite()
     const archivedRows = sqlite.prepare(`
       SELECT id FROM changes WHERE project_id = ? AND status = 'archived'
-    `).all(projectId) as { id: string }[]
+    `).all(project.id) as { id: string }[]
     for (const row of archivedRows) {
       archivedChangeIds.add(row.id)
     }
   } catch {
     // DB not initialized yet, proceed without filtering
   }
+
+  // 원격 프로젝트인 경우
+  if (project.remote) {
+    const server = await getRemoteServerById(project.remote.serverId)
+    if (!server) {
+      return []
+    }
+
+    const openspecDir = `${projectPath}/openspec/changes`
+
+    // 원격 디렉토리 목록 조회
+    let listing
+    try {
+      listing = await listDirectory(server, openspecDir)
+    } catch {
+      return []
+    }
+
+    // 디렉토리만 필터링 (archive 제외)
+    const validEntries = listing.entries.filter(
+      (entry) => entry.type === 'directory' && entry.name !== 'archive'
+    )
+
+    // 병렬로 각 change 처리
+    const changes = await Promise.all(
+      validEntries.map(async (entry) => {
+        const changeId = entry.name
+
+        // Skip archived changes (based on DB status)
+        if (archivedChangeIds.has(changeId)) return null
+
+        const changeDir = `${openspecDir}/${changeId}`
+
+        // 원격에서 proposal.md, tasks.md 읽기 및 git log 실행
+        const [proposalResult, tasksResult, gitResult] = await Promise.allSettled([
+          readRemoteFile(server, `${changeDir}/proposal.md`),
+          readRemoteFile(server, `${changeDir}/tasks.md`),
+          executeCommand(server, `git log -1 --format="%aI" -- "openspec/changes/${changeId}"`, {
+            cwd: projectPath,
+          }),
+        ])
+
+        // Parse proposal
+        let title = changeId
+        let relatedSpecs: string[] = []
+        if (proposalResult.status === 'fulfilled') {
+          const titleMatch = proposalResult.value.match(/^#\s+(?:Change:\s+)?(.+)$/m)
+          if (titleMatch) title = titleMatch[1].trim()
+          relatedSpecs = parseAffectedSpecs(proposalResult.value)
+        }
+
+        // Parse tasks
+        let totalTasks = 0
+        let completedTasks = 0
+        if (tasksResult.status === 'fulfilled') {
+          const parsed = parseTasksFile(changeId, tasksResult.value)
+          for (const group of parsed.groups) {
+            totalTasks += group.tasks.length
+            completedTasks += group.tasks.filter((t) => t.completed).length
+          }
+        }
+
+        const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+        // Get updatedAt from git log or file modifiedAt
+        let updatedAt: string | null = null
+        if (gitResult.status === 'fulfilled') {
+          const stdout = gitResult.value.stdout.trim()
+          if (stdout) {
+            updatedAt = stdout
+          } else {
+            // git log 결과가 비어있으면 modifiedAt 사용
+            updatedAt = entry.modifiedAt || new Date().toISOString()
+          }
+        } else {
+          // git log 실패 시 modifiedAt 사용
+          updatedAt = entry.modifiedAt || new Date().toISOString()
+        }
+
+        return { id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt }
+      })
+    )
+
+    return changes.filter((c): c is NonNullable<typeof c> => c !== null)
+  }
+
+  // 로컬 프로젝트인 경우
+  const openspecDir = join(projectPath, 'openspec', 'changes')
+  const changes = []
 
   let entries
   try {
@@ -648,7 +737,7 @@ app.get('/api/projects/all-data', async (_req, res) => {
     const projectsData = []
 
     for (const project of config.projects) {
-      const changes = await getChangesForProject(project.path)
+      const changes = await getChangesForProject(project)
       const specs = await getSpecsForProject(project.path)
       projectsData.push({
         ...project,
