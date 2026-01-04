@@ -241,26 +241,26 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
   }
 
   // =============================================
-  // Backlog.md 관련 컬럼 마이그레이션
+  // Backlog.md 관련 컬럼 마이그레이션 (snake_case)
   // =============================================
 
-  // Migration: Add backlogFileId column (task-007 형식)
+  // Migration: Add backlog_file_id column (task-007 형식)
   try {
-    sqlite.exec(`ALTER TABLE tasks ADD COLUMN backlogFileId TEXT`);
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN backlog_file_id TEXT`);
   } catch {
     // Column already exists, ignore
   }
 
-  // Migration: Add parentTaskId column for subtask relationship
+  // Migration: Add parent_task_id column for subtask relationship
   try {
-    sqlite.exec(`ALTER TABLE tasks ADD COLUMN parentTaskId INTEGER`);
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN parent_task_id INTEGER`);
   } catch {
     // Column already exists, ignore
   }
 
-  // Migration: Add blockedBy column for dependencies (JSON array)
+  // Migration: Add blocked_by column for dependencies (JSON array)
   try {
-    sqlite.exec(`ALTER TABLE tasks ADD COLUMN blockedBy TEXT`);
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN blocked_by TEXT`);
   } catch {
     // Column already exists, ignore
   }
@@ -272,9 +272,9 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
     // Column already exists, ignore
   }
 
-  // Migration: Add acceptanceCriteria column for AC section
+  // Migration: Add acceptance_criteria column for AC section
   try {
-    sqlite.exec(`ALTER TABLE tasks ADD COLUMN acceptanceCriteria TEXT`);
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN acceptance_criteria TEXT`);
   } catch {
     // Column already exists, ignore
   }
@@ -286,9 +286,9 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
     // Column already exists, ignore
   }
 
-  // Migration: Add dueDate column for deadline
+  // Migration: Add due_date column for deadline
   try {
-    sqlite.exec(`ALTER TABLE tasks ADD COLUMN dueDate INTEGER`);
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN due_date INTEGER`);
   } catch {
     // Column already exists, ignore
   }
@@ -301,8 +301,8 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
   }
 
   // Backlog indexes for performance
-  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_backlog_file_id ON tasks(backlogFileId);`);
-  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_parent_task_id ON tasks(parentTaskId);`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_backlog_file_id ON tasks(backlog_file_id);`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_parent_task_id ON tasks(parent_task_id);`);
   sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_milestone ON tasks(milestone);`);
 
   // Migration: Set default project_id for existing tasks

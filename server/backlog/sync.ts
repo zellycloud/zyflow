@@ -16,7 +16,7 @@ import {
   generateBacklogFilename,
   type BacklogTask,
 } from './parser.js'
-import { getSqlite, getNextTaskId } from '../tasks/db/client.js'
+import { getDb, getSqlite, getNextTaskId } from '../tasks/db/client.js'
 import { tasks as tasksTable } from '../tasks/db/schema.js'
 import { eq, and, inArray } from 'drizzle-orm'
 
@@ -88,7 +88,7 @@ export async function syncBacklogTaskToDb(
   projectId: string,
   task: BacklogTask
 ): Promise<number> {
-  const db = getSqlite()
+  const db = getDb()
   const now = new Date()
 
   // 기존 태스크 찾기 (backlogFileId로)
@@ -187,7 +187,7 @@ export async function syncBacklogToDb(
   projectPath: string
 ): Promise<{ synced: number; created: number; updated: number; deleted: number }> {
   const tasks = await readBacklogFiles(projectPath)
-  const db = getSqlite()
+  const db = getDb()
 
   let created = 0
   let updated = 0
@@ -295,7 +295,7 @@ export async function generateNewBacklogTaskId(
  * DB에서 backlog 태스크 조회
  */
 export function getBacklogTasksFromDb(projectId: string) {
-  const db = getSqlite()
+  const db = getDb()
 
   return db
     .select()
@@ -310,7 +310,7 @@ export function getBacklogTasksFromDb(projectId: string) {
  * 단일 backlog 태스크를 DB에서 조회
  */
 export function getBacklogTaskFromDb(projectId: string, backlogFileId: string) {
-  const db = getSqlite()
+  const db = getDb()
 
   return db
     .select()

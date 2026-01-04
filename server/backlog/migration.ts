@@ -5,7 +5,7 @@
  * 변환 후 origin을 'backlog'로 업데이트
  */
 
-import { getSqlite } from '../tasks/db/client.js'
+import { getDb, getSqlite } from '../tasks/db/client.js'
 import { tasks as tasksTable } from '../tasks/db/schema.js'
 import { eq, and, isNull, ne } from 'drizzle-orm'
 import {
@@ -51,7 +51,7 @@ export interface InboxTaskInfo {
  * - status가 'archived'가 아닌 것
  */
 export function getInboxTasksForMigration(projectId: string): InboxTaskInfo[] {
-  const db = getSqlite()
+  const db = getDb()
 
   const result = db
     .select({
@@ -116,7 +116,7 @@ async function migrateInboxTask(
     await writeFile(filePath, content, 'utf-8')
 
     // DB 업데이트: origin을 'backlog'로, backlogFileId 설정
-    const db = getSqlite()
+    const db = getDb()
     db.update(tasksTable)
       .set({
         origin: 'backlog',
@@ -218,7 +218,7 @@ export async function migrateSelectedInboxTasks(
   }
 
   try {
-    const db = getSqlite()
+    const db = getDb()
     await ensureBacklogDir(projectPath)
 
     for (const taskId of taskIds) {
