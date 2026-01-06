@@ -99,6 +99,52 @@ export function useDocSearch(projectPath?: string, query?: string) {
 }
 
 /**
+ * 문서 내용 저장
+ */
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+
+export function useSaveDocContent() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      projectPath,
+      docPath,
+      content,
+    }: {
+      projectPath: string
+      docPath: string
+      content: string
+    }) => {
+      const res = await fetch(`${API_BASE}/docs/content`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath, docPath, content }),
+      })
+
+      if (!res.ok) {
+        const error = await res.json()
+        throw new Error(error.error || 'Failed to save document')
+      }
+
+      return res.json()
+    },
+    onSuccess: (_, { projectPath, docPath }) => {
+      // 캐시 무효화 (목록 및 해당 문서 내용)
+      queryClient.invalidateQueries({ queryKey: ['docs', 'content', projectPath, docPath] })
+      queryClient.invalidateQueries({ queryKey: ['docs', 'list', projectPath] }) // 변경일 업데이트 등을 위해
+      toast.success('문서가 저장되었습니다')
+    },
+    onError: (error) => {
+      console.error('Save error:', error)
+      toast.error(`저장 실패: ${error.message}`)
+    },
+  })
+}
+
+
+/**
  * 문서 트리에서 모든 파일 경로 추출 (검색/팔레트용)
  */
 export function flattenDocTree(items: DocItem[]): DocItem[] {

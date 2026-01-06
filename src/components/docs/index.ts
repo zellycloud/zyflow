@@ -1,2 +1,2 @@
-export { DocsViewer } from './DocsViewer'
-export { DocsCommandPalette } from './DocsCommandPalette'
+export * from './DocsViewer'
+export * from './DocsCommandPalette'
