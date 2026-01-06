@@ -32,22 +32,37 @@ import {
 } from './tasks/index.js'
 import { gitRouter, gitPull } from './git/index.js'
 import { emit } from './websocket.js'
-import { getGlobalMultiWatcher } from './watcher.js'
 import { integrationsRouter, initIntegrationsDb } from './integrations/index.js'
-import { syncChangeTasksFromFile, syncChangeTasksForProject } from './sync.js'
 import { getSqlite } from './tasks/db/client.js'
 import type { Stage, ChangeStatus } from './tasks/db/schema.js'
 import { cliRoutes } from './cli-adapter/index.js'
 import { postTaskRouter } from './routes/post-task.js'
 import { docsRouter } from './routes/docs.js'
 import { projectsRouter } from './routes/projects.js'
+import { startTasksWatcher, stopTasksWatcher } from './watcher.js'
 import { changesRouter } from './routes/changes.js'
 import { flowRouter } from './routes/flow.js'
 import { alertsRouter, setBroadcastAlert } from './routes/alerts.js'
 import { aiRouter } from './ai/index.js'
-import remoteRouter from './routes/remote.js'
-import { getRemoteServerById } from './remote/remote-config.js'
-import { listDirectory, readRemoteFile, executeCommand } from './remote/ssh-manager.js'
+// Remote plugin (optional - only if installed)
+let remoteRouter: import('express').Router | null = null
+let getRemoteServerById: ((id: string) => Promise<import('@zyflow/remote-plugin').RemoteServer | null>) | null = null
+let listDirectory: ((server: import('@zyflow/remote-plugin').RemoteServer, path: string) => Promise<import('@zyflow/remote-plugin').RemoteDirectoryListing>) | null = null
+let readRemoteFile: ((server: import('@zyflow/remote-plugin').RemoteServer, path: string) => Promise<string>) | null = null
+let executeCommand: ((server: import('@zyflow/remote-plugin').RemoteServer, command: string, options?: { cwd?: string; timeout?: number }) => Promise<import('@zyflow/remote-plugin').RemoteCommandResult>) | null = null
+
+// Try to load remote plugin
+try {
+  const remotePlugin = await import('@zyflow/remote-plugin')
+  remoteRouter = remotePlugin.remoteRouter
+  getRemoteServerById = remotePlugin.getRemoteServerById
+  listDirectory = remotePlugin.listDirectory
+  readRemoteFile = remotePlugin.readRemoteFile
+  executeCommand = remotePlugin.executeCommand
+  console.log('[Remote Plugin] Loaded successfully')
+} catch {
+  console.log('[Remote Plugin] Not installed - remote features disabled')
+}
 import { OpenSpecPromptBuilder } from './claude-flow/prompt-builder.js'
 import * as pty from 'node-pty'
 const execAsync = promisify(exec)
@@ -129,8 +144,10 @@ app.use('/api/flow', flowRouter)
 // Alerts API 라우터 등록
 app.use('/api/alerts', alertsRouter)
 
-// Remote Server API 라우터 등록
-app.use('/api/remote', remoteRouter)
+// Remote Server API 라우터 등록 (플러그인이 설치된 경우만)
+if (remoteRouter) {
+  app.use('/api/remote', remoteRouter)
+}
 
 // Alert WebSocket broadcast 설정
 setBroadcastAlert((data) => {
@@ -186,7 +203,11 @@ app.post('/api/projects/browse', async (_req, res) => {
   } catch (error) {
     const errorMessage = (error as Error).message || ''
     // User cancelled the dialog (error code -128)
-    if (errorMessage.includes('-128') || errorMessage.includes('User canceled') || errorMessage.includes('취소')) {
+    if (
+      errorMessage.includes('-128') ||
+      errorMessage.includes('User canceled') ||
+      errorMessage.includes('취소')
+    ) {
       return res.json({ success: true, data: { path: null, cancelled: true } })
     }
     console.error('Error opening folder picker:', error)
@@ -235,12 +256,6 @@ app.post('/api/projects', async (req, res) => {
     const name = basename(projectPath)
     const project = await addProject(name, projectPath)
 
-    // Multi-Watcher에 새 프로젝트 추가
-    const multiWatcher = getGlobalMultiWatcher()
-    if (multiWatcher) {
-      multiWatcher.addProject(project.id, project.path)
-    }
-
     res.json({ success: true, data: { project } })
   } catch (error) {
     console.error('Error adding project:', error)
@@ -273,13 +288,6 @@ app.put('/api/projects/reorder', async (req, res) => {
 app.delete('/api/projects/:id', async (req, res) => {
   try {
     const projectId = req.params.id
-
-    // Multi-Watcher에서 프로젝트 제거
-    const multiWatcher = getGlobalMultiWatcher()
-    if (multiWatcher) {
-      await multiWatcher.removeProject(projectId)
-    }
-
     await removeProject(projectId)
     res.json({ success: true })
   } catch (error) {
@@ -335,58 +343,55 @@ app.put('/api/projects/:id/activate', async (req, res) => {
           const existing = sqlite.prepare('SELECT id FROM changes WHERE id = ?').get(changeId)
 
           if (existing) {
-            sqlite.prepare(`
+            sqlite
+              .prepare(
+                `
               UPDATE changes SET title = ?, spec_path = ?, status = 'active', updated_at = ? WHERE id = ?
-            `).run(title, specPath, now, changeId)
+            `
+              )
+              .run(title, specPath, now, changeId)
           } else {
-            sqlite.prepare(`
+            sqlite
+              .prepare(
+                `
               INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
               VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
-            `).run(changeId, project.id, title, specPath, now, now)
+            `
+              )
+              .run(changeId, project.id, title, specPath, now, now)
           }
         }
 
         // 파일시스템에 없는 Change는 archived로 변경
         if (activeChangeIds.length > 0) {
           const placeholders = activeChangeIds.map(() => '?').join(',')
-          sqlite.prepare(`
+          sqlite
+            .prepare(
+              `
             UPDATE changes SET status = 'archived', updated_at = ?
             WHERE project_id = ? AND status = 'active' AND id NOT IN (${placeholders})
-          `).run(now, project.id, ...activeChangeIds)
+          `
+            )
+            .run(now, project.id, ...activeChangeIds)
         } else {
           // 모든 Change가 없으면 전부 archived
-          sqlite.prepare(`
+          sqlite
+            .prepare(
+              `
             UPDATE changes SET status = 'archived', updated_at = ?
             WHERE project_id = ? AND status = 'active'
-          `).run(now, project.id)
+          `
+            )
+            .run(now, project.id)
         }
 
-        // tasks.md 동기화 - 모든 Change에 대해 수행
-        let tasksSynced = 0
-        for (const changeId of activeChangeIds) {
-          try {
-            const result = await syncChangeTasksForProject(changeId, project.path)
-            tasksSynced += result.tasksCreated + result.tasksUpdated
-          } catch {
-            // tasks.md가 없거나 파싱 실패 시 무시
-          }
-        }
-
-        console.log(`[Auto-sync] Project "${project.name}" synced on activation (${activeChangeIds.length} changes, ${tasksSynced} tasks)`)
+        console.log(`[Project] Activated "${project.name}" (${activeChangeIds.length} changes)`)
       } catch (syncError) {
-        console.error('Error auto-syncing project:', syncError)
-        // sync 실패해도 활성화는 성공으로 처리
+        console.error('Error syncing project on activation:', syncError)
       }
 
-      // Multi-Watcher에 프로젝트 추가 (이미 감시 중이면 스킵)
-      try {
-        const multiWatcher = getGlobalMultiWatcher()
-        if (multiWatcher && !multiWatcher.isWatching(project.id)) {
-          multiWatcher.addProject(project.id, project.path)
-        }
-      } catch (watcherError) {
-        console.warn(`[Watcher] Failed to add watcher for "${project.name}":`, watcherError)
-        // watcher 실패해도 활성화는 성공으로 처리
+      if (!project.remote) {
+        startTasksWatcher(project.path)
       }
     }
 
@@ -420,13 +425,6 @@ app.put('/api/projects/:id/path', async (req, res) => {
 
     const project = await updateProjectPath(projectId, newPath)
 
-    // Multi-Watcher 업데이트 (기존 watcher 제거 후 새 경로로 추가)
-    const multiWatcher = getGlobalMultiWatcher()
-    if (multiWatcher) {
-      await multiWatcher.removeProject(projectId)
-      multiWatcher.addProject(projectId, newPath)
-    }
-
     res.json({ success: true, data: { project } })
   } catch (error) {
     console.error('Error updating project path:', error)
@@ -444,12 +442,16 @@ app.get('/api/projects/:id/changes', async (req, res) => {
     const { getSqlite } = await import('./tasks/db/client.js')
     const sqlite = getSqlite()
 
-    const changes = sqlite.prepare(`
+    const changes = sqlite
+      .prepare(
+        `
       SELECT id, title, status, current_stage, progress, spec_path, created_at, updated_at
       FROM changes
       WHERE project_id = ?
       ORDER BY updated_at DESC
-    `).all(projectId)
+    `
+      )
+      .all(projectId)
 
     res.json({ success: true, changes })
   } catch (error) {
@@ -510,16 +512,24 @@ function parseAffectedSpecs(proposalContent: string): string[] {
 }
 
 // Helper to get changes for a specific project (supports both local and remote)
-async function getChangesForProject(project: { id: string; path: string; remote?: { serverId: string } }) {
+async function getChangesForProject(project: {
+  id: string
+  path: string
+  remote?: { serverId: string }
+}) {
   const projectPath = project.path
 
   // Get archived change IDs from DB to filter them out
   const archivedChangeIds = new Set<string>()
   try {
     const sqlite = getSqlite()
-    const archivedRows = sqlite.prepare(`
+    const archivedRows = sqlite
+      .prepare(
+        `
       SELECT id FROM changes WHERE project_id = ? AND status = 'archived'
-    `).all(project.id) as { id: string }[]
+    `
+      )
+      .all(project.id) as { id: string }[]
     for (const row of archivedRows) {
       archivedChangeIds.add(row.id)
     }
@@ -527,8 +537,13 @@ async function getChangesForProject(project: { id: string; path: string; remote?
     // DB not initialized yet, proceed without filtering
   }
 
-  // 원격 프로젝트인 경우
+  // 원격 프로젝트인 경우 (플러그인이 설치된 경우만)
   if (project.remote) {
+    if (!getRemoteServerById || !listDirectory || !readRemoteFile || !executeCommand) {
+      console.log('[Remote] Plugin not installed - cannot access remote project')
+      return []
+    }
+
     const server = await getRemoteServerById(project.remote.serverId)
     if (!server) {
       return []
@@ -605,7 +620,15 @@ async function getChangesForProject(project: { id: string; path: string; remote?
           updatedAt = entry.modifiedAt || new Date().toISOString()
         }
 
-        return { id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt }
+        return {
+          id: changeId,
+          title,
+          progress,
+          totalTasks,
+          completedTasks,
+          relatedSpecs,
+          updatedAt,
+        }
       })
     )
 
@@ -673,7 +696,7 @@ async function getChangesForProject(project: { id: string; path: string; remote?
       } else {
         // Fallback to file stat
         const tasksPath = join(changeDir, 'tasks.md')
-        const stat = await import('fs/promises').then(fs => fs.stat(tasksPath))
+        const stat = await import('fs/promises').then((fs) => fs.stat(tasksPath))
         updatedAt = stat.mtime.toISOString()
       }
     } catch {
@@ -681,7 +704,15 @@ async function getChangesForProject(project: { id: string; path: string; remote?
     }
 
     const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-    changes.push({ id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt })
+    changes.push({
+      id: changeId,
+      title,
+      progress,
+      totalTasks,
+      completedTasks,
+      relatedSpecs,
+      updatedAt,
+    })
   }
 
   return changes
@@ -826,10 +857,10 @@ app.get('/api/changes', async (_req, res) => {
           const tasksPath = join(changeDir, 'tasks.md')
           const proposalPath = join(changeDir, 'proposal.md')
           try {
-            const stat = await import('fs/promises').then(fs => fs.stat(tasksPath))
+            const stat = await import('fs/promises').then((fs) => fs.stat(tasksPath))
             updatedAt = stat.mtime.toISOString()
           } catch {
-            const stat = await import('fs/promises').then(fs => fs.stat(proposalPath))
+            const stat = await import('fs/promises').then((fs) => fs.stat(proposalPath))
             updatedAt = stat.mtime.toISOString()
           }
         }
@@ -1305,7 +1336,7 @@ app.post('/api/claude/execute', async (req, res) => {
         changeId,
         'single', // 단일 태스크 모드
         taskId,
-        taskTitle  // 태스크 제목으로도 검색 가능
+        taskTitle // 태스크 제목으로도 검색 가능
       )
       prompt = await promptBuilder.build()
 
@@ -1317,7 +1348,10 @@ app.post('/api/claude/execute', async (req, res) => {
       // 태스크 제목 명시
       prompt += `\n\n---\n\n**실행할 태스크**: ${taskTitle}`
 
-      console.log('[Claude Execute] Built prompt with OpenSpecPromptBuilder, length:', prompt.length)
+      console.log(
+        '[Claude Execute] Built prompt with OpenSpecPromptBuilder, length:',
+        prompt.length
+      )
     } catch (buildError) {
       console.error('[Claude Execute] Failed to build prompt:', buildError)
       // 폴백: 기본 프롬프트 사용
@@ -1363,23 +1397,25 @@ ${context || '추가 컨텍스트 없음'}
     await writeFile(tmpPromptPath, prompt, 'utf-8')
 
     // Build model argument
-    const modelArg = model && ['haiku', 'sonnet', 'opus'].includes(model)
-      ? `--model ${model}`
-      : ''
+    const modelArg = model && ['haiku', 'sonnet', 'opus'].includes(model) ? `--model ${model}` : ''
 
     console.log('[Claude Execute] Using model:', model || 'default (sonnet)')
 
     // Use node-pty to spawn with real TTY - enables stream-json output
-    const ptyProcess = pty.spawn('bash', [
-      '-c',
-      `cat '${tmpPromptPath}' | /opt/homebrew/bin/claude -p --verbose --output-format stream-json --dangerously-skip-permissions ${modelArg}`
-    ], {
-      name: 'xterm-color',
-      cols: 200,
-      rows: 50,
-      cwd: project.path,
-      env: { ...process.env } as Record<string, string>,
-    })
+    const ptyProcess = pty.spawn(
+      'bash',
+      [
+        '-c',
+        `cat '${tmpPromptPath}' | /opt/homebrew/bin/claude -p --verbose --output-format stream-json --dangerously-skip-permissions ${modelArg}`,
+      ],
+      {
+        name: 'xterm-color',
+        cols: 200,
+        rows: 50,
+        cwd: project.path,
+        env: { ...process.env } as Record<string, string>,
+      }
+    )
 
     console.log('[Claude Execute] PTY Process PID:', ptyProcess.pid)
 
@@ -1817,11 +1853,15 @@ function getChangeStages(changeId: string, _projectPath?: string) {
     docs: { total: 0, completed: 0, tasks: [] },
   }
 
-  const tasks = sqlite.prepare(`
+  const tasks = sqlite
+    .prepare(
+      `
     SELECT * FROM tasks
     WHERE change_id = ? AND status != 'archived'
     ORDER BY stage, group_order, sub_order, task_order, "order"
-  `).all(changeId) as Array<{
+  `
+    )
+    .all(changeId) as Array<{
     id: number
     change_id: string
     stage: Stage
@@ -1902,19 +1942,21 @@ app.get('/api/flow/changes/counts', async (req, res) => {
     await initTaskDb()
     const config = await loadConfig()
     const sqlite = getSqlite()
-    
+
     // 쿼리 파라미터에서 상태 필터링 옵션 가져오기
     const { status } = req.query // 'active', 'completed', 'all' (기본값: 'active')
-    
+
     const counts: Record<string, number> = {}
     const detailedCounts: Record<string, { active: number; completed: number; total: number }> = {}
 
     // 단일 쿼리로 모든 프로젝트의 집계 데이터 가져오기 (성능 최적화)
-    const projectIds = config.projects.map(p => p.id)
+    const projectIds = config.projects.map((p) => p.id)
     const placeholders = projectIds.map(() => '?').join(',')
-    
+
     // 상세 집계 쿼리 (인덱스 활용)
-    const detailedResults = sqlite.prepare(`
+    const detailedResults = sqlite
+      .prepare(
+        `
       SELECT
         project_id,
         SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
@@ -1923,7 +1965,9 @@ app.get('/api/flow/changes/counts', async (req, res) => {
       FROM changes
       WHERE project_id IN (${placeholders})
       GROUP BY project_id
-    `).all(...projectIds) as Array<{
+    `
+      )
+      .all(...projectIds) as Array<{
       project_id: string
       active: number
       completed: number
@@ -1932,8 +1976,8 @@ app.get('/api/flow/changes/counts', async (req, res) => {
 
     // 결과 매핑
     for (const project of config.projects) {
-      const projectResult = detailedResults.find(r => r.project_id === project.id)
-      
+      const projectResult = detailedResults.find((r) => r.project_id === project.id)
+
       // 기존 단일 집계 (하위 호환성)
       let count = 0
       if (status === 'active') {
@@ -1949,13 +1993,13 @@ app.get('/api/flow/changes/counts', async (req, res) => {
       detailedCounts[project.id] = {
         active: projectResult?.active ?? 0,
         completed: projectResult?.completed ?? 0,
-        total: projectResult?.total ?? 0
+        total: projectResult?.total ?? 0,
       }
     }
 
     // 항상 상세 정보를 포함하여 반환 (하위 호환성 유지)
     const responseData = { counts, detailed: detailedCounts }
-    
+
     res.json({ success: true, data: responseData })
   } catch (error) {
     console.error('Error getting change counts:', error)
@@ -1976,11 +2020,15 @@ app.get('/api/flow/changes', async (_req, res) => {
     }
 
     const sqlite = getSqlite()
-    const dbChanges = sqlite.prepare(`
+    const dbChanges = sqlite
+      .prepare(
+        `
       SELECT * FROM changes
       WHERE project_id = ? AND status != 'archived'
       ORDER BY updated_at DESC
-    `).all(project.id) as Array<{
+    `
+      )
+      .all(project.id) as Array<{
       id: string
       project_id: string
       title: string
@@ -2026,26 +2074,32 @@ app.get('/api/flow/changes/:id', async (req, res) => {
 
     const sqlite = getSqlite()
     // 모든 프로젝트에서 Change 조회 (active project 제한 없이)
-    const change = sqlite.prepare(`
+    const change = sqlite
+      .prepare(
+        `
       SELECT * FROM changes WHERE id = ?
-    `).get(req.params.id) as {
-      id: string
-      project_id: string
-      title: string
-      spec_path: string | null
-      status: ChangeStatus
-      current_stage: Stage
-      progress: number
-      created_at: number
-      updated_at: number
-    } | undefined
+    `
+      )
+      .get(req.params.id) as
+      | {
+          id: string
+          project_id: string
+          title: string
+          spec_path: string | null
+          status: ChangeStatus
+          current_stage: Stage
+          progress: number
+          created_at: number
+          updated_at: number
+        }
+      | undefined
 
     if (!change) {
       return res.status(404).json({ success: false, error: 'Change not found' })
     }
 
     // Change가 속한 프로젝트 경로 찾기
-    const project = config.projects.find(p => p.id === change.project_id)
+    const project = config.projects.find((p) => p.id === change.project_id)
     if (!project) {
       return res.status(404).json({ success: false, error: 'Project not found for this change' })
     }
@@ -2151,19 +2205,29 @@ app.post('/api/flow/sync', async (_req, res) => {
         }
 
         // Check if change exists
-        const existing = sqlite.prepare('SELECT id FROM changes WHERE id = ? AND project_id = ?').get(changeId, project.id)
+        const existing = sqlite
+          .prepare('SELECT id FROM changes WHERE id = ? AND project_id = ?')
+          .get(changeId, project.id)
         const now = Date.now()
 
         if (existing) {
-          sqlite.prepare(`
+          sqlite
+            .prepare(
+              `
             UPDATE changes SET title = ?, spec_path = ?, updated_at = ? WHERE id = ? AND project_id = ?
-          `).run(title, specPath, now, changeId, project.id)
+          `
+            )
+            .run(title, specPath, now, changeId, project.id)
           totalUpdated++
         } else {
-          sqlite.prepare(`
+          sqlite
+            .prepare(
+              `
             INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
-          `).run(changeId, project.id, title, specPath, now, now)
+          `
+            )
+            .run(changeId, project.id, title, specPath, now, now)
           totalCreated++
         }
 
@@ -2177,7 +2241,12 @@ app.post('/api/flow/sync', async (_req, res) => {
           // Extended group type with 3-level hierarchy
           interface ExtendedGroup {
             title: string
-            tasks: Array<{ title: string; completed: boolean; lineNumber: number; displayId?: string }>
+            tasks: Array<{
+              title: string
+              completed: boolean
+              lineNumber: number
+              displayId?: string
+            }>
             majorOrder?: number
             majorTitle?: string
             subOrder?: number
@@ -2209,22 +2278,32 @@ app.post('/api/flow/sync', async (_req, res) => {
               let existingTask: { id: number } | undefined
 
               if (displayId) {
-                existingTask = sqlite.prepare(`
+                existingTask = sqlite
+                  .prepare(
+                    `
                   SELECT id FROM tasks WHERE change_id = ? AND display_id = ?
-                `).get(changeId, displayId) as { id: number } | undefined
+                `
+                  )
+                  .get(changeId, displayId) as { id: number } | undefined
               }
 
               // displayId로 못 찾으면 title로 시도 (레거시 호환)
               if (!existingTask) {
-                existingTask = sqlite.prepare(`
+                existingTask = sqlite
+                  .prepare(
+                    `
                   SELECT id FROM tasks WHERE change_id = ? AND title = ?
-                `).get(changeId, task.title) as { id: number } | undefined
+                `
+                  )
+                  .get(changeId, task.title) as { id: number } | undefined
               }
 
               if (existingTask) {
                 // 기존 태스크 업데이트
                 const newStatus = task.completed ? 'done' : 'todo'
-                sqlite.prepare(`
+                sqlite
+                  .prepare(
+                    `
                   UPDATE tasks
                   SET title = ?,
                       status = ?,
@@ -2237,48 +2316,58 @@ app.post('/api/flow/sync', async (_req, res) => {
                       project_id = ?,
                       updated_at = ?
                   WHERE id = ?
-                `).run(
-                  task.title,
-                  newStatus,
-                  groupTitle,
-                  majorOrder,
-                  taskOrder,
-                  majorTitle,
-                  subOrder,
-                  displayId,
-                  project.id,
-                  now,
-                  existingTask.id
-                )
+                `
+                  )
+                  .run(
+                    task.title,
+                    newStatus,
+                    groupTitle,
+                    majorOrder,
+                    taskOrder,
+                    majorTitle,
+                    subOrder,
+                    displayId,
+                    project.id,
+                    now,
+                    existingTask.id
+                  )
               } else {
                 // 새 태스크 생성
-                sqlite.prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_openspec'`).run()
-                const seqResult = sqlite.prepare(`SELECT value FROM sequences WHERE name = 'task_openspec'`).get() as { value: number }
+                sqlite
+                  .prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_openspec'`)
+                  .run()
+                const seqResult = sqlite
+                  .prepare(`SELECT value FROM sequences WHERE name = 'task_openspec'`)
+                  .get() as { value: number }
                 const newId = seqResult.value
 
-                sqlite.prepare(`
+                sqlite
+                  .prepare(
+                    `
                   INSERT INTO tasks (
                     id, project_id, change_id, stage, title, status, priority, "order",
                     group_title, group_order, task_order, major_title, sub_order,
                     display_id, origin, created_at, updated_at
                   )
                   VALUES (?, ?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
-                `).run(
-                  newId,
-                  project.id,
-                  changeId,
-                  task.title,
-                  task.completed ? 'done' : 'todo',
-                  task.lineNumber,
-                  groupTitle,
-                  majorOrder,
-                  taskOrder,
-                  majorTitle,
-                  subOrder,
-                  displayId,
-                  now,
-                  now
-                )
+                `
+                  )
+                  .run(
+                    newId,
+                    project.id,
+                    changeId,
+                    task.title,
+                    task.completed ? 'done' : 'todo',
+                    task.lineNumber,
+                    groupTitle,
+                    majorOrder,
+                    taskOrder,
+                    majorTitle,
+                    subOrder,
+                    displayId,
+                    now,
+                    now
+                  )
               }
             }
           }
@@ -2286,17 +2375,25 @@ app.post('/api/flow/sync', async (_req, res) => {
           // 파일에서 삭제된 태스크 정리 (displayId가 있는 태스크 중 파일에 없는 것)
           // 삭제 대신 archived 상태로 변경 (데이터 보존)
           if (parsedDisplayIds.size > 0) {
-            const dbTasks = sqlite.prepare(`
+            const dbTasks = sqlite
+              .prepare(
+                `
               SELECT id, display_id FROM tasks
               WHERE change_id = ? AND display_id IS NOT NULL AND status != 'archived'
-            `).all(changeId) as Array<{ id: number; display_id: string }>
+            `
+              )
+              .all(changeId) as Array<{ id: number; display_id: string }>
 
             for (const dbTask of dbTasks) {
               if (!parsedDisplayIds.has(dbTask.display_id)) {
                 // 파일에서 삭제된 태스크 - archived로 표시
-                sqlite.prepare(`
+                sqlite
+                  .prepare(
+                    `
                   UPDATE tasks SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ?
-                `).run(now, now, dbTask.id)
+                `
+                  )
+                  .run(now, now, dbTask.id)
               }
             }
           }
@@ -2312,8 +2409,8 @@ app.post('/api/flow/sync', async (_req, res) => {
         synced: totalCreated + totalUpdated,
         created: totalCreated,
         updated: totalUpdated,
-        projects: projectsSynced
-      }
+        projects: projectsSynced,
+      },
     })
   } catch (error) {
     console.error('Error syncing flow changes:', error)
@@ -2415,19 +2512,23 @@ app.post('/api/flow/tasks', async (req, res) => {
     const sqlite = getSqlite()
     const now = Date.now()
 
-    const result = sqlite.prepare(`
+    const result = sqlite
+      .prepare(
+        `
       INSERT INTO tasks (project_id, change_id, stage, title, description, status, priority, "order", created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, 'todo', ?, 0, ?, ?)
-    `).run(
-      project.id,
-      changeId || null,
-      stage || 'task',
-      title,
-      description || null,
-      priority || 'medium',
-      now,
-      now
-    )
+    `
+      )
+      .run(
+        project.id,
+        changeId || null,
+        stage || 'task',
+        title,
+        description || null,
+        priority || 'medium',
+        now,
+        now
+      )
 
     const task = sqlite.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid)
 
@@ -2615,114 +2716,6 @@ app.patch('/api/flow/tasks/:id', async (req, res) => {
   }
 })
 
-// ==================== SYNC API ====================
-
-// POST /api/flow/changes/:id/sync - 특정 Change의 tasks.md를 DB에 수동 동기화
-app.post('/api/flow/changes/:id/sync', async (req, res) => {
-  try {
-    await initTaskDb()
-    const changeId = req.params.id
-    const project = await getActiveProject()
-
-    if (!project) {
-      return res.status(400).json({ success: false, error: 'No active project' })
-    }
-
-    // tasks.md를 파싱하여 DB에 동기화
-    const result = await syncChangeTasksFromFile(changeId)
-
-    // WebSocket으로 클라이언트에 동기화 완료 알림
-    emit('change:synced', {
-      changeId,
-      projectPath: project.path,
-      tasksCreated: result.tasksCreated,
-      tasksUpdated: result.tasksUpdated,
-    })
-
-    res.json({
-      success: true,
-      data: {
-        changeId,
-        tasksCreated: result.tasksCreated,
-        tasksUpdated: result.tasksUpdated,
-      },
-    })
-  } catch (error) {
-    console.error('Error syncing change:', error)
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to sync change',
-    })
-  }
-})
-
-// POST /api/flow/sync/all - 모든 프로젝트의 모든 Changes 동기화
-app.post('/api/flow/sync/all', async (_req, res) => {
-  try {
-    await initTaskDb()
-    const config = await loadConfig()
-
-    if (config.projects.length === 0) {
-      return res.json({
-        success: true,
-        data: { synced: 0, created: 0, updated: 0, projects: 0 },
-      })
-    }
-
-    let totalCreated = 0
-    let totalUpdated = 0
-    let projectsSynced = 0
-
-    for (const project of config.projects) {
-      const openspecDir = join(project.path, 'openspec', 'changes')
-      let entries
-      try {
-        entries = await readdir(openspecDir, { withFileTypes: true })
-      } catch {
-        continue
-      }
-
-      projectsSynced++
-
-      for (const entry of entries) {
-        if (!entry.isDirectory() || entry.name === 'archive') continue
-
-        const changeId = entry.name
-        try {
-          const result = await syncChangeTasksForProject(changeId, project.path)
-          totalCreated += result.tasksCreated
-          totalUpdated += result.tasksUpdated
-        } catch (syncError) {
-          console.error(`Error syncing ${changeId}:`, syncError)
-        }
-      }
-    }
-
-    // WebSocket으로 전체 동기화 완료 알림
-    emit('sync:completed', {
-      totalCreated,
-      totalUpdated,
-      projectsSynced,
-    })
-
-    res.json({
-      success: true,
-      data: {
-        synced: totalCreated + totalUpdated,
-        created: totalCreated,
-        updated: totalUpdated,
-        projects: projectsSynced,
-      },
-    })
-  } catch (error) {
-    console.error('Error syncing all changes:', error)
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to sync all changes',
-    })
-  }
-})
-
 // ==================== OPENSPEC ARCHIVE ====================
 
 // ==================== PYTHON AGENTS API PROXY ====================
@@ -2735,7 +2728,7 @@ app.get('/api/agents/health', async (_req, res) => {
       return res.status(503).json({
         success: false,
         error: 'Python agents server unavailable',
-        pythonStatus: 'offline'
+        pythonStatus: 'offline',
       })
     }
     const data = await response.json()
@@ -2746,8 +2739,8 @@ app.get('/api/agents/health', async (_req, res) => {
       data: {
         status: 'unavailable',
         pythonStatus: 'offline',
-        message: 'Python agents server is not running. Start with: npm run py:server'
-      }
+        message: 'Python agents server is not running. Start with: npm run py:server',
+      },
     })
   }
 })
@@ -2762,19 +2755,21 @@ app.use('/api/agents', async (req, res) => {
       try {
         const pm = getProcessManager()
         const sessions = pm.getAllSessions()
-        return res.json(sessions.map(session => ({
-          session_id: session.id,
-          change_id: session.changeId,
-          status: session.status,
-          created_at: session.startedAt,
-          updated_at: session.endedAt || session.startedAt,
-          project_path: session.projectPath,
-          current_task: null,
-          completed_tasks: 0,
-          total_tasks: 0,
-          error: session.error || null,
-          conversation_history: session.conversationHistory || []
-        })))
+        return res.json(
+          sessions.map((session) => ({
+            session_id: session.id,
+            change_id: session.changeId,
+            status: session.status,
+            created_at: session.startedAt,
+            updated_at: session.endedAt || session.startedAt,
+            project_path: session.projectPath,
+            current_task: null,
+            completed_tasks: 0,
+            total_tasks: 0,
+            error: session.error || null,
+            conversation_history: session.conversationHistory || [],
+          }))
+        )
       } catch {
         // ProcessManager not initialized, return empty array
         return res.json([])
@@ -2823,7 +2818,7 @@ app.use('/api/agents', async (req, res) => {
         const session = pm.getSession(targetSessionId)
 
         if (session) {
-            isCliSession = true
+          isCliSession = true
         }
       } catch {
         // ProcessManager not initialized, fall through to Python server
@@ -2849,7 +2844,7 @@ app.use('/api/agents', async (req, res) => {
           total_tasks: 0,
           error: session.error || null,
           // Include conversation history for message persistence
-          conversation_history: session.conversationHistory || []
+          conversation_history: session.conversationHistory || [],
         })
       }
     }
@@ -2858,27 +2853,28 @@ app.use('/api/agents', async (req, res) => {
     // 2. Handle CLI Execution
     if (isExecuteRequest && req.body.use_cli === true) {
       console.log('[Proxy] Routing to CLI Adapter (Execute)')
-      const { initProcessManager, getProcessManager } = await import('./cli-adapter/process-manager.js')
+      const { initProcessManager, getProcessManager } =
+        await import('./cli-adapter/process-manager.js')
       const projectPath = req.body.project_path || process.cwd()
-      
+
       let processManager
       try {
         processManager = getProcessManager(projectPath)
       } catch {
         processManager = initProcessManager(projectPath)
       }
-      
+
       const result = await processManager.start({
         profileId: 'claude', // Default to claude
         changeId: req.body.change_id,
         projectPath,
-        initialPrompt: req.body.initial_prompt
+        initialPrompt: req.body.initial_prompt,
       })
-      
+
       if (!result.success) {
         return res.status(500).json({ success: false, error: result.error })
       }
-      
+
       return res.json({
         session_id: result.sessionId,
         status: 'running',
@@ -2886,15 +2882,15 @@ app.use('/api/agents', async (req, res) => {
         change_id: req.body.change_id || 'unknown',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        project_path: projectPath
+        project_path: projectPath,
       })
     }
-    
+
     // 3. Handle CLI Input
     if (isInputRequest && isCliSession && targetSessionId) {
       const { getProcessManager } = await import('./cli-adapter/process-manager.js')
       const processManager = getProcessManager()
-      
+
       const result = await processManager.sendInput(targetSessionId, req.body.input || '')
       if (!result.success) {
         return res.status(500).json({ success: false, error: result.error })
@@ -2907,7 +2903,7 @@ app.use('/api/agents', async (req, res) => {
       const sessionId = targetSessionId || req.path.split('/')[2]
       const { getProcessManager } = await import('./cli-adapter/process-manager.js')
       const processManager = getProcessManager()
-      
+
       res.setHeader('Content-Type', 'text/event-stream')
       res.setHeader('Cache-Control', 'no-cache')
       res.setHeader('Connection', 'keep-alive')
@@ -2927,8 +2923,8 @@ app.use('/api/agents', async (req, res) => {
           // Map stdout to agent_response or task_complete based on content?
           // For now just stream raw output as agent_response
           sendEvent('agent_response', {
-             content: output.content,
-             timestamp: output.timestamp
+            content: output.content,
+            timestamp: output.timestamp,
           })
         }
       }
@@ -2947,19 +2943,19 @@ app.use('/api/agents', async (req, res) => {
       // 만약 이미 종료된 세션이라면?
       const session = processManager.getSession(sessionId)
       if (session && (session.status === 'completed' || session.status === 'failed')) {
-         // 이미 종료된 세션의 로그를 한꺼번에 보내주거나 종료 처리
-         onEnd(session)
-         return
+        // 이미 종료된 세션의 로그를 한꺼번에 보내주거나 종료 처리
+        onEnd(session)
+        return
       }
 
       processManager.on('output', onOutput)
       processManager.on('session:end', onEnd)
-      
+
       req.on('close', () => {
         processManager.off('output', onOutput)
         processManager.off('session:end', onEnd)
       })
-      
+
       return
     }
 
@@ -3002,13 +2998,13 @@ app.use('/api/agents', async (req, res) => {
     res.status(response.status).json(data)
   } catch (error) {
     console.error('Error proxying to Python agents server:', error)
-    
+
     // Auto-fallback to CLI if Python server is down for execute requests?
     // For now, just return error with hint
     res.status(503).json({
       success: false,
       error: 'Failed to connect to Python agents server',
-      hint: 'Start with: npm run py:server'
+      hint: 'Start with: npm run py:server',
     })
   }
 })
@@ -3086,12 +3082,12 @@ app.post('/api/flow/changes/:id/archive', async (req, res) => {
 
     let filesMoved = false
     try {
-      await import('fs/promises').then(fs => fs.access(archivePath))
+      await import('fs/promises').then((fs) => fs.access(archivePath))
       filesMoved = true
     } catch {
       // Archive directory doesn't exist, check if original still exists
       try {
-        await import('fs/promises').then(fs => fs.access(originalPath))
+        await import('fs/promises').then((fs) => fs.access(originalPath))
         filesMoved = false
       } catch {
         // Neither exists - something went wrong
@@ -3104,9 +3100,13 @@ app.post('/api/flow/changes/:id/archive', async (req, res) => {
     const sqlite = getSqlite()
     const now = Date.now()
 
-    sqlite.prepare(`
+    sqlite
+      .prepare(
+        `
       UPDATE changes SET status = 'archived', updated_at = ? WHERE id = ? AND project_id = ?
-    `).run(now, changeId, project.id)
+    `
+      )
+      .run(now, changeId, project.id)
 
     // WebSocket으로 아카이브 완료 알림
     emit('change:archived', { changeId, projectId: project.id })
@@ -3151,7 +3151,7 @@ app.post('/api/flow/changes/:id/fix-validation', async (req, res) => {
       // Find requirement lines without SHALL/MUST and add "SHALL"
       // Pattern: Lines starting with "- " in requirements section that don't have SHALL/MUST
       const lines = content.split('\n')
-      const fixedLines = lines.map(line => {
+      const fixedLines = lines.map((line) => {
         // Check if it's a requirement-like line (starts with "- " and doesn't have SHALL/MUST)
         if (line.match(/^[-*]\s+/) && !line.match(/\b(SHALL|MUST)\b/i)) {
           // Check if it's in a requirements context (has keywords like "requirement", "feature", etc.)
@@ -3217,9 +3217,10 @@ app.post('/api/flow/changes/:id/fix-validation', async (req, res) => {
         changeId,
         proposalFixed,
         specsFixed,
-        message: proposalFixed || specsFixed > 0
-          ? `Fixed validation errors: proposal=${proposalFixed}, specs=${specsFixed}`
-          : 'No fixes needed or possible',
+        message:
+          proposalFixed || specsFixed > 0
+            ? `Fixed validation errors: proposal=${proposalFixed}, specs=${specsFixed}`
+            : 'No fixes needed or possible',
       },
     })
   } catch (error) {
@@ -3241,7 +3242,7 @@ app.get('/api/diagram/context', async (req, res) => {
       return res.status(400).json({ success: false, error: 'No active project' })
     }
 
-    const projectPath = req.query.path as string || project.path
+    const projectPath = (req.query.path as string) || project.path
     const maxDepth = parseInt(req.query.maxDepth as string) || 10
 
     const core = await getGitdiagramCore()
@@ -3305,9 +3306,7 @@ app.post('/api/diagram/generate', async (req, res) => {
       provider = 'openai'
     } else {
       // Return a generated diagram based on file structure analysis (no LLM)
-      const [fileTree] = await Promise.all([
-        core.generateFileTree(projectPath, { maxDepth: 8 }),
-      ])
+      const [fileTree] = await Promise.all([core.generateFileTree(projectPath, { maxDepth: 8 })])
       const simpleDiagram = generateSimpleDiagram(fileTree, project.name)
       return res.json({
         success: true,
@@ -3349,7 +3348,7 @@ app.post('/api/diagram/generate', async (req, res) => {
 
 // Helper function to generate simple diagram from file tree (no LLM)
 function generateSimpleDiagram(fileTree: string, projectName: string): string {
-  const lines = fileTree.split('\n').filter(l => l.trim())
+  const lines = fileTree.split('\n').filter((l) => l.trim())
   const dirs = new Set<string>()
   const files: string[] = []
 
@@ -3458,15 +3457,21 @@ app.get('/api/diagram/change/:changeId', async (req, res) => {
 
     try {
       proposal = await readFile(join(changeDir, 'proposal.md'), 'utf-8')
-    } catch { /* no proposal */ }
+    } catch {
+      /* no proposal */
+    }
 
     try {
       spec = await readFile(join(changeDir, 'spec.md'), 'utf-8')
-    } catch { /* no spec */ }
+    } catch {
+      /* no spec */
+    }
 
     try {
       tasks = await readFile(join(changeDir, 'tasks.md'), 'utf-8')
-    } catch { /* no tasks */ }
+    } catch {
+      /* no tasks */
+    }
 
     // Extract affected files
     const affectedFiles: string[] = []
@@ -3499,4 +3504,3 @@ app.get('/api/diagram/change/:changeId', async (req, res) => {
     })
   }
 })
-

@@ -15,7 +15,7 @@ import {
   addRemoteProject,
   getServerForProject,
   loadIntegratedConfig,
-} from '../remote/remote-config.js'
+} from './remote-config.js'
 import {
   // SSH Manager
   testConnection,
@@ -29,13 +29,13 @@ import {
   closeConnection,
   getConnectionStatus,
   exists,
-} from '../remote/ssh-manager.js'
+} from './ssh-manager.js'
 import type {
   AddRemoteServerRequest,
   AddRemoteProjectRequest,
   RemoteServer,
-} from '../remote/types.js'
-import { parseSSHConfig } from '../remote/ssh-config-parser.js'
+} from './types.js'
+import { parseSSHConfig } from './ssh-config-parser.js'
 
 const router = Router()
 
