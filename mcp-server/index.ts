@@ -55,21 +55,6 @@ import {
   handleDeleteAgentSession,
 } from './agent-tools.js'
 
-// Post-Task Tools imports
-import {
-  postTaskToolDefinitions,
-  handlePostTaskRun,
-  handleQuarantineList,
-  handleQuarantineRestore,
-  handleQuarantineDelete,
-  handleQuarantineStats,
-  handleSetupHooks,
-  handleScheduler,
-  handleEventListener,
-  handleTriggerStatus,
-  handleReportsList,
-  handleReportView,
-} from './post-task-tools.js'
 
 // Change Log & Replay imports
 import { getChangeLogManager } from '../server/change-log.js'
@@ -445,9 +430,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
       // Agent Tools
       ...agentToolDefinitions,
-
-      // Post-Task Tools
-      ...postTaskToolDefinitions,
 
       // Change Log Tools
       {
@@ -1003,129 +985,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'zyflow_delete_agent_session': {
         const result = await handleDeleteAgentSession(args as { sessionId: string })
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          isError: !result.success,
-        }
-      }
-
-      // Post-Task Tools
-      case 'post_task_run': {
-        const result = await handlePostTaskRun(
-          args as {
-            category?: string;
-            tasks?: string[];
-            cli?: string;
-            model?: string;
-            dryRun?: boolean;
-            noCommit?: boolean;
-          },
-          PROJECT_PATH
-        )
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          isError: !result.success,
-        }
-      }
-
-      case 'quarantine_list': {
-        const result = await handleQuarantineList(
-          args as { status?: string; date?: string },
-          PROJECT_PATH
-        )
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          isError: !result.success,
-        }
-      }
-
-      case 'quarantine_restore': {
-        const result = await handleQuarantineRestore(
-          args as { itemId: string },
-          PROJECT_PATH
-        )
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          isError: !result.success,
-        }
-      }
-
-      case 'quarantine_delete': {
-        const result = await handleQuarantineDelete(
-          args as { itemId: string },
-          PROJECT_PATH
-        )
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          isError: !result.success,
-        }
-      }
-
-      case 'quarantine_stats': {
-        const result = await handleQuarantineStats(PROJECT_PATH)
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          isError: !result.success,
-        }
-      }
-
-      case 'post_task_setup_hooks': {
-        const result = await handleSetupHooks(
-          args as { action: string },
-          PROJECT_PATH
-        )
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          isError: !result.success,
-        }
-      }
-
-      case 'post_task_start_scheduler': {
-        const result = await handleScheduler(
-          args as { action: string },
-          PROJECT_PATH
-        )
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          isError: !result.success,
-        }
-      }
-
-      case 'post_task_event_listener': {
-        const result = await handleEventListener(
-          args as { action: string },
-          PROJECT_PATH
-        )
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          isError: !result.success,
-        }
-      }
-
-      case 'post_task_trigger_status': {
-        const result = handleTriggerStatus()
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          isError: !result.success,
-        }
-      }
-
-      case 'post_task_reports': {
-        const result = await handleReportsList(
-          args as { limit?: number; taskType?: string },
-          PROJECT_PATH
-        )
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-          isError: !result.success,
-        }
-      }
-
-      case 'post_task_report_view': {
-        const result = await handleReportView(
-          args as { reportId: string },
-          PROJECT_PATH
-        )
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
           isError: !result.success,
