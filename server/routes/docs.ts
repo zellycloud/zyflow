@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { readdir, readFile, access, stat } from 'fs/promises'
+import { readdir, readFile, access, stat, writeFile } from 'fs/promises'
 import { join, relative, basename, extname } from 'path'
 import { constants } from 'fs'
 
@@ -22,47 +22,53 @@ interface DocContent {
 }
 
 /**
- * 재귀적으로 마크다운 파일 목록을 가져오기
+ * 재귀적으로 마크다운 파일 목록을 가져오기 (병렬 처리 최적화)
  */
 async function scanDocsDirectory(
   basePath: string,
   currentPath: string,
   projectPath: string
 ): Promise<DocItem[]> {
-  const items: DocItem[] = []
-
   try {
     const entries = await readdir(currentPath, { withFileTypes: true })
+    
+    // 병렬 처리를 위해 Promise.all 사용
+    const results = await Promise.all(
+      entries.map(async (entry) => {
+        const fullPath = join(currentPath, entry.name)
+        const relativePath = relative(projectPath, fullPath)
 
-    for (const entry of entries) {
-      const fullPath = join(currentPath, entry.name)
-      const relativePath = relative(projectPath, fullPath)
+        if (entry.isDirectory()) {
+          // 숨김 폴더나 node_modules, 빌드 결과물 등 제외
+          const excludes = ['node_modules', 'dist', 'build', 'out', 'coverage', '.next', '.git']
+          if (entry.name.startsWith('.') || excludes.includes(entry.name)) {
+            return null
+          }
 
-      if (entry.isDirectory()) {
-        // 숨김 폴더나 node_modules 제외
-        if (entry.name.startsWith('.') || entry.name === 'node_modules') {
-          continue
-        }
-
-        const children = await scanDocsDirectory(basePath, fullPath, projectPath)
-        if (children.length > 0) {
-          items.push({
-            id: relativePath.replace(/\//g, '-'),
-            name: entry.name,
+          const children = await scanDocsDirectory(basePath, fullPath, projectPath)
+          if (children.length > 0) {
+            return {
+              id: relativePath.replace(/\//g, '-'),
+              name: entry.name,
+              path: relativePath,
+              type: 'folder' as 'folder', // 타입 명시
+              children,
+            }
+          }
+        } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
+          return {
+            id: relativePath.replace(/\//g, '-').replace('.md', ''),
+            name: entry.name.replace('.md', ''),
             path: relativePath,
-            type: 'folder',
-            children,
-          })
+            type: 'file' as 'file', // 타입 명시
+          }
         }
-      } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
-        items.push({
-          id: relativePath.replace(/\//g, '-').replace('.md', ''),
-          name: entry.name.replace('.md', ''),
-          path: relativePath,
-          type: 'file',
-        })
-      }
-    }
+        return null
+      })
+    )
+
+    // null 제외하고 정렬 (타입 단언 사용)
+    const items = results.filter((item) => item !== null) as DocItem[]
 
     // 폴더 먼저, 그 다음 파일 (알파벳 순)
     items.sort((a, b) => {
@@ -71,11 +77,12 @@ async function scanDocsDirectory(
       }
       return a.name.localeCompare(b.name)
     })
+
+    return items
   } catch {
     // 디렉토리 접근 실패 시 빈 배열 반환
+    return []
   }
-
-  return items
 }
 
 /**
@@ -84,7 +91,7 @@ async function scanDocsDirectory(
  */
 router.get('/', async (req, res) => {
   try {
-    const { projectPath } = req.query
+    const { projectPath } = req.query as { projectPath?: string }
 
     if (!projectPath || typeof projectPath !== 'string') {
       return res.status(400).json({ error: 'projectPath is required' })
@@ -116,15 +123,25 @@ router.get('/', async (req, res) => {
       }
     }
 
-    // 2. /docs 폴더 스캔
+    // 2. /docs 폴더 및 /openspec 폴더 스캔
     const docsPath = join(projectPath, 'docs')
+    const openspecPath = join(projectPath, 'openspec')
+    
     let docsFolderItems: DocItem[] = []
+    let openspecFolderItems: DocItem[] = []
 
     try {
       await access(docsPath, constants.R_OK)
       docsFolderItems = await scanDocsDirectory(docsPath, docsPath, projectPath)
     } catch {
       // docs 폴더가 없으면 빈 배열
+    }
+
+    try {
+      await access(openspecPath, constants.R_OK)
+      openspecFolderItems = await scanDocsDirectory(openspecPath, openspecPath, projectPath)
+    } catch {
+      // openspec 폴더가 없으면 빈 배열
     }
 
     const result: DocItem[] = []
@@ -142,6 +159,17 @@ router.get('/', async (req, res) => {
         path: 'docs',
         type: 'folder',
         children: docsFolderItems,
+      })
+    }
+
+    // openspec 폴더 내용 추가
+    if (openspecFolderItems.length > 0) {
+      result.push({
+        id: 'openspec',
+        name: 'openspec',
+        path: 'openspec',
+        type: 'folder',
+        children: openspecFolderItems,
       })
     }
 
@@ -164,7 +192,8 @@ router.get('/', async (req, res) => {
  */
 router.get('/content', async (req, res) => {
   try {
-    const { projectPath, docPath } = req.query
+    // 타입 단언 추가
+    const { projectPath, docPath } = req.query as { projectPath?: string; docPath?: string }
 
     if (!projectPath || typeof projectPath !== 'string') {
       return res.status(400).json({ error: 'projectPath is required' })
@@ -174,21 +203,18 @@ router.get('/content', async (req, res) => {
       return res.status(400).json({ error: 'docPath is required' })
     }
 
-    // 보안: 상위 디렉토리 접근 방지
     if (docPath.includes('..')) {
       return res.status(400).json({ error: 'Invalid path' })
     }
 
     const fullPath = join(projectPath, docPath)
 
-    // 파일 존재 확인
     try {
       await access(fullPath, constants.R_OK)
     } catch {
       return res.status(404).json({ error: 'Document not found' })
     }
 
-    // 파일 내용 읽기
     const content = await readFile(fullPath, 'utf-8')
     const stats = await stat(fullPath)
 
@@ -214,12 +240,42 @@ router.get('/content', async (req, res) => {
 })
 
 /**
+ * 문서 내용 저장
+ * PUT /api/docs/content
+ */
+router.put('/content', async (req, res) => {
+  try {
+    const { projectPath, docPath, content } = req.body
+
+    if (!projectPath || !docPath || content === undefined) {
+      return res.status(400).json({ error: 'Missing required fields' })
+    }
+
+    if (docPath.includes('..')) {
+      return res.status(400).json({ error: 'Invalid path' })
+    }
+
+    const fullPath = join(projectPath, docPath)
+    
+    await writeFile(fullPath, content, 'utf-8')
+
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[Docs] Save error:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to save document',
+    })
+  }
+})
+
+/**
  * 문서 검색
  * GET /api/docs/search?projectPath=/path/to/project&query=검색어
  */
 router.get('/search', async (req, res) => {
   try {
-    const { projectPath, query } = req.query
+    const { projectPath, query } = req.query as { projectPath?: string; query?: string }
 
     if (!projectPath || typeof projectPath !== 'string') {
       return res.status(400).json({ error: 'projectPath is required' })
@@ -232,63 +288,65 @@ router.get('/search', async (req, res) => {
     const searchLower = query.toLowerCase()
     const results: Array<{ path: string; name: string; matches: string[] }> = []
 
-    // 검색할 경로들
-    const searchPaths = [projectPath, join(projectPath, 'docs')]
+    const searchPaths = [projectPath, join(projectPath, 'docs'), join(projectPath, 'openspec')]
     const processedPaths = new Set<string>()
 
+    // searchInDirectory는 성능상 직렬로 두거나 병렬로 바꿀 수 있음. 여기서는 일단 유지.
     async function searchInDirectory(dirPath: string) {
       try {
         const entries = await readdir(dirPath, { withFileTypes: true })
 
         for (const entry of entries) {
-          const fullPath = join(dirPath, entry.name)
+           const fullPath = join(dirPath, entry.name)
 
-          if (processedPaths.has(fullPath)) continue
-          processedPaths.add(fullPath)
+           if (processedPaths.has(fullPath)) continue
+           processedPaths.add(fullPath)
 
-          if (entry.isDirectory()) {
-            if (!entry.name.startsWith('.') && entry.name !== 'node_modules') {
-              await searchInDirectory(fullPath)
-            }
-          } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
-            try {
-              const content = await readFile(fullPath, 'utf-8')
-              const lines = content.split('\n')
-              const matches: string[] = []
+           if (entry.isDirectory()) {
+             // 검색 시에도 제외 목록 적용
+             const excludes = ['node_modules', 'dist', 'build', 'out', 'coverage', '.next', '.git']
+             if (!entry.name.startsWith('.') && !excludes.includes(entry.name)) {
+               await searchInDirectory(fullPath)
+             }
+           } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
+             try {
+               const content = await readFile(fullPath, 'utf-8')
+               const lines = content.split('\n')
+               const matches: string[] = []
 
-              for (let i = 0; i < lines.length; i++) {
-                if (lines[i].toLowerCase().includes(searchLower)) {
-                  // 매칭된 라인 주변 컨텍스트 포함
-                  const snippet = lines[i].trim().slice(0, 200)
-                  matches.push(snippet)
-                  if (matches.length >= 3) break // 최대 3개 매칭
-                }
-              }
+               for (let i = 0; i < lines.length; i++) {
+                 if (lines[i].toLowerCase().includes(searchLower)) {
+                   const snippet = lines[i].trim().slice(0, 200)
+                   matches.push(snippet)
+                   if (matches.length >= 3) break
+                 }
+               }
 
-              if (matches.length > 0) {
-                results.push({
-                  path: relative(projectPath, fullPath),
-                  name: entry.name.replace('.md', ''),
-                  matches,
-                })
-              }
-            } catch {
-              // 파일 읽기 실패 시 건너뜀
-            }
-          }
+               if (matches.length > 0) {
+                 results.push({
+                   path: relative(projectPath, fullPath),
+                   name: entry.name.replace('.md', ''),
+                   matches,
+                 })
+               }
+             } catch {
+               // 파일 읽기 실패 시 건너뜀
+             }
+           }
         }
       } catch {
         // 디렉토리 접근 실패 시 건너뜀
       }
     }
 
+    // 검색은 순차적으로 (너무 많은 파일 오픈 방지)
     for (const searchPath of searchPaths) {
       await searchInDirectory(searchPath)
     }
 
     res.json({
       success: true,
-      data: results.slice(0, 20), // 최대 20개 결과
+      data: results.slice(0, 20),
     })
   } catch (error) {
     console.error('[Docs] Search error:', error)
