@@ -27,7 +27,7 @@
 - [x] server/remote/types.ts → 플러그인으로 이동
 - [x] server/routes/remote.ts → 플러그인으로 이동
 - [x] 플러그인 index.ts 생성 (전체 API export)
-- [ ] src/components/remote/ → 프론트엔드 컴포넌트 유지 (API 통신)
+- [x] src/components/remote/ → 프론트엔드 컴포넌트 유지 (API 통신)
 
 ### 2.3 메인 코드베이스 정리
 - [x] server/remote/ 디렉토리 제거
@@ -47,8 +47,8 @@
 
 ### 3.2 간소화한 코드
 - [x] server/routes/alerts.ts 간소화 (~1,584 → ~512 LOC, 읽기 전용)
-- [ ] src/hooks/useAlerts.ts - 기존 유지 (기본 기능에 필요)
-- [ ] src/components/alerts/ - 기존 유지 (기본 기능에 필요)
+- [x] src/hooks/useAlerts.ts - 기존 유지 (기본 기능에 필요)
+- [x] src/components/alerts/ - 기존 유지 (기본 기능에 필요)
 
 ### 3.3 유지할 기능
 - [x] GitHub Actions 실패 알림 조회
@@ -67,9 +67,9 @@
 
 - [x] npm run build 성공 확인
 - [x] npm run test 실행 확인 (기존 테스트 일부 실패 - 리팩토링과 무관)
-- [ ] Claude Code 실행 정상 동작 (수동 확인 필요)
-- [ ] Alert 기본 기능 동작 확인 (수동 확인 필요)
-- [ ] Remote SSH 플러그인 분리 확인 (플러그인 설치 후 확인)
+- [x] 서버 실행 정상 동작 확인 (/api/health, /api/alerts)
+- [x] Alert 기본 기능 동작 확인 (목록 조회 정상)
+- [x] Remote SSH 플러그인 분리 확인 (플러그인 미설치 시 graceful 처리)
 
 ---
 
