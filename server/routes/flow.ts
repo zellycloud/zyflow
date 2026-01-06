@@ -15,7 +15,7 @@ import { initDb } from '../tasks/index.js'
 import { getSqlite } from '../tasks/db/client.js'
 import type { Stage, ChangeStatus, TaskOrigin } from '../tasks/db/schema.js'
 import { emit } from '../websocket.js'
-import { syncChangeTasksFromFile, syncChangeTasksForProject, syncRemoteChangeTasksForProject } from '../sync.js'
+
 import { getRemoteServerById } from '../remote/remote-config.js'
 import {
   syncBacklogToDb,
@@ -30,6 +30,7 @@ import {
   migrateSelectedInboxTasks,
 } from '../backlog/index.js'
 import { serializeBacklogTask, generateBacklogFilename } from '../backlog/parser.js'
+import { syncChangeTasksFromFile, syncChangeTasksForProject } from '../sync-tasks.js'
 
 const execAsync = promisify(exec)
 
@@ -163,10 +164,12 @@ flowRouter.get('/changes/counts', async (req, res) => {
     const counts: Record<string, number> = {}
     const detailedCounts: Record<string, { active: number; completed: number; total: number }> = {}
 
-    const projectIds = config.projects.map(p => p.id)
+    const projectIds = config.projects.map((p) => p.id)
     const placeholders = projectIds.map(() => '?').join(',')
 
-    const detailedResults = sqlite.prepare(`
+    const detailedResults = sqlite
+      .prepare(
+        `
       SELECT
         project_id,
         SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
@@ -175,7 +178,9 @@ flowRouter.get('/changes/counts', async (req, res) => {
       FROM changes
       WHERE project_id IN (${placeholders})
       GROUP BY project_id
-    `).all(...projectIds) as Array<{
+    `
+      )
+      .all(...projectIds) as Array<{
       project_id: string
       active: number
       completed: number
@@ -183,7 +188,7 @@ flowRouter.get('/changes/counts', async (req, res) => {
     }>
 
     for (const project of config.projects) {
-      const projectResult = detailedResults.find(r => r.project_id === project.id)
+      const projectResult = detailedResults.find((r) => r.project_id === project.id)
 
       let count = 0
       if (status === 'active') {
@@ -198,7 +203,7 @@ flowRouter.get('/changes/counts', async (req, res) => {
       detailedCounts[project.id] = {
         active: projectResult?.active ?? 0,
         completed: projectResult?.completed ?? 0,
-        total: projectResult?.total ?? 0
+        total: projectResult?.total ?? 0,
       }
     }
 
@@ -224,11 +229,15 @@ flowRouter.get('/changes', async (_req, res) => {
     }
 
     const sqlite = getSqlite()
-    const dbChanges = sqlite.prepare(`
+    const dbChanges = sqlite
+      .prepare(
+        `
       SELECT * FROM changes
       WHERE project_id = ? AND status != 'archived'
       ORDER BY updated_at DESC
-    `).all(project.id) as Array<{
+    `
+      )
+      .all(project.id) as Array<{
       id: string
       project_id: string
       title: string
@@ -273,25 +282,31 @@ flowRouter.get('/changes/:id', async (req, res) => {
     const config = await loadConfig()
 
     const sqlite = getSqlite()
-    const change = sqlite.prepare(`
+    const change = sqlite
+      .prepare(
+        `
       SELECT * FROM changes WHERE id = ?
-    `).get(req.params.id) as {
-      id: string
-      project_id: string
-      title: string
-      spec_path: string | null
-      status: ChangeStatus
-      current_stage: Stage
-      progress: number
-      created_at: number
-      updated_at: number
-    } | undefined
+    `
+      )
+      .get(req.params.id) as
+      | {
+          id: string
+          project_id: string
+          title: string
+          spec_path: string | null
+          status: ChangeStatus
+          current_stage: Stage
+          progress: number
+          created_at: number
+          updated_at: number
+        }
+      | undefined
 
     if (!change) {
       return res.status(404).json({ success: false, error: 'Change not found' })
     }
 
-    const project = config.projects.find(p => p.id === change.project_id)
+    const project = config.projects.find((p) => p.id === change.project_id)
     if (!project) {
       return res.status(404).json({ success: false, error: 'Project not found for this change' })
     }
@@ -393,19 +408,29 @@ flowRouter.post('/sync', async (_req, res) => {
           // proposal.md not found
         }
 
-        const existing = sqlite.prepare('SELECT id FROM changes WHERE id = ? AND project_id = ?').get(changeId, project.id)
+        const existing = sqlite
+          .prepare('SELECT id FROM changes WHERE id = ? AND project_id = ?')
+          .get(changeId, project.id)
         const now = Date.now()
 
         if (existing) {
-          sqlite.prepare(`
+          sqlite
+            .prepare(
+              `
             UPDATE changes SET title = ?, spec_path = ?, updated_at = ? WHERE id = ? AND project_id = ?
-          `).run(title, specPath, now, changeId, project.id)
+          `
+            )
+            .run(title, specPath, now, changeId, project.id)
           totalUpdated++
         } else {
-          sqlite.prepare(`
+          sqlite
+            .prepare(
+              `
             INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
-          `).run(changeId, project.id, title, specPath, now, now)
+          `
+            )
+            .run(changeId, project.id, title, specPath, now, now)
           totalCreated++
         }
 
@@ -417,7 +442,12 @@ flowRouter.post('/sync', async (_req, res) => {
 
           interface ExtendedGroup {
             title: string
-            tasks: Array<{ title: string; completed: boolean; lineNumber: number; displayId?: string }>
+            tasks: Array<{
+              title: string
+              completed: boolean
+              lineNumber: number
+              displayId?: string
+            }>
             majorOrder?: number
             majorTitle?: string
             subOrder?: number
@@ -444,20 +474,30 @@ flowRouter.post('/sync', async (_req, res) => {
               let existingTask: { id: number } | undefined
 
               if (displayId) {
-                existingTask = sqlite.prepare(`
+                existingTask = sqlite
+                  .prepare(
+                    `
                   SELECT id FROM tasks WHERE change_id = ? AND display_id = ?
-                `).get(changeId, displayId) as { id: number } | undefined
+                `
+                  )
+                  .get(changeId, displayId) as { id: number } | undefined
               }
 
               if (!existingTask) {
-                existingTask = sqlite.prepare(`
+                existingTask = sqlite
+                  .prepare(
+                    `
                   SELECT id FROM tasks WHERE change_id = ? AND title = ?
-                `).get(changeId, task.title) as { id: number } | undefined
+                `
+                  )
+                  .get(changeId, task.title) as { id: number } | undefined
               }
 
               if (existingTask) {
                 const newStatus = task.completed ? 'done' : 'todo'
-                sqlite.prepare(`
+                sqlite
+                  .prepare(
+                    `
                   UPDATE tasks
                   SET title = ?,
                       status = ?,
@@ -470,62 +510,80 @@ flowRouter.post('/sync', async (_req, res) => {
                       project_id = ?,
                       updated_at = ?
                   WHERE id = ?
-                `).run(
-                  task.title,
-                  newStatus,
-                  groupTitle,
-                  majorOrder,
-                  taskOrder,
-                  majorTitle,
-                  subOrder,
-                  displayId,
-                  project.id,
-                  now,
-                  existingTask.id
-                )
+                `
+                  )
+                  .run(
+                    task.title,
+                    newStatus,
+                    groupTitle,
+                    majorOrder,
+                    taskOrder,
+                    majorTitle,
+                    subOrder,
+                    displayId,
+                    project.id,
+                    now,
+                    existingTask.id
+                  )
               } else {
-                sqlite.prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_openspec'`).run()
-                const seqResult = sqlite.prepare(`SELECT value FROM sequences WHERE name = 'task_openspec'`).get() as { value: number }
+                sqlite
+                  .prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_openspec'`)
+                  .run()
+                const seqResult = sqlite
+                  .prepare(`SELECT value FROM sequences WHERE name = 'task_openspec'`)
+                  .get() as { value: number }
                 const newId = seqResult.value
 
-                sqlite.prepare(`
+                sqlite
+                  .prepare(
+                    `
                   INSERT INTO tasks (
                     id, project_id, change_id, stage, title, status, priority, "order",
                     group_title, group_order, task_order, major_title, sub_order,
                     display_id, origin, created_at, updated_at
                   )
                   VALUES (?, ?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
-                `).run(
-                  newId,
-                  project.id,
-                  changeId,
-                  task.title,
-                  task.completed ? 'done' : 'todo',
-                  task.lineNumber,
-                  groupTitle,
-                  majorOrder,
-                  taskOrder,
-                  majorTitle,
-                  subOrder,
-                  displayId,
-                  now,
-                  now
-                )
+                `
+                  )
+                  .run(
+                    newId,
+                    project.id,
+                    changeId,
+                    task.title,
+                    task.completed ? 'done' : 'todo',
+                    task.lineNumber,
+                    groupTitle,
+                    majorOrder,
+                    taskOrder,
+                    majorTitle,
+                    subOrder,
+                    displayId,
+                    now,
+                    now
+                  )
               }
             }
           }
 
           if (parsedDisplayIds.size > 0) {
-            const dbTasks = sqlite.prepare(`
+            const dbTasks = sqlite
+              .prepare(
+                `
               SELECT id, display_id FROM tasks
               WHERE change_id = ? AND display_id IS NOT NULL AND status != 'archived'
-            `).all(changeId) as Array<{ id: number; display_id: string }>
+            `
+              )
+              .all(changeId) as Array<{ id: number; display_id: string }>
 
             for (const dbTask of dbTasks) {
               if (!parsedDisplayIds.has(dbTask.display_id)) {
-                sqlite.prepare(`
+                sqlite
+                  .prepare(
+                    `
                   UPDATE tasks SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ?
-                `).run(now, now, dbTask.id)
+                `
+                  )
+                  .run(now, now, dbTask.id)
               }
             }
           }
@@ -541,8 +599,8 @@ flowRouter.post('/sync', async (_req, res) => {
         synced: totalCreated + totalUpdated,
         created: totalCreated,
         updated: totalUpdated,
-        projects: projectsSynced
-      }
+        projects: projectsSynced,
+      },
     })
   } catch (error) {
     console.error('Error syncing flow changes:', error)
@@ -557,9 +615,7 @@ flowRouter.get('/tasks', async (req, res) => {
     const { changeId, stage, status, standalone, includeArchived, projectId, origin } = req.query
 
     // projectId 쿼리 파라미터가 있으면 해당 프로젝트 사용, 없으면 활성 프로젝트
-    const project = projectId
-      ? await getProjectById(projectId as string)
-      : await getActiveProject()
+    const project = projectId ? await getProjectById(projectId as string) : await getActiveProject()
 
     if (!project) {
       return res.status(400).json({ success: false, error: 'No active project' })
@@ -674,19 +730,23 @@ flowRouter.post('/tasks', async (req, res) => {
     const sqlite = getSqlite()
     const now = Date.now()
 
-    const result = sqlite.prepare(`
+    const result = sqlite
+      .prepare(
+        `
       INSERT INTO tasks (project_id, change_id, stage, title, description, status, priority, "order", created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, 'todo', ?, 0, ?, ?)
-    `).run(
-      project.id,
-      changeId || null,
-      stage || 'task',
-      title,
-      description || null,
-      priority || 'medium',
-      now,
-      now
-    )
+    `
+      )
+      .run(
+        project.id,
+        changeId || null,
+        stage || 'task',
+        title,
+        description || null,
+        priority || 'medium',
+        now,
+        now
+      )
 
     const task = sqlite.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid)
 
@@ -990,9 +1050,7 @@ flowRouter.post('/changes/:id/archive', async (req, res) => {
     const { skipSpecs, force, projectId } = req.body
 
     // projectId가 있으면 해당 프로젝트 사용, 없으면 활성 프로젝트
-    const project = projectId
-      ? await getProjectById(projectId)
-      : await getActiveProject()
+    const project = projectId ? await getProjectById(projectId) : await getActiveProject()
 
     if (!project) {
       return res.status(400).json({ success: false, error: 'No active project' })
@@ -1039,16 +1097,14 @@ flowRouter.post('/changes/:id/archive', async (req, res) => {
         if (!sourceExists) {
           return res.status(404).json({
             success: false,
-            error: `Change folder not found: ${changeId}`
+            error: `Change folder not found: ${changeId}`,
           })
         }
 
         // mv 명령으로 아카이브 폴더로 이동
-        const mvResult = await executeCommand(
-          server,
-          `mv "${sourcePath}" "${targetPath}"`,
-          { cwd: project.path }
-        )
+        const mvResult = await executeCommand(server, `mv "${sourcePath}" "${targetPath}"`, {
+          cwd: project.path,
+        })
 
         stdout = mvResult.stdout
         stderr = mvResult.stderr
@@ -1122,14 +1178,22 @@ flowRouter.post('/changes/:id/archive', async (req, res) => {
     const sqlite = getSqlite()
     const now = Date.now()
 
-    sqlite.prepare(`
+    sqlite
+      .prepare(
+        `
       UPDATE changes SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ? AND project_id = ?
-    `).run(now, now, changeId, project.id)
+    `
+      )
+      .run(now, now, changeId, project.id)
 
     // tasks도 archived로 업데이트
-    sqlite.prepare(`
+    sqlite
+      .prepare(
+        `
       UPDATE tasks SET status = 'archived', archived_at = ?, updated_at = ? WHERE change_id = ? AND project_id = ?
-    `).run(now, now, changeId, project.id)
+    `
+      )
+      .run(now, now, changeId, project.id)
 
     emit('change:archived', { changeId, projectId: project.id })
 
@@ -1170,7 +1234,7 @@ flowRouter.post('/changes/:id/fix-validation', async (req, res) => {
     try {
       let content = await fs.readFile(proposalPath, 'utf-8')
       const lines = content.split('\n')
-      const fixedLines = lines.map(line => {
+      const fixedLines = lines.map((line) => {
         if (line.match(/^[-*]\s+/) && !line.match(/\b(SHALL|MUST)\b/i)) {
           if (line.match(/^[-*]\s+\w/)) {
             return line.replace(/^([-*]\s+)/, '$1The system SHALL ')
@@ -1226,9 +1290,10 @@ flowRouter.post('/changes/:id/fix-validation', async (req, res) => {
         changeId,
         proposalFixed,
         specsFixed,
-        message: proposalFixed || specsFixed > 0
-          ? `Fixed validation errors: proposal=${proposalFixed}, specs=${specsFixed}`
-          : 'No fixes needed or possible',
+        message:
+          proposalFixed || specsFixed > 0
+            ? `Fixed validation errors: proposal=${proposalFixed}, specs=${specsFixed}`
+            : 'No fixes needed or possible',
       },
     })
   } catch (error) {
@@ -1371,26 +1436,32 @@ flowRouter.patch('/backlog/tasks/:backlogFileId', async (req, res) => {
 
     // 기존 태스크 조회
     const sqlite = getSqlite()
-    const existing = sqlite.prepare(`
+    const existing = sqlite
+      .prepare(
+        `
       SELECT * FROM tasks
       WHERE project_id = ? AND backlog_file_id = ? AND origin = 'backlog'
-    `).get(project.id, backlogFileId) as {
-      id: number
-      title: string
-      description: string | null
-      status: string
-      priority: string
-      tags: string | null
-      assignee: string | null
-      parent_task_id: number | null
-      blocked_by: string | null
-      plan: string | null
-      acceptance_criteria: string | null
-      notes: string | null
-      due_date: number | null
-      milestone: string | null
-      backlog_file_id: string
-    } | undefined
+    `
+      )
+      .get(project.id, backlogFileId) as
+      | {
+          id: number
+          title: string
+          description: string | null
+          status: string
+          priority: string
+          tags: string | null
+          assignee: string | null
+          parent_task_id: number | null
+          blocked_by: string | null
+          plan: string | null
+          acceptance_criteria: string | null
+          notes: string | null
+          due_date: number | null
+          milestone: string | null
+          backlog_file_id: string
+        }
+      | undefined
 
     if (!existing) {
       return res.status(404).json({ success: false, error: 'Backlog task not found' })
@@ -1405,9 +1476,12 @@ flowRouter.patch('/backlog/tasks/:backlogFileId', async (req, res) => {
       priority: updates.priority ?? existing.priority,
       assignees: updates.assignees ?? (existing.assignee ? [existing.assignee] : undefined),
       labels: updates.labels ?? (existing.tags ? JSON.parse(existing.tags) : undefined),
-      blockedBy: updates.blockedBy ?? (existing.blocked_by ? JSON.parse(existing.blocked_by) : undefined),
+      blockedBy:
+        updates.blockedBy ?? (existing.blocked_by ? JSON.parse(existing.blocked_by) : undefined),
       parent: updates.parent,
-      dueDate: updates.dueDate ?? (existing.due_date ? new Date(existing.due_date).toISOString().split('T')[0] : undefined),
+      dueDate:
+        updates.dueDate ??
+        (existing.due_date ? new Date(existing.due_date).toISOString().split('T')[0] : undefined),
       milestone: updates.milestone ?? existing.milestone ?? undefined,
       plan: updates.plan ?? existing.plan ?? undefined,
       acceptanceCriteria: updates.acceptanceCriteria ?? existing.acceptance_criteria ?? undefined,
@@ -1459,10 +1533,14 @@ flowRouter.delete('/backlog/tasks/:backlogFileId', async (req, res) => {
 
     // 기존 태스크 조회
     const sqlite = getSqlite()
-    const existing = sqlite.prepare(`
+    const existing = sqlite
+      .prepare(
+        `
       SELECT id, title FROM tasks
       WHERE project_id = ? AND backlog_file_id = ? AND origin = 'backlog'
-    `).get(project.id, backlogFileId) as { id: number; title: string } | undefined
+    `
+      )
+      .get(project.id, backlogFileId) as { id: number; title: string } | undefined
 
     if (!existing) {
       return res.status(404).json({ success: false, error: 'Backlog task not found' })
@@ -1475,7 +1553,9 @@ flowRouter.delete('/backlog/tasks/:backlogFileId', async (req, res) => {
     if (archive === 'true') {
       // 아카이브 폴더로 이동
       const archivePath = join(backlogPath, 'archive')
-      await ensureBacklogDir(join(project.path, 'backlog', 'archive').replace('/backlog/archive', ''))
+      await ensureBacklogDir(
+        join(project.path, 'backlog', 'archive').replace('/backlog/archive', '')
+      )
       try {
         await access(archivePath)
       } catch {
@@ -1528,43 +1608,53 @@ flowRouter.get('/backlog/tasks/:backlogFileId', async (req, res) => {
     const { backlogFileId } = req.params
 
     const sqlite = getSqlite()
-    const task = sqlite.prepare(`
+    const task = sqlite
+      .prepare(
+        `
       SELECT * FROM tasks
       WHERE project_id = ? AND backlog_file_id = ? AND origin = 'backlog'
-    `).get(project.id, backlogFileId) as {
-      id: number
-      change_id: string | null
-      stage: Stage
-      origin: TaskOrigin | null
-      title: string
-      description: string | null
-      status: string
-      priority: string
-      tags: string | null
-      assignee: string | null
-      order: number
-      parent_task_id: number | null
-      blocked_by: string | null
-      plan: string | null
-      acceptance_criteria: string | null
-      notes: string | null
-      due_date: number | null
-      milestone: string | null
-      backlog_file_id: string | null
-      created_at: number
-      updated_at: number
-      archived_at: number | null
-    } | undefined
+    `
+      )
+      .get(project.id, backlogFileId) as
+      | {
+          id: number
+          change_id: string | null
+          stage: Stage
+          origin: TaskOrigin | null
+          title: string
+          description: string | null
+          status: string
+          priority: string
+          tags: string | null
+          assignee: string | null
+          order: number
+          parent_task_id: number | null
+          blocked_by: string | null
+          plan: string | null
+          acceptance_criteria: string | null
+          notes: string | null
+          due_date: number | null
+          milestone: string | null
+          backlog_file_id: string | null
+          created_at: number
+          updated_at: number
+          archived_at: number | null
+        }
+      | undefined
 
     if (!task) {
       return res.status(404).json({ success: false, error: 'Backlog task not found' })
     }
 
     // 서브태스크 조회
-    const subtasks = sqlite.prepare(`
+    const subtasks = sqlite
+      .prepare(
+        `
       SELECT id, title, status, priority FROM tasks
       WHERE project_id = ? AND parent_task_id = ? AND origin = 'backlog' AND status != 'archived'
-    `).all(project.id, task.id) as Array<{
+    `
+      )
+      .all(project.id, task.id) as Array<{
       id: number
       title: string
       status: string
@@ -1617,43 +1707,59 @@ flowRouter.get('/backlog/stats', async (_req, res) => {
     const sqlite = getSqlite()
 
     // 상태별 집계
-    const byStatus = sqlite.prepare(`
+    const byStatus = sqlite
+      .prepare(
+        `
       SELECT status, COUNT(*) as count
       FROM tasks
       WHERE project_id = ? AND origin = 'backlog' AND status != 'archived'
       GROUP BY status
-    `).all(project.id) as Array<{ status: string; count: number }>
+    `
+      )
+      .all(project.id) as Array<{ status: string; count: number }>
 
     // 우선순위별 집계
-    const byPriority = sqlite.prepare(`
+    const byPriority = sqlite
+      .prepare(
+        `
       SELECT priority, COUNT(*) as count
       FROM tasks
       WHERE project_id = ? AND origin = 'backlog' AND status != 'archived'
       GROUP BY priority
-    `).all(project.id) as Array<{ priority: string; count: number }>
+    `
+      )
+      .all(project.id) as Array<{ priority: string; count: number }>
 
     // 마일스톤별 집계
-    const byMilestone = sqlite.prepare(`
+    const byMilestone = sqlite
+      .prepare(
+        `
       SELECT milestone, COUNT(*) as count
       FROM tasks
       WHERE project_id = ? AND origin = 'backlog' AND status != 'archived' AND milestone IS NOT NULL
       GROUP BY milestone
-    `).all(project.id) as Array<{ milestone: string; count: number }>
+    `
+      )
+      .all(project.id) as Array<{ milestone: string; count: number }>
 
     // 총 태스크 수
-    const total = sqlite.prepare(`
+    const total = sqlite
+      .prepare(
+        `
       SELECT COUNT(*) as count
       FROM tasks
       WHERE project_id = ? AND origin = 'backlog' AND status != 'archived'
-    `).get(project.id) as { count: number }
+    `
+      )
+      .get(project.id) as { count: number }
 
     res.json({
       success: true,
       data: {
         total: total.count,
-        byStatus: Object.fromEntries(byStatus.map(r => [r.status, r.count])),
-        byPriority: Object.fromEntries(byPriority.map(r => [r.priority, r.count])),
-        byMilestone: Object.fromEntries(byMilestone.map(r => [r.milestone, r.count])),
+        byStatus: Object.fromEntries(byStatus.map((r) => [r.status, r.count])),
+        byPriority: Object.fromEntries(byPriority.map((r) => [r.priority, r.count])),
+        byMilestone: Object.fromEntries(byMilestone.map((r) => [r.milestone, r.count])),
       },
     })
   } catch (error) {

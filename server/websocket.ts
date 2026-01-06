@@ -17,6 +17,10 @@ export type WSEventType =
   | 'change:archived'
   | 'sync:completed'
   | 'inbox:updated'
+  | 'backlog:synced'
+  | 'backlog:task:created'
+  | 'backlog:task:updated'
+  | 'backlog:task:deleted'
 
 export interface WSEvent {
   type: WSEventType
@@ -44,11 +48,13 @@ export function initWebSocket(server: Server): WebSocketServer {
     })
 
     // 연결 확인 메시지
-    ws.send(JSON.stringify({
-      type: 'connected',
-      payload: { message: 'WebSocket connected' },
-      timestamp: Date.now()
-    }))
+    ws.send(
+      JSON.stringify({
+        type: 'connected',
+        payload: { message: 'WebSocket connected' },
+        timestamp: Date.now(),
+      })
+    )
   })
 
   console.log('[WebSocket] Server initialized on /ws')
@@ -80,7 +86,7 @@ export function emit(type: WSEventType, payload: unknown): void {
   broadcast({
     type,
     payload,
-    timestamp: Date.now()
+    timestamp: Date.now(),
   })
 }
 
