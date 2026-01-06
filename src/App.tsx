@@ -247,7 +247,13 @@ function AppContent() {
             />
 
             {/* Content Area - 선택에 따라 다른 뷰 */}
-            <main className="flex-1 overflow-y-auto p-6">
+            <main 
+              className={cn(
+                "flex-1 flex flex-col min-h-0", // min-h-0 is crucial for nested flex scrolling
+                // Docs나 다른 풀스크린 앱이 아닐 때만 패딩과 스크롤 적용
+                selectedItem?.type !== 'docs' && "overflow-y-auto p-6"
+              )}
+            >
               <FlowContent selectedItem={selectedItem} onSelectItem={setSelectedItem} />
             </main>
           </div>

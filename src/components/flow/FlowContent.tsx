@@ -143,7 +143,13 @@ export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
       }
       return (
         <Suspense fallback={<LazyLoader />}>
-          <DocsViewer projectPath={selectedProject.path} />
+          <DocsViewer 
+            projectPath={selectedProject.path} 
+            onClose={() => {
+              // 문서 뷰어를 닫고 프로젝트 대시보드로 이동
+              onSelectItem?.({ type: 'project', projectId: selectedItem.projectId })
+            }}
+          />
         </Suspense>
       )
     case 'alerts':
