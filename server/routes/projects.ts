@@ -163,16 +163,19 @@ projectsRouter.put('/:id/activate', async (req, res) => {
     await setActiveProject(req.params.id)
     const project = await getActiveProject()
 
+    // 백그라운드에서 동기화 실행 (Fire-and-forget) - 사용자 응답 대기 시간 제거
     if (project) {
-      try {
-        if (project.remote) {
-          await syncRemoteProjectChanges(project)
-        } else {
-          await syncLocalProjectChanges(project)
+      (async () => {
+        try {
+          if (project.remote) {
+            await syncRemoteProjectChanges(project)
+          } else {
+            await syncLocalProjectChanges(project)
+          }
+        } catch (syncError) {
+          console.error('Error syncing project changes in background:', syncError)
         }
-      } catch (syncError) {
-        console.error('Error syncing project changes:', syncError)
-      }
+      })()
     }
 
     res.json({ success: true, data: { project } })
@@ -295,16 +298,74 @@ async function syncRemoteProjectChanges(project: {
   const now = Date.now()
   const activeChangeIds: string[] = []
 
-  const { readRemoteFile } = plugin
+  const { readRemoteFile, executeCommand } = plugin
 
-  for (const entry of listing.entries) {
-    if (entry.type !== 'directory' || entry.name === 'archive') continue
+  // DB에서 현재 저장된 상태 조회 (Incremental Sync를 위해)
+  const existingChanges = sqlite
+    .prepare('SELECT id, updated_at FROM changes WHERE project_id = ?')
+    .all(project.id) as { id: string; updated_at: number }[]
+  
+  const existingMap = new Map(existingChanges.map(c => [c.id, c.updated_at]))
+  const fileMtimes = new Map<string, number>()
+
+  // 원격 파일 변경 시간 일괄 조회 (최적화)
+  // Linux start -c "%Y", macOS/BSD stat -f "%m" 호환성 이슈가 있으므로 
+  // 가장 호환성 높은 perl이나 python, 혹은 ls --full-time 등을 고려해야 하나
+  // 일단 Linux 가정 stat -c "%Y" 시도 후 실패 시 Full Scan
+  try {
+     // openspecDir is absolute path usually.
+     // Find all proposal.md files and print "dirName/proposal.md mtimeSeconds"
+     // Note: We need the changeId (parent dir name).
+     // Output format: path mtime
+     const cmd = `find "${openspecDir}" -maxdepth 2 -name "proposal.md" -exec stat -c "%n %Y" {} + 2>/dev/null`
+     const { stdout } = await executeCommand(server, cmd)
+     if (stdout) {
+       for (const line of stdout.split('\n')) {
+          const parts = line.trim().split(' ')
+          if (parts.length >= 2) {
+             const mtime = parseInt(parts.pop() || '0', 10) * 1000 // ms 단위로 변환
+             const path = parts.join(' ') // path may contain spaces
+             // Extract changeId from path: .../changes/<changeId>/proposal.md
+             const match = path.match(/changes\/([^/]+)\/proposal\.md$/)
+             if (match) {
+               fileMtimes.set(match[1], mtime)
+             }
+          }
+       }
+     }
+  } catch (e) {
+     console.warn('[Sync Remote] Bulk stat failed, falling back to full sync', e)
+  }
+
+  // 병렬 처리로 변경
+  const changePromises = listing.entries.map(async (entry) => {
+    if (entry.type !== 'directory' && entry.type !== 'd' && entry.type !== 'Directory') return null
+    if (entry.name === 'archive') return null
 
     const changeId = entry.name
     activeChangeIds.push(changeId)
+    
+    // Incremental Sync Check
+    const lastModified = fileMtimes.get(changeId)
+    const storedUpdated = existingMap.get(changeId)
+    
+    // DB에 있고, 원격 파일 시간이 확인되었으며, DB 시간보다 이전이거나 같으면 스킵
+    // 단, storedUpdated가 null이 아니고 lastModified가 존재할 때만
+    let skipRead = false
+    if (storedUpdated && lastModified && lastModified <= storedUpdated) {
+       skipRead = true
+    }
 
     let title = changeId
     const specPath = `openspec/changes/${changeId}/proposal.md`
+    
+    if (skipRead) {
+       // 내용 변경 없음 - DB의 기존 title 유지 (DB 쿼리 필요하지만 위에서 이미 가져옴 - title은 안가져왔네..)
+       // title 업데이트를 건너뛰려면 upsert 쿼리를 수정하거나, 
+       // 여기서 그냥 'SAME' 마커를 리턴하고 DB 업데이트 로직에서 처리
+       return { changeId, title: null, specPath, status: 'skipped' }
+    }
+
     try {
       const proposalPath = `${openspecDir}/${changeId}/proposal.md`
       const proposalContent = await readRemoteFile(server, proposalPath)
@@ -316,29 +377,42 @@ async function syncRemoteProjectChanges(project: {
       // proposal.md not found
     }
 
-    const existing = sqlite
-      .prepare('SELECT id FROM changes WHERE id = ? AND project_id = ?')
-      .get(changeId, project.id)
+    return { changeId, title, specPath, status: 'updated' }
+  })
 
-    if (existing) {
-      sqlite
-        .prepare(
-          `
-        UPDATE changes SET title = ?, spec_path = ?, status = 'active', updated_at = ? WHERE id = ? AND project_id = ?
-      `
-        )
-        .run(title, specPath, now, changeId, project.id)
-    } else {
-      sqlite
-        .prepare(
-          `
-        INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
-      `
-        )
-        .run(changeId, project.id, title, specPath, now, now)
-    }
+  // 모든 변경사항 처리 대기 (병렬)
+  const results = await Promise.all(changePromises)
+  
+  // DB 트랜잭션 (순차 처리)
+  const upsertStmt = sqlite.prepare(`
+    INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
+    ON CONFLICT(id, project_id) DO UPDATE SET
+      title = excluded.title,
+      spec_path = excluded.spec_path,
+      status = 'active',
+      updated_at = excluded.updated_at
+  `)
+
+  // 유효한 결과만 DB 반영
+  for (const item of results) {
+     if (!item) continue
+     
+     if (item.status === 'skipped') {
+       // 변경 없음 -> UpdatedAt만 갱신하거나, 그냥 둠 (Active 상태 유지를 위해 status='active' 업데이트 필요할 수 있음)
+       // 여기서는 activeChangeIds에 포함되어 있으므로 나중에 Archive 처리되지 않음.
+       // 단, 명시적으로 updated_at을 갱신하지 않으면 '최신 동기화' 시점을 알 수 없으므로
+       // 필요하다면 status='active'만 업데이트하는 쿼리 실행
+       // 성능을 위해 생략 가능하나, 안전을 위해 status만 active로 재설정
+       sqlite.prepare("UPDATE changes SET status = 'active' WHERE id = ? AND project_id = ?").run(item.changeId, project.id)
+     } else {
+       upsertStmt.run(item.changeId, project.id, item.title, item.specPath, now, now)
+     }
   }
+  
+  // Re-collect active IDs from successful results ensuring no duplicates or nulls
+  activeChangeIds.length = 0 // Clear
+  results.forEach(r => { if(r) activeChangeIds.push(r.changeId) })
 
   if (activeChangeIds.length > 0) {
     const placeholders = activeChangeIds.map(() => '?').join(',')
@@ -651,10 +725,15 @@ async function getChangesForRemoteProject(
     return []
   }
 
-  // 디렉토리만 필터링 (archive 제외)
+  // 디버깅 로그 추가
+  console.log(`[Remote] Listing for ${openspecDir}:`, listing.entries.map(e => ({ name: e.name, type: e.type })))
+
+  // 디렉토리만 필터링 (archive 제외) - 타입 체크 완화
   const validEntries = listing.entries.filter(
     (entry) =>
-      entry.type === 'directory' && entry.name !== 'archive' && !archivedChangeIds.has(entry.name)
+      (entry.type === 'directory' || entry.type === 'd' || entry.type === 'Directory') && 
+      entry.name !== 'archive' && 
+      !archivedChangeIds.has(entry.name)
   )
 
   // 병렬로 각 change 처리
@@ -736,7 +815,7 @@ async function getSpecsForRemoteProject(projectPath: string, serverId: string) {
   }
 
   for (const entry of listing.entries) {
-    if (entry.type !== 'directory') continue
+    if (entry.type !== 'directory' && entry.type !== 'd' && entry.type !== 'Directory') continue
 
     const specId = entry.name
     let title = specId
@@ -765,31 +844,39 @@ async function getSpecsForRemoteProject(projectPath: string, serverId: string) {
 projectsRouter.get('/all-data', async (_req, res) => {
   try {
     const config = await loadConfig()
-    const projectsData = []
+    const projectsData = await Promise.all(
+      config.projects.map(async (project) => {
+        let changes = [], specs = []
 
-    for (const project of config.projects) {
-      let changes, specs
+        try {
+          if (project.remote) {
+            // 원격 프로젝트: SSH를 통해 조회
+            const [remoteChanges, remoteSpecs] = await Promise.all([
+              getChangesForRemoteProject(project.path, project.remote.serverId, project.id),
+              getSpecsForRemoteProject(project.path, project.remote.serverId)
+            ])
+            changes = remoteChanges
+            specs = remoteSpecs
+          } else {
+            // 로컬 프로젝트: 파일시스템에서 조회
+            const [localChanges, localSpecs] = await Promise.all([
+               getChangesForProject(project.path),
+               getSpecsForProject(project.path)
+            ])
+            changes = localChanges
+            specs = localSpecs
+          }
+        } catch (err) {
+          console.error(`Error loading data for project ${project.name}:`, err)
+        }
 
-      if (project.remote) {
-        // 원격 프로젝트: SSH를 통해 조회 (project.id 전달하여 정확한 archived 필터링)
-        changes = await getChangesForRemoteProject(
-          project.path,
-          project.remote.serverId,
-          project.id
-        )
-        specs = await getSpecsForRemoteProject(project.path, project.remote.serverId)
-      } else {
-        // 로컬 프로젝트: 파일시스템에서 조회
-        changes = await getChangesForProject(project.path)
-        specs = await getSpecsForProject(project.path)
-      }
-
-      projectsData.push({
-        ...project,
-        changes,
-        specs,
+        return {
+          ...project,
+          changes,
+          specs,
+        }
       })
-    }
+    )
 
     res.json({
       success: true,
