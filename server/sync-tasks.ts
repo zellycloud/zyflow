@@ -182,6 +182,22 @@ export async function syncChangeTasksForProject(
     }
   }
 
+  // Calculate and update progress in changes table
+  const progressResult = sqlite.prepare(`
+    SELECT 
+      count(*) as total,
+      sum(case when status = 'done' then 1 else 0 end) as completed
+    FROM tasks 
+    WHERE change_id = ? AND status != 'archived'
+  `).get(changeId) as { total: number; completed: number }
+
+  const progress = progressResult.total > 0 
+    ? Math.round((progressResult.completed / progressResult.total) * 100) 
+    : 0
+
+  sqlite.prepare('UPDATE changes SET progress = ?, updated_at = ? WHERE id = ?')
+    .run(progress, now, changeId)
+
   return { tasksCreated, tasksUpdated, tasksArchived }
 }
 
@@ -327,6 +343,22 @@ export async function syncRemoteChangeTasksForProject(
       }
     }
   }
+
+  // Calculate and update progress in changes table
+  const progressResult = sqlite.prepare(`
+    SELECT 
+      count(*) as total,
+      sum(case when status = 'done' then 1 else 0 end) as completed
+    FROM tasks 
+    WHERE change_id = ? AND status != 'archived'
+  `).get(changeId) as { total: number; completed: number }
+
+  const progress = progressResult.total > 0 
+    ? Math.round((progressResult.completed / progressResult.total) * 100) 
+    : 0
+
+  sqlite.prepare('UPDATE changes SET progress = ?, updated_at = ? WHERE id = ?')
+    .run(progress, now, changeId)
 
   return { tasksCreated, tasksUpdated }
 }
