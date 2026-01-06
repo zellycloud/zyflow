@@ -21,10 +21,11 @@ import { cn } from '@/lib/utils'
 
 interface DocsViewerProps {
   projectPath: string
+  remote?: { serverId: string }
   onClose?: () => void
 }
 
-export function DocsViewer({ projectPath, onClose }: DocsViewerProps) {
+export function DocsViewer({ projectPath, remote, onClose }: DocsViewerProps) {
   const [selectedDocPath, setSelectedDocPath] = useState<string | null>(null)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     () => new Set(['docs', 'openspec'])
@@ -33,10 +34,11 @@ export function DocsViewer({ projectPath, onClose }: DocsViewerProps) {
   const [showChatPanel, setShowChatPanel] = useState(false)
   const [isEditing, setIsEditing] = useState(false) // 편집 모드 상태
 
-  const { data: docsList, isLoading: isListLoading } = useDocsList(projectPath)
+  const { data: docsList, isLoading: isListLoading } = useDocsList(projectPath, remote)
   const { data: docContent, isLoading: isContentLoading } = useDocContent(
     projectPath,
-    selectedDocPath ?? undefined
+    selectedDocPath ?? undefined,
+    remote
   )
 
   // 문서 변경 시 편집 모드 자동 해제
