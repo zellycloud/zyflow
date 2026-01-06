@@ -12,11 +12,15 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3100,
+    port: 3200,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3100',
         changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://localhost:3100',
+        ws: true,
       },
     },
     // SPA 라우팅: 하드 리프레시 시에도 index.html로 폴백
@@ -26,11 +30,15 @@ export default defineConfig({
   },
   // 프리뷰 서버에도 동일 적용
   preview: {
-    port: 3100,
+    port: 3200,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3100',
         changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://localhost:3100',
+        ws: true,
       },
     },
   },

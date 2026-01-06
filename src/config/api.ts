@@ -2,12 +2,12 @@
  * API Configuration
  *
  * 환경변수 기반 API 엔드포인트 중앙 관리
- * - 개발: http://localhost:3000
+ * - 개발: Vite 프록시를 통해 상대 경로 사용 (/api → localhost:3100)
  * - 프로덕션: 환경변수로 설정
  */
 
-// API Base URL (환경변수 우선, 없으면 개발 서버 기본값)
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
+// API Base URL (환경변수 우선, 없으면 상대 경로 사용 - Vite 프록시 활용)
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 // API 엔드포인트
 export const API_ENDPOINTS = {
@@ -57,9 +57,9 @@ export const API_ENDPOINTS = {
   git: `${API_BASE_URL}/api/git`,
 } as const
 
-// WebSocket URL
-export const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:3000'
-export const WS_ENDPOINT = `${WS_BASE_URL}/ws`
+// WebSocket URL (상대 경로 사용 시 현재 호스트 기반으로 자동 설정)
+export const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || ''
+export const WS_ENDPOINT = WS_BASE_URL ? `${WS_BASE_URL}/ws` : '/ws'
 
 // Helper: 동적 URL 생성
 export const buildApiUrl = (path: string): string => {

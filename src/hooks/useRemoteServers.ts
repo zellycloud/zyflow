@@ -18,7 +18,7 @@ import type {
   SSHConfigResponse,
 } from '@/types'
 
-const API_BASE = 'http://localhost:3000/api/remote'
+const API_BASE = '/api/remote'
 
 // ============================================
 // Query Keys
