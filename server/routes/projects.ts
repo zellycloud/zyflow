@@ -23,8 +23,26 @@ import {
 import { initDb } from '../tasks/index.js'
 import { getSqlite } from '../tasks/db/client.js'
 import { parseTasksFile } from '../parser.js'
-import { getRemoteServerById, listDirectory, executeCommand } from '../remote/index.js'
 import { startTasksWatcher, stopTasksWatcher } from '../watcher.js'
+
+// Remote plugin is optional - only load if installed
+let remotePlugin: {
+  getRemoteServerById: (id: string) => Promise<unknown>
+  listDirectory: (server: unknown, path: string) => Promise<{ entries: Array<{ type: string; name: string; modifiedAt?: string }> }>
+  executeCommand: (server: unknown, cmd: string, opts?: { cwd?: string }) => Promise<{ stdout: string }>
+  readRemoteFile: (server: unknown, path: string) => Promise<string>
+} | null = null
+
+async function getRemotePlugin() {
+  if (remotePlugin) return remotePlugin
+  try {
+    const mod = await import('@zyflow/remote-plugin')
+    remotePlugin = mod
+    return remotePlugin
+  } catch {
+    return null
+  }
+}
 
 const execAsync = promisify(exec)
 
@@ -250,7 +268,13 @@ async function syncRemoteProjectChanges(project: {
 }) {
   if (!project.remote) return
 
-  const server = await getRemoteServerById(project.remote.serverId)
+  const plugin = await getRemotePlugin()
+  if (!plugin) {
+    console.warn('[Sync Remote] Remote plugin not installed, skipping remote sync')
+    return
+  }
+
+  const server = await plugin.getRemoteServerById(project.remote.serverId)
   if (!server) {
     console.error(`[Sync Remote] Server not found: ${project.remote.serverId}`)
     return
@@ -261,7 +285,7 @@ async function syncRemoteProjectChanges(project: {
   const openspecDir = `${project.path}/openspec/changes`
   let listing
   try {
-    listing = await listDirectory(server, openspecDir)
+    listing = await plugin.listDirectory(server, openspecDir)
   } catch (err) {
     console.warn(`[Sync Remote] Cannot list ${openspecDir}:`, err)
     return
@@ -271,7 +295,7 @@ async function syncRemoteProjectChanges(project: {
   const now = Date.now()
   const activeChangeIds: string[] = []
 
-  const { readRemoteFile } = await import('../remote/ssh-manager.js')
+  const { readRemoteFile } = plugin
 
   for (const entry of listing.entries) {
     if (entry.type !== 'directory' || entry.name === 'archive') continue
@@ -591,10 +615,13 @@ async function getChangesForRemoteProject(
   serverId: string,
   projectId?: string
 ) {
-  const server = await getRemoteServerById(serverId)
+  const plugin = await getRemotePlugin()
+  if (!plugin) return []
+
+  const server = await plugin.getRemoteServerById(serverId)
   if (!server) return []
 
-  const { readRemoteFile } = await import('../remote/ssh-manager.js')
+  const { readRemoteFile, listDirectory, executeCommand } = plugin
   const openspecDir = `${projectPath}/openspec/changes`
 
   // Get archived change IDs from DB to filter them out
@@ -691,10 +718,13 @@ async function getChangesForRemoteProject(
 
 // Helper to get specs for a remote project via SSH
 async function getSpecsForRemoteProject(projectPath: string, serverId: string) {
-  const server = await getRemoteServerById(serverId)
+  const plugin = await getRemotePlugin()
+  if (!plugin) return []
+
+  const server = await plugin.getRemoteServerById(serverId)
   if (!server) return []
 
-  const { readRemoteFile } = await import('../remote/ssh-manager.js')
+  const { readRemoteFile, listDirectory } = plugin
   const specsDir = `${projectPath}/openspec/specs`
   const specs = []
 

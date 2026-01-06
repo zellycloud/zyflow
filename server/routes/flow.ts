@@ -16,7 +16,22 @@ import { getSqlite } from '../tasks/db/client.js'
 import type { Stage, ChangeStatus, TaskOrigin } from '../tasks/db/schema.js'
 import { emit } from '../websocket.js'
 
-import { getRemoteServerById } from '../remote/remote-config.js'
+// Remote plugin is optional - only load if installed
+let remotePlugin: {
+  getRemoteServerById: (id: string) => Promise<unknown>
+} | null = null
+
+async function getRemotePlugin() {
+  if (remotePlugin) return remotePlugin
+  try {
+    const mod = await import('@zyflow/remote-plugin')
+    remotePlugin = mod
+    return remotePlugin
+  } catch {
+    return null
+  }
+}
+
 import {
   syncBacklogToDb,
   saveTaskToBacklogFile,
@@ -943,7 +958,11 @@ flowRouter.post('/changes/:id/sync', async (req, res) => {
 
     // 원격 프로젝트인 경우 SSH를 통해 동기화
     if (project.remote?.serverId) {
-      const server = await getRemoteServerById(project.remote.serverId)
+      const plugin = await getRemotePlugin()
+      if (!plugin) {
+        return res.status(400).json({ success: false, error: 'Remote plugin not installed' })
+      }
+      const server = await plugin.getRemoteServerById(project.remote.serverId)
       if (!server) {
         return res.status(400).json({ success: false, error: 'Remote server not found' })
       }
@@ -1072,12 +1091,25 @@ flowRouter.post('/changes/:id/archive', async (req, res) => {
 
     // 원격 프로젝트인 경우 SSH를 통해 아카이브 실행
     if (project.remote) {
-      const { executeCommand, exists } = await import('../remote/ssh-manager.js')
-      const { getRemoteServerById } = await import('../remote/remote-config.js')
+      const plugin = await getRemotePlugin()
+      if (!plugin) {
+        return res.status(400).json({ success: false, error: 'Remote plugin not installed' })
+      }
 
-      const server = await getRemoteServerById(project.remote.serverId)
+      const server = await plugin.getRemoteServerById(project.remote.serverId)
       if (!server) {
         return res.status(400).json({ success: false, error: 'Remote server not found' })
+      }
+
+      // Remote plugin functions
+      const executeCommand = (plugin as unknown as { executeCommand: (s: unknown, cmd: string) => Promise<{ stdout: string }> }).executeCommand
+      const exists = async (s: unknown, p: string) => {
+        try {
+          await executeCommand(s, `test -e "${p}"`)
+          return true
+        } catch {
+          return false
+        }
       }
 
       // 원격에서 openspec archive 명령 실행 또는 직접 mv 명령 실행

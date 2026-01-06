@@ -12,8 +12,25 @@ import { promisify } from 'util'
 import { getActiveProject, getProjectById } from '../config.js'
 import { parseTasksFile, toggleTaskInFile } from '../parser.js'
 import { initDb, getSqlite } from '../tasks/db/client.js'
-import { getRemoteServerById } from '../remote/remote-config.js'
-import { listDirectory, readRemoteFile, executeCommand } from '../remote/ssh-manager.js'
+
+// Remote plugin is optional - only load if installed
+let remotePlugin: {
+  getRemoteServerById: (id: string) => Promise<unknown>
+  listDirectory: (server: unknown, path: string) => Promise<{ entries: Array<{ type: string; name: string; modifiedAt?: string }> }>
+  readRemoteFile: (server: unknown, path: string) => Promise<string>
+  executeCommand: (server: unknown, cmd: string, opts?: { cwd?: string }) => Promise<{ stdout: string }>
+} | null = null
+
+async function getRemotePlugin() {
+  if (remotePlugin) return remotePlugin
+  try {
+    const mod = await import('@zyflow/remote-plugin')
+    remotePlugin = mod
+    return remotePlugin
+  } catch {
+    return null
+  }
+}
 
 const execAsync = promisify(exec)
 
@@ -47,7 +64,12 @@ changesRouter.get('/', async (_req, res) => {
 
     // 원격 프로젝트인 경우
     if (project.remote) {
-      const server = await getRemoteServerById(project.remote.serverId)
+      const plugin = await getRemotePlugin()
+      if (!plugin) {
+        return res.json({ success: true, data: { changes: [] } })
+      }
+
+      const server = await plugin.getRemoteServerById(project.remote.serverId)
       if (!server) {
         return res.json({ success: true, data: { changes: [] } })
       }
@@ -57,7 +79,7 @@ changesRouter.get('/', async (_req, res) => {
       // 원격 디렉토리 목록 조회
       let listing
       try {
-        listing = await listDirectory(server, openspecDir)
+        listing = await plugin.listDirectory(server, openspecDir)
       } catch {
         return res.json({ success: true, data: { changes: [] } })
       }
@@ -75,9 +97,9 @@ changesRouter.get('/', async (_req, res) => {
 
           // 원격에서 proposal.md, tasks.md 읽기 및 git log 실행
           const [proposalResult, tasksResult, gitResult] = await Promise.allSettled([
-            readRemoteFile(server, `${changeDir}/proposal.md`),
-            readRemoteFile(server, `${changeDir}/tasks.md`),
-            executeCommand(server, `git log -1 --format="%aI" -- "openspec/changes/${changeId}"`, {
+            plugin.readRemoteFile(server, `${changeDir}/proposal.md`),
+            plugin.readRemoteFile(server, `${changeDir}/tasks.md`),
+            plugin.executeCommand(server, `git log -1 --format="%aI" -- "openspec/changes/${changeId}"`, {
               cwd: project.path,
             }),
           ])

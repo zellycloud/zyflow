@@ -22,18 +22,21 @@ export function startTasksWatcher(projectPath: string, projectId?: string) {
   currentProjectPath = projectPath
   currentProjectId = projectId || null
 
-  // 절대 경로로 glob 패턴 설정
-  const tasksGlob = join(projectPath, 'openspec/changes/*/tasks.md')
+  // 디렉토리를 직접 감시 (모든 파일)
+  const changesDir = join(projectPath, 'openspec/changes')
 
-  watcher = chokidar.watch(tasksGlob, {
+  watcher = chokidar.watch(changesDir, {
     ignoreInitial: true,
     persistent: true,
     usePolling: true,
-    interval: 1000,
-    binaryInterval: 1000,
+    interval: 300,
+    depth: 2,
   })
 
   watcher.on('change', async (filePath) => {
+    // tasks.md 파일만 처리
+    if (!filePath.endsWith('tasks.md')) return
+
     console.log(`[Watcher] File changed: ${filePath}`)
 
     const match = filePath.match(/openspec\/changes\/([^/]+)\/tasks\.md/)
@@ -66,6 +69,9 @@ export function startTasksWatcher(projectPath: string, projectId?: string) {
   })
 
   watcher.on('add', async (filePath) => {
+    // tasks.md 파일만 처리
+    if (!filePath.endsWith('tasks.md')) return
+
     console.log(`[Watcher] File added: ${filePath}`)
 
     const match = filePath.match(/openspec\/changes\/([^/]+)\/tasks\.md/)
@@ -104,7 +110,7 @@ export function startTasksWatcher(projectPath: string, projectId?: string) {
   })
 
   console.log(`[Watcher] Started watching tasks.md in: ${projectPath}`)
-  console.log(`[Watcher] Glob pattern: ${tasksGlob}`)
+  console.log(`[Watcher] Watching directory: ${changesDir}`)
 }
 
 export function stopTasksWatcher() {
