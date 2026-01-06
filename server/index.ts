@@ -5,7 +5,7 @@ import { initWebSocket } from './websocket.js'
 import { startTasksWatcher, stopTasksWatcher } from './watcher.js'
 import { getActiveProject } from './config.js'
 
-const PORT = 3000
+const PORT = parseInt(process.env.PORT || '3100', 10)
 
 // 처리되지 않은 예외 핸들러 - 서버 크래시 방지 및 로깅
 process.on('uncaughtException', (error) => {

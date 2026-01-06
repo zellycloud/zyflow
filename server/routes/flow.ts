@@ -45,7 +45,7 @@ import {
   migrateSelectedInboxTasks,
 } from '../backlog/index.js'
 import { serializeBacklogTask, generateBacklogFilename } from '../backlog/parser.js'
-import { syncChangeTasksFromFile, syncChangeTasksForProject } from '../sync-tasks.js'
+import { syncChangeTasksFromFile, syncChangeTasksForProject, syncRemoteChangeTasksForProject } from '../sync-tasks.js'
 
 const execAsync = promisify(exec)
 
