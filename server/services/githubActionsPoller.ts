@@ -14,7 +14,6 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { randomUUID } from 'crypto'
 import { getSqlite } from '../tasks/db/client.js'
-import { processAlert } from './alertProcessor.js'
 
 const execAsync = promisify(exec)
 
@@ -405,16 +404,6 @@ async function createAlertFromWorkflowRun(
   if (options?.broadcastAlert && newAlert) {
     options.broadcastAlert({ type: 'alert.created', alert: newAlert })
   }
-
-  // 백그라운드에서 Alert 처리 (분석, 위험도 평가 등)
-  processAlert(alertId).then(result => {
-    const updatedAlert = sqlite.prepare('SELECT * FROM alerts WHERE id = ?').get(alertId)
-    if (options?.broadcastAlert && updatedAlert) {
-      options.broadcastAlert({ type: 'alert.processed', alert: updatedAlert, result })
-    }
-  }).catch(err => {
-    console.error('Error in background alert processing:', err)
-  })
 
   return alertId
 }
