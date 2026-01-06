@@ -8,6 +8,7 @@ import { Router } from 'express'
 import { readdir, readFile, access } from 'fs/promises'
 import type { Dirent } from 'fs'
 import { join, basename } from 'path'
+import { syncChangeTasksForProject, syncRemoteChangeTasksForProject } from '../sync-tasks.js'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import {
@@ -237,6 +238,11 @@ async function syncLocalProjectChanges(project: { id: string; name: string; path
     upsertStmt.run(changeId, project.id, title, specPath, now, now)
   }
 
+  // Tasks 동기화 (병렬)
+  await Promise.all(changeDataList.map(({ changeId }) => 
+    syncChangeTasksForProject(changeId, project.path, project.id).catch(err => console.error(`Failed to sync task ${changeId}:`, err))
+  ))
+
   if (activeChangeIds.length > 0) {
     const placeholders = activeChangeIds.map(() => '?').join(',')
     sqlite
@@ -345,6 +351,9 @@ async function syncRemoteProjectChanges(project: {
     const changeId = entry.name
     activeChangeIds.push(changeId)
     
+    // Tasks 동기화 (무조건 실행 - Tasks 변경사항 누락 방지)
+    await syncRemoteChangeTasksForProject(changeId, project.path, server, project.id).catch(e => console.error(`Remote task sync failed for ${changeId}`, e))
+
     // Incremental Sync Check
     const lastModified = fileMtimes.get(changeId)
     const storedUpdated = existingMap.get(changeId)
