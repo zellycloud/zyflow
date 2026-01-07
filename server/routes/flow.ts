@@ -295,27 +295,33 @@ flowRouter.get('/changes/:id', async (req, res) => {
   try {
     await initTaskDb()
     const config = await loadConfig()
+    const activeProjectId = config.activeProjectId
 
     const sqlite = getSqlite()
-    const change = sqlite
-      .prepare(
-        `
-      SELECT * FROM changes WHERE id = ?
-    `
-      )
-      .get(req.params.id) as
-      | {
-          id: string
-          project_id: string
-          title: string
-          spec_path: string | null
-          status: ChangeStatus
-          current_stage: Stage
-          progress: number
-          created_at: number
-          updated_at: number
-        }
-      | undefined
+    
+    // 활성 프로젝트에서 우선 조회 (같은 changeId가 여러 프로젝트에 있을 수 있음)
+    let change = activeProjectId
+      ? (sqlite
+          .prepare(`SELECT * FROM changes WHERE id = ? AND project_id = ?`)
+          .get(req.params.id, activeProjectId) as {
+            id: string
+            project_id: string
+            title: string
+            spec_path: string | null
+            status: ChangeStatus
+            current_stage: Stage
+            progress: number
+            created_at: number
+            updated_at: number
+          } | undefined)
+      : undefined
+    
+    // 활성 프로젝트에 없으면 전체에서 조회 (fallback)
+    if (!change) {
+      change = sqlite
+        .prepare(`SELECT * FROM changes WHERE id = ?`)
+        .get(req.params.id) as typeof change
+    }
 
     if (!change) {
       return res.status(404).json({ success: false, error: 'Change not found' })

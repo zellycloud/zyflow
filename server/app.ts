@@ -1737,7 +1737,7 @@ app.post('/api/tasks/:id/unarchive', async (req, res) => {
 const STAGES: Stage[] = ['spec', 'changes', 'task', 'code', 'test', 'commit', 'docs']
 
 // Helper: Change의 stages 집계 정보 계산
-function getChangeStages(changeId: string, _projectPath?: string) {
+function getChangeStages(changeId: string, projectId?: string) {
   const sqlite = getSqlite()
   const stages: Record<Stage, { total: number; completed: number; tasks: unknown[] }> = {
     spec: { total: 0, completed: 0, tasks: [] },
@@ -1749,15 +1749,14 @@ function getChangeStages(changeId: string, _projectPath?: string) {
     docs: { total: 0, completed: 0, tasks: [] },
   }
 
+  // project_id 필터 추가: 같은 changeId가 여러 프로젝트에 있을 수 있으므로 project_id로 필터링
   const tasks = sqlite
     .prepare(
-      `
-    SELECT * FROM tasks
-    WHERE change_id = ? AND status != 'archived'
-    ORDER BY stage, group_order, sub_order, task_order, "order"
-  `
+      projectId
+        ? `SELECT * FROM tasks WHERE change_id = ? AND project_id = ? AND status != 'archived' ORDER BY stage, group_order, sub_order, task_order, "order"`
+        : `SELECT * FROM tasks WHERE change_id = ? AND status != 'archived' ORDER BY stage, group_order, sub_order, task_order, "order"`
     )
-    .all(changeId) as Array<{
+    .all(projectId ? [changeId, projectId] : [changeId]) as Array<{
     id: number
     change_id: string
     stage: Stage
@@ -1968,27 +1967,32 @@ app.get('/api/flow/changes/:id', async (req, res) => {
     await initTaskDb()
     const config = await loadConfig()
 
+    // 활성 프로젝트에서 우선 조회 (같은 changeId가 여러 프로젝트에 있을 수 있음)
+    const activeProjectId = config.activeProjectId
     const sqlite = getSqlite()
-    // 모든 프로젝트에서 Change 조회 (active project 제한 없이)
-    const change = sqlite
-      .prepare(
-        `
-      SELECT * FROM changes WHERE id = ?
-    `
-      )
-      .get(req.params.id) as
-      | {
-          id: string
-          project_id: string
-          title: string
-          spec_path: string | null
-          status: ChangeStatus
-          current_stage: Stage
-          progress: number
-          created_at: number
-          updated_at: number
-        }
-      | undefined
+    
+    let change = activeProjectId
+      ? (sqlite
+          .prepare(`SELECT * FROM changes WHERE id = ? AND project_id = ?`)
+          .get(req.params.id, activeProjectId) as {
+            id: string
+            project_id: string
+            title: string
+            spec_path: string | null
+            status: ChangeStatus
+            current_stage: Stage
+            progress: number
+            created_at: number
+            updated_at: number
+          } | undefined)
+      : undefined
+    
+    // 활성 프로젝트에 없으면 전체에서 조회 (fallback)
+    if (!change) {
+      change = sqlite
+        .prepare(`SELECT * FROM changes WHERE id = ?`)
+        .get(req.params.id) as typeof change
+    }
 
     if (!change) {
       return res.status(404).json({ success: false, error: 'Change not found' })
@@ -2000,7 +2004,8 @@ app.get('/api/flow/changes/:id', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Project not found for this change' })
     }
 
-    const stages = getChangeStages(change.id, project.path)
+    // project_id를 전달하여 해당 프로젝트의 Tasks만 가져오기
+    const stages = getChangeStages(change.id, change.project_id)
     const progress = calculateProgress(stages)
     const currentStage = determineCurrentStage(stages)
 
