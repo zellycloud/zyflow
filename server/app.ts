@@ -2429,6 +2429,69 @@ app.get('/api/flow/tasks', async (req, res) => {
       return res.status(400).json({ success: false, error: 'No active project' })
     }
 
+    // 원격 프로젝트: SSH로 tasks.md 실시간 조회 (On-Demand)
+    if (project.remote && changeId) {
+      try {
+        const remotePlugin = await import('@zyflow/remote-plugin')
+        const server = await remotePlugin.getRemoteServerById(project.remote.serverId)
+        if (server) {
+          const tasksPath = `${project.path}/openspec/changes/${changeId}/tasks.md`
+          const tasksContent = await remotePlugin.readRemoteFile(server, tasksPath)
+          const parsed = parseTasksFile(changeId as string, tasksContent)
+          
+          // 파싱된 Tasks를 프론트엔드 형식으로 변환
+          const formatted: Array<{
+            id: number
+            changeId: string | null
+            stage: string
+            title: string
+            description: string | null
+            status: string
+            priority: string
+            tags: string[]
+            assignee: string | null
+            order: number
+            displayId: string | null
+            createdAt: string
+            updatedAt: string
+            archivedAt: string | null
+            groupTitle?: string
+            majorTitle?: string
+          }> = []
+          
+          let taskId = 1
+          for (const group of parsed.groups) {
+            for (const task of group.tasks) {
+              formatted.push({
+                id: taskId++,
+                changeId: changeId as string,
+                stage: 'task',
+                title: task.title,
+                description: null,
+                status: task.completed ? 'done' : 'todo',
+                priority: 'medium',
+                tags: [],
+                assignee: null,
+                order: task.lineNumber,
+                displayId: task.displayId || null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                archivedAt: null,
+                groupTitle: group.title,
+                majorTitle: (group as any).majorTitle || group.title,
+              })
+            }
+          }
+          
+          return res.json({ success: true, data: { tasks: formatted } })
+        }
+      } catch (e) {
+        console.warn('[Remote Tasks] Failed to fetch via SSH, falling back to DB:', e)
+        // SSH 실패 시 DB에서 조회 (fallback)
+      }
+    }
+
+    // 로컬 프로젝트 또는 원격 프로젝트 fallback: DB에서 조회
     const sqlite = getSqlite()
     let sql = 'SELECT * FROM tasks WHERE project_id = ?'
     const params: unknown[] = [project.id]

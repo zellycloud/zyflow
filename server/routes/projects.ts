@@ -351,8 +351,9 @@ async function syncRemoteProjectChanges(project: {
     const changeId = entry.name
     activeChangeIds.push(changeId)
     
-    // Tasks 동기화 (무조건 실행 - Tasks 변경사항 누락 방지)
-    await syncRemoteChangeTasksForProject(changeId, project.path, server, project.id).catch(e => console.error(`Remote task sync failed for ${changeId}`, e))
+    // Tasks 동기화는 원격 프로젝트에서 너무 느리므로 비활성화
+    // 원격 프로젝트는 Watcher가 없으므로 Tasks는 수동 새로고침 또는 all-data API를 통해 조회
+    // await syncRemoteChangeTasksForProject(changeId, project.path, server, project.id).catch(e => console.error(`Remote task sync failed for ${changeId}`, e))
 
     // Incremental Sync Check
     const lastModified = fileMtimes.get(changeId)
