@@ -19,10 +19,12 @@
 
 ## Phase 3: RAG 백엔드 구축
 
-- [ ] 벡터 DB(`LanceDB`) 설치 및 설정
-- [ ] 문서 임베딩 생성기 구현 (`Task`로 실행)
+- [x] 벡터 DB(`LanceDB`) 설치 및 설정
+- [x] 문서 임베딩 생성기 구현 (`Transformers.js` 사용)
 - [ ] 파일 변경 감지 시 임베딩 업데이트 로직 (`watcher`)
-- [ ] `POST /api/docs/ask` API 구현 (질문 -> 검색 -> 답변)
+- [x] `POST /api/docs/ask` API 구현 (질문 -> 검색 -> 컨텍스트 반환)
+- [x] `POST /api/docs/index` API 구현 (문서 인덱싱)
+- [x] `GET /api/docs/index/stats` API 구현 (인덱스 통계)
 
 ## Phase 4: RAG UI 연동
 

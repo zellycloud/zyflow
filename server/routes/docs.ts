@@ -486,4 +486,187 @@ router.get('/search', async (req, res) => {
   }
 })
 
+// ============================================
+// RAG (Retrieval-Augmented Generation) API
+// ============================================
+
+import { 
+  initRagDb, 
+  indexDocument, 
+  indexProjectDocuments, 
+  searchDocuments, 
+  getIndexStats 
+} from '../rag/index.js'
+
+/**
+ * POST /api/docs/ask - RAG 기반 질문-답변
+ */
+router.post('/ask', async (req, res) => {
+  try {
+    const { projectPath, projectId, query, limit = 5 } = req.body
+
+    if (!projectId || !query) {
+      return res.status(400).json({ error: 'projectId and query are required' })
+    }
+
+    // 유사 문서 검색
+    const results = await searchDocuments(projectId, query, limit)
+
+    if (results.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          answer: '관련 문서를 찾을 수 없습니다. 먼저 문서를 인덱싱해 주세요.',
+          sources: [],
+          context: '',
+        },
+      })
+    }
+
+    // 컨텍스트 구성
+    const context = results
+      .map((r, i) => `[Source ${i + 1}: ${r.filePath}]\n${r.content}`)
+      .join('\n\n---\n\n')
+
+    // 현재는 LLM 호출 없이 컨텍스트만 반환
+    // 실제 답변 생성은 프론트엔드에서 Claude API를 호출하거나
+    // 별도의 AI 서비스 연동이 필요
+    res.json({
+      success: true,
+      data: {
+        answer: null, // LLM 연동 시 여기에 답변
+        sources: results.map(r => ({
+          filePath: r.filePath,
+          content: r.content.slice(0, 500),
+          score: r.score,
+        })),
+        context,
+        query,
+      },
+    })
+  } catch (error) {
+    console.error('[RAG] Ask error:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to process question',
+    })
+  }
+})
+
+/**
+ * POST /api/docs/index - 문서 인덱싱
+ */
+router.post('/index', async (req, res) => {
+  try {
+    const { projectId, projectPath, files } = req.body
+
+    if (!projectId || !projectPath) {
+      return res.status(400).json({ error: 'projectId and projectPath are required' })
+    }
+
+    await initRagDb()
+
+    if (files && Array.isArray(files)) {
+      // 특정 파일들만 인덱싱
+      const result = await indexProjectDocuments(projectId, projectPath, files)
+      res.json({
+        success: true,
+        data: result,
+      })
+    } else {
+      // 전체 프로젝트 인덱싱 (docs + openspec 폴더)
+      const docsItems = await scanDocsDirectory(
+        join(projectPath, 'docs'),
+        join(projectPath, 'docs'),
+        projectPath
+      )
+      const openspecItems = await scanDocsDirectory(
+        join(projectPath, 'openspec'),
+        join(projectPath, 'openspec'),
+        projectPath
+      )
+
+      // DocItem에서 파일 경로만 추출
+      function extractFilePaths(items: DocItem[]): string[] {
+        const paths: string[] = []
+        for (const item of items) {
+          if (item.type === 'file') {
+            paths.push(item.path)
+          } else if (item.children) {
+            paths.push(...extractFilePaths(item.children))
+          }
+        }
+        return paths
+      }
+
+      const allFiles = [
+        ...extractFilePaths(docsItems),
+        ...extractFilePaths(openspecItems),
+      ]
+
+      const result = await indexProjectDocuments(projectId, projectPath, allFiles)
+      res.json({
+        success: true,
+        data: result,
+      })
+    }
+  } catch (error) {
+    console.error('[RAG] Index error:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to index documents',
+    })
+  }
+})
+
+/**
+ * POST /api/docs/index/file - 단일 파일 인덱싱
+ */
+router.post('/index/file', async (req, res) => {
+  try {
+    const { projectId, projectPath, filePath } = req.body
+
+    if (!projectId || !projectPath || !filePath) {
+      return res.status(400).json({ error: 'projectId, projectPath, and filePath are required' })
+    }
+
+    const chunks = await indexDocument(projectId, projectPath, filePath)
+    res.json({
+      success: true,
+      data: { filePath, chunks },
+    })
+  } catch (error) {
+    console.error('[RAG] Index file error:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to index file',
+    })
+  }
+})
+
+/**
+ * GET /api/docs/index/stats - 인덱스 통계
+ */
+router.get('/index/stats', async (req, res) => {
+  try {
+    const { projectId } = req.query as { projectId?: string }
+
+    if (!projectId) {
+      return res.status(400).json({ error: 'projectId is required' })
+    }
+
+    const stats = await getIndexStats(projectId)
+    res.json({
+      success: true,
+      data: stats,
+    })
+  } catch (error) {
+    console.error('[RAG] Stats error:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get index stats',
+    })
+  }
+})
+
 export { router as docsRouter }
