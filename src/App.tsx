@@ -10,6 +10,7 @@ import { MenuBar } from '@/components/layout/MenuBar'
 import { FlowContent } from '@/components/flow/FlowContent'
 import { ChatPanel } from '@/components/chat'
 import { DocsCommandPalette } from '@/components/docs'
+import { GlobalCommandPalette } from '@/components/layout/GlobalCommandPalette'
 import { ThemeToggle } from '@/components/dashboard/ThemeToggle'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useProjectsAllData } from '@/hooks/useProjects'
@@ -136,6 +137,7 @@ function AppContent() {
     return saved === 'true'
   })
   const [docsCommandPaletteOpen, setDocsCommandPaletteOpen] = useState(false)
+  const [globalCommandPaletteOpen, setGlobalCommandPaletteOpen] = useState(false)
 
   const { isConnected } = useWebSocket()
   const { data: projectsData } = useProjectsAllData()
@@ -161,6 +163,11 @@ function AppContent() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl + K for global search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setGlobalCommandPaletteOpen(prev => !prev)
+      }
       // Cmd/Ctrl + B for left sidebar
       if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
         e.preventDefault()
@@ -273,6 +280,22 @@ function AppContent() {
         onOpenChange={setDocsCommandPaletteOpen}
         projectPath={currentWorkingDirectory}
         onSelectDoc={handleSelectDoc}
+      />
+
+      {/* 전역 검색 (Cmd+K) */}
+      <GlobalCommandPalette
+        open={globalCommandPaletteOpen}
+        onOpenChange={setGlobalCommandPaletteOpen}
+        onNavigate={(item) => {
+          if (item.type === 'change' && item.id && item.projectId) {
+            setSelectedItem({ type: 'change', projectId: item.projectId, changeId: item.id })
+          } else if (item.type === 'docs' && item.projectId) {
+            setSelectedItem({ type: 'docs', projectId: item.projectId })
+          } else if (item.type === 'settings') {
+            setSelectedItem({ type: 'settings' })
+          }
+        }}
+        onOpenChat={() => setRightSidebarCollapsed(false)}
       />
     </SidebarProvider>
   )
