@@ -22,7 +22,6 @@ import {
   Circle,
   ArrowLeft,
   Trash2,
-  Terminal,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -45,7 +44,7 @@ import { cn } from '@/lib/utils'
 import { useAgentSession, useAgentSessions, AgentMessage, AgentSessionState } from '@/hooks/useAgentSession'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useProjectsAllData } from '@/hooks/useProjects'
-import { API_ENDPOINTS, cliApiUrl, projectApiUrl } from '@/config/api'
+import { projectApiUrl } from '@/config/api'
 
 const PANEL_WIDTH = 400
 const COLLAPSED_WIDTH = 0
@@ -259,8 +258,6 @@ export function ChatPanel({ className, collapsed: controlledCollapsed, onCollaps
   const [showHistory, setShowHistory] = useState(false)
   const [selectedChangeId, setSelectedChangeId] = useState<string | undefined>()
   const [loadedSessionId, setLoadedSessionId] = useState<string | undefined>()
-  const [selectedCLI, setSelectedCLI] = useState<string>('claude')
-  const [cliProfiles, setCLIProfiles] = useState<Array<{ id: string; name: string; icon?: string }>>([])
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -293,57 +290,12 @@ export function ChatPanel({ className, collapsed: controlledCollapsed, onCollaps
     isStreaming,
     error,
     startSession,
-    setCLI,
     stopSession,
     resumeSession,
     sendMessage,
   } = useAgentSession(loadedSessionId)
 
-  // Load CLI profiles (only enabled ones, sorted by order)
-  useEffect(() => {
-    async function fetchCLIProfiles() {
-      try {
-        // Fetch settings to filter enabled profiles and get order
-        const settingsRes = await fetch(API_ENDPOINTS.cliSettings)
-        const settingsData = await settingsRes.json()
 
-        const availableRes = await fetch(cliApiUrl.availableProfiles())
-        const availableData = await availableRes.json()
-
-        if (availableData.success) {
-          // Filter to only enabled profiles and sort by order
-          const enabledProfiles = availableData.profiles
-            .filter((profile: { id: string }) => {
-              const setting = settingsData.settings?.[profile.id]
-              return setting?.enabled !== false // Default to enabled if no setting
-            })
-            .sort((a: { id: string }, b: { id: string }) => {
-              const orderA = settingsData.settings?.[a.id]?.order ?? 999
-              const orderB = settingsData.settings?.[b.id]?.order ?? 999
-              return orderA - orderB
-            })
-
-          setCLIProfiles(enabledProfiles)
-          if (!selectedCLI && enabledProfiles.length > 0) {
-            setSelectedCLI(enabledProfiles[0].id)
-            // Set initial CLI in hook
-            setCLI(enabledProfiles[0])
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch CLI profiles:', error)
-      }
-    }
-    fetchCLIProfiles()
-  }, [setCLI])
-
-  // Update hook when CLI selection changes
-  useEffect(() => {
-    const profile = cliProfiles.find(p => p.id === selectedCLI)
-    if (profile) {
-      setCLI(profile)
-    }
-  }, [selectedCLI, cliProfiles, setCLI])
 
   // Save collapsed state
   useEffect(() => {
@@ -379,8 +331,9 @@ export function ChatPanel({ className, collapsed: controlledCollapsed, onCollaps
     setInput('')
 
     if (!sessionId && selectedChangeId) {
-      const currentCLI = cliProfiles.find(p => p.id === selectedCLI)
-      await startSession(selectedChangeId, activeProject?.path, message, currentCLI)
+      // 기본 Claude CLI 사용
+      const defaultCLI = { id: 'claude', name: 'Claude', icon: '🤖' }
+      await startSession(selectedChangeId, activeProject?.path, message, defaultCLI)
     } else if (sessionId) {
       await sendMessage(message)
     }
@@ -500,40 +453,8 @@ export function ChatPanel({ className, collapsed: controlledCollapsed, onCollaps
                 </div>
               </div>
 
-              {/* Header - Row 2: Selectors */}
+              {/* Header - Row 2: Change Selector */}
               <div className="flex items-center gap-2 px-3 pb-2 border-b">
-                {/* CLI Selector */}
-                {cliProfiles.length > 0 && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="gap-1 h-7 text-xs px-2">
-                        <Terminal className="w-3 h-3" />
-                        <span className="max-w-[80px] truncate">
-                          {cliProfiles.find(p => p.id === selectedCLI)?.name || 'CLI'}
-                        </span>
-                        <ChevronDown className="w-3 h-3" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-[180px]">
-                      <DropdownMenuLabel className="text-xs">CLI 선택</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      {cliProfiles.map((profile) => (
-                        <DropdownMenuItem
-                          key={profile.id}
-                          onClick={() => setSelectedCLI(profile.id)}
-                          className={cn(
-                            'text-xs gap-2',
-                            selectedCLI === profile.id && 'bg-primary/10'
-                          )}
-                        >
-                          <span>{profile.icon || '🔧'}</span>
-                          <span className="truncate">{profile.name}</span>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-
                 {/* Change Selector */}
                 {activeProject && (
                   <DropdownMenu>
