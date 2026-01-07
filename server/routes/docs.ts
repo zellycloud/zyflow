@@ -126,7 +126,7 @@ async function scanRemoteDocsDirectory(
         // relative path 계산이 까다로울 수 있음 (projectPath가 원격 경로). 단순 문자열 제거로 처리
         const relativePath = fullPath.replace(`${projectPath}/`, '')
 
-        if (entry.type === 'directory') {
+        if (entry.type === 'directory' || entry.type === 'd' || entry.type === 'Directory') {
            const excludes = ['node_modules', 'dist', 'build', 'out', 'coverage', '.next', '.git']
            if (entry.name.startsWith('.') || excludes.includes(entry.name)) {
              return null
