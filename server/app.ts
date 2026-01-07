@@ -38,6 +38,7 @@ import type { Stage, ChangeStatus } from './tasks/db/schema.js'
 import { cliRoutes } from './cli-adapter/index.js'
 import { postTaskRouter } from './routes/post-task.js'
 import { docsRouter } from './routes/docs.js'
+import { globalChatRouter } from './routes/global-chat.js'
 import { projectsRouter } from './routes/projects.js'
 import { startTasksWatcher, stopTasksWatcher } from './watcher.js'
 import { changesRouter } from './routes/changes.js'
@@ -131,6 +132,9 @@ app.use('/api/ai', aiRouter)
 
 // Docs API 라우터 등록
 app.use('/api/docs', docsRouter)
+
+// Global Chat API 라우터 등록
+app.use('/api/chat', globalChatRouter)
 
 // Projects API 라우터 등록
 app.use('/api/projects', projectsRouter)

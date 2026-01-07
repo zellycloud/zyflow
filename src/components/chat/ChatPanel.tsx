@@ -44,7 +44,7 @@ import { cn } from '@/lib/utils'
 import { useAgentSession, useAgentSessions, AgentMessage, AgentSessionState } from '@/hooks/useAgentSession'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useProjectsAllData } from '@/hooks/useProjects'
-import { projectApiUrl } from '@/config/api'
+import { projectApiUrl, cliApiUrl } from '@/config/api'
 
 const PANEL_WIDTH = 400
 const COLLAPSED_WIDTH = 0
@@ -259,8 +259,13 @@ export function ChatPanel({ className, collapsed: controlledCollapsed, onCollaps
   const [selectedChangeId, setSelectedChangeId] = useState<string | undefined>()
   const [loadedSessionId, setLoadedSessionId] = useState<string | undefined>()
   const [input, setInput] = useState('')
+  const [globalMessages, setGlobalMessages] = useState<Array<{role: 'user' | 'assistant'; content: string}>>([])
+  const [isGlobalChatLoading, setIsGlobalChatLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // 전역 채팅 모드: Change 선택 없이 일반 질문
+  const isGlobalChatMode = !selectedChangeId
 
   const { data: projectsData } = useProjectsAllData()
   const activeProject = projectsData?.projects.find(
@@ -325,13 +330,57 @@ export function ChatPanel({ className, collapsed: controlledCollapsed, onCollaps
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
-    if (!input.trim() || isStreaming) return
+    if (!input.trim() || isStreaming || isGlobalChatLoading) return
 
     const message = input.trim()
     setInput('')
 
-    if (!sessionId && selectedChangeId) {
-      // 기본 Claude CLI 사용
+    if (isGlobalChatMode) {
+      // 전역 채팅 모드: Claude API 직접 호출
+      setGlobalMessages(prev => [...prev, { role: 'user', content: message }])
+      setIsGlobalChatLoading(true)
+      
+      try {
+        const res = await fetch('/api/chat/global', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [...globalMessages, { role: 'user', content: message }],
+            projectId: activeProject?.id,
+          }),
+        })
+        
+        if (!res.ok) throw new Error('Failed to get response')
+        
+        // 스트리밍 응답 처리
+        const reader = res.body?.getReader()
+        if (!reader) throw new Error('No reader')
+        
+        const decoder = new TextDecoder()
+        let fullContent = ''
+        setGlobalMessages(prev => [...prev, { role: 'assistant', content: '' }])
+        
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          
+          const chunk = decoder.decode(value, { stream: true })
+          fullContent += chunk
+          
+          setGlobalMessages(prev => {
+            const newMessages = [...prev]
+            newMessages[newMessages.length - 1] = { role: 'assistant', content: fullContent }
+            return newMessages
+          })
+        }
+      } catch (error) {
+        console.error('Global chat error:', error)
+        setGlobalMessages(prev => [...prev, { role: 'assistant', content: '❌ 오류가 발생했습니다. 다시 시도해 주세요.' }])
+      } finally {
+        setIsGlobalChatLoading(false)
+      }
+    } else if (!sessionId && selectedChangeId) {
+      // Change 모드: 기존 Agent 세션
       const defaultCLI = { id: 'claude', name: 'Claude', icon: '🤖' }
       await startSession(selectedChangeId, activeProject?.path, message, defaultCLI)
     } else if (sessionId) {
@@ -361,12 +410,15 @@ export function ChatPanel({ className, collapsed: controlledCollapsed, onCollaps
     }
   }
 
-  const canSend = input.trim() && !isStreaming && selectedChangeId
+  const canSend = input.trim() && !isStreaming && !isGlobalChatLoading && (selectedChangeId || isGlobalChatMode)
   const canStop = isStreaming && sessionId
   const canResume = status === 'stopped' && sessionId
 
   const selectedChange = changes?.find((c) => c.id === selectedChangeId)
   const activeChanges = changes?.filter((c) => c.status === 'active') ?? []
+
+  // 현재 표시할 메시지 (전역 모드 vs Change 모드)
+  const displayMessages = isGlobalChatMode ? globalMessages : messages
 
   return (
     <div className={cn('relative flex h-full', className)}>
@@ -509,32 +561,50 @@ export function ChatPanel({ className, collapsed: controlledCollapsed, onCollaps
                   </div>
                 )}
 
-                {activeProject && messages.length === 0 && !selectedChangeId && (
+                {activeProject && displayMessages.length === 0 && (
                   <div className="flex items-center justify-center h-full text-muted-foreground">
                     <div className="text-center">
                       <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                      <p className="text-sm">Change를 선택하세요</p>
+                      <p className="text-sm font-medium mb-1">
+                        {isGlobalChatMode ? '무엇이든 물어보세요' : '메시지를 보내 Agent를 시작하세요'}
+                      </p>
+                      <p className="text-xs opacity-70">
+                        {isGlobalChatMode 
+                          ? 'Change 선택 없이 일반 질문이 가능합니다'
+                          : 'Change를 선택하면 Agent 모드로 전환됩니다'}
+                      </p>
                     </div>
                   </div>
                 )}
 
-                {activeProject && messages.length === 0 && selectedChangeId && (
-                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                    <div className="text-center">
-                      <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                      <p className="text-sm">메시지를 보내 Agent를 시작하세요</p>
+                {displayMessages.map((message, index) => (
+                  isGlobalChatMode ? (
+                    <div
+                      key={index}
+                      className={cn(
+                        'flex gap-3 p-3 rounded-lg text-sm',
+                        message.role === 'user' ? 'bg-primary/10 ml-8' : 'bg-muted mr-8'
+                      )}
+                    >
+                      {message.role === 'assistant' && (
+                        <Bot className="w-4 h-4 text-primary shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0 prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
+                        {message.content || '...'}
+                      </div>
+                      {message.role === 'user' && (
+                        <User className="w-4 h-4 text-muted-foreground shrink-0" />
+                      )}
                     </div>
-                  </div>
-                )}
-
-                {messages.map((message, index) => (
-                  <MessageBubble key={index} message={message} />
+                  ) : (
+                    <MessageBubble key={index} message={message as AgentMessage} />
+                  )
                 ))}
 
-                {isStreaming && (
+                {(isStreaming || isGlobalChatLoading) && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground p-3">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    <span>Agent가 생각 중...</span>
+                    <span>{isGlobalChatMode ? 'AI가 답변 중...' : 'Agent가 생각 중...'}</span>
                   </div>
                 )}
 
@@ -577,11 +647,11 @@ export function ChatPanel({ className, collapsed: controlledCollapsed, onCollaps
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder={
-                      selectedChangeId
-                        ? '메시지를 입력하세요...'
-                        : 'Change를 먼저 선택하세요'
+                      isGlobalChatMode
+                        ? '무엇이든 물어보세요...'
+                        : '메시지를 입력하세요...'
                     }
-                    disabled={!selectedChangeId || isStreaming}
+                    disabled={!activeProject || isStreaming || isGlobalChatLoading}
                     className="min-h-[60px] text-sm resize-none"
                   />
                   <div className="flex flex-col gap-1">
