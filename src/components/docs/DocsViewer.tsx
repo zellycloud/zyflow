@@ -5,8 +5,6 @@ import {
   BookOpen,
   Loader2,
   ExternalLink,
-  MessageSquare,
-  PanelRightClose,
   X,
   Edit2, // 편집 아이콘 추가
 } from 'lucide-react'
@@ -17,9 +15,6 @@ import { useDocsList, useDocContent, flattenDocTree, type DocItem } from '@/hook
 import { DocTreeItem } from './DocTree'
 import { MarkdownViewer } from './MarkdownViewer'
 import { MarkdownEditor } from './MarkdownEditor' // 에디터 import
-import { RagChat } from './RagChat' // RAG 채팅 import
-import { cn } from '@/lib/utils'
-import { useProjects } from '@/hooks/useProjects'
 
 interface DocsViewerProps {
   projectPath: string
@@ -33,12 +28,7 @@ export function DocsViewer({ projectPath, remote, onClose }: DocsViewerProps) {
     () => new Set(['docs', 'openspec'])
   )
   const [searchQuery, setSearchQuery] = useState('')
-  const [showChatPanel, setShowChatPanel] = useState(false)
   const [isEditing, setIsEditing] = useState(false) // 편집 모드 상태
-
-  // 활성 프로젝트 ID 가져오기 (RAG용)
-  const { data: projectsData } = useProjects()
-  const projectId = projectsData?.activeProjectId || ''
 
   const { data: docsList, isLoading: isListLoading } = useDocsList(projectPath, remote)
   const { data: docContent, isLoading: isContentLoading } = useDocContent(
@@ -206,16 +196,6 @@ export function DocsViewer({ projectPath, remote, onClose }: DocsViewerProps) {
                    </div>
                  </div>
                  <div className="flex items-center gap-1 shrink-0">
-                   <Button
-                     variant="ghost"
-                     size="sm"
-                     onClick={() => setShowChatPanel(!showChatPanel)}
-                     className={cn("h-8 px-2 gap-1.5", showChatPanel && "bg-accent text-accent-foreground")}
-                     title={showChatPanel ? "AI 채팅 닫기" : "AI 채팅 열기 (RAG)"}
-                   >
-                    <MessageSquare className="h-4 w-4" />
-                    <span className="text-xs hidden sm:inline">질문하기</span>
-                   </Button>
                    
                    {/* 편집 버튼 추가 */}
                    <Button
@@ -294,29 +274,6 @@ export function DocsViewer({ projectPath, remote, onClose }: DocsViewerProps) {
            </div>
          )}
       </div>
-
-      {/* 우측: AI 채팅 패널 (RAG) */}
-      {showChatPanel && (
-        <aside className="w-96 border-l bg-muted/10 flex flex-col shrink-0">
-            <div className="px-4 py-3 border-b flex items-center justify-between shrink-0 h-[57px] bg-background">
-              <span className="font-semibold text-sm flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-primary" />
-                문서 Q&A
-              </span>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowChatPanel(false)}>
-                <PanelRightClose className="h-4 w-4" />
-              </Button>
-            </div>
-            
-            {projectId ? (
-              <RagChat projectId={projectId} className="flex-1" />
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                <p className="text-sm">프로젝트를 선택해 주세요</p>
-              </div>
-            )}
-        </aside>
-      )}
     </div>
   )
 }
