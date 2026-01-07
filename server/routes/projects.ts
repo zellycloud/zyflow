@@ -160,9 +160,11 @@ projectsRouter.delete('/:id', async (req, res) => {
 
 // PUT /:id/activate - Set active project
 projectsRouter.put('/:id/activate', async (req, res) => {
+  console.log('[Activate-Optimized] Handler called for project:', req.params.id)
   try {
     await setActiveProject(req.params.id)
     const project = await getActiveProject()
+    console.log('[Activate-Optimized] Responding immediately, sync will run in background')
 
     // 백그라운드에서 동기화 실행 (Fire-and-forget) - 사용자 응답 대기 시간 제거
     if (project) {
@@ -850,23 +852,45 @@ async function getSpecsForRemoteProject(projectPath: string, serverId: string) {
   return specs
 }
 
+// 원격 프로젝트 데이터 캐시 (30초 TTL)
+const remoteDataCache = new Map<string, { data: { changes: unknown[], specs: unknown[] }, timestamp: number }>()
+const CACHE_TTL = 30000 // 30 seconds
+
 // GET /all-data - Get all projects with their changes and specs
 projectsRouter.get('/all-data', async (_req, res) => {
   try {
     const config = await loadConfig()
+
     const projectsData = await Promise.all(
       config.projects.map(async (project) => {
-        let changes = [], specs = []
+        let changes: unknown[] = []
+        let specs: unknown[] = []
 
         try {
           if (project.remote) {
-            // 원격 프로젝트: SSH를 통해 조회
-            const [remoteChanges, remoteSpecs] = await Promise.all([
-              getChangesForRemoteProject(project.path, project.remote.serverId, project.id),
-              getSpecsForRemoteProject(project.path, project.remote.serverId)
-            ])
-            changes = remoteChanges
-            specs = remoteSpecs
+            // 원격 프로젝트: 캐시 확인 후 SSH 조회
+            const cached = remoteDataCache.get(project.id)
+            const now = Date.now()
+            
+            if (cached && (now - cached.timestamp) < CACHE_TTL) {
+              // 캐시 유효 - 캐시된 데이터 사용
+              changes = cached.data.changes
+              specs = cached.data.specs
+            } else {
+              // 캐시 만료 또는 없음 - SSH로 조회
+              const [remoteChanges, remoteSpecs] = await Promise.all([
+                getChangesForRemoteProject(project.path, project.remote.serverId, project.id),
+                getSpecsForRemoteProject(project.path, project.remote.serverId)
+              ])
+              changes = remoteChanges
+              specs = remoteSpecs
+              
+              // 캐시 업데이트
+              remoteDataCache.set(project.id, {
+                data: { changes, specs },
+                timestamp: now
+              })
+            }
           } else {
             // 로컬 프로젝트: 파일시스템에서 조회
             const [localChanges, localSpecs] = await Promise.all([
