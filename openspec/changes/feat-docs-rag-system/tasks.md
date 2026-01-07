@@ -21,12 +21,17 @@
 
 - [x] 벡터 DB(`LanceDB`) 설치 및 설정
 - [x] 문서 임베딩 생성기 구현 (`Transformers.js` 사용)
-- [ ] 파일 변경 감지 시 임베딩 업데이트 로직 (`watcher`)
+- [x] 파일 변경 감지 시 임베딩 업데이트 로직 (`watcher`) - 구현 완료
 - [x] `POST /api/docs/ask` API 구현 (질문 -> 검색 -> 컨텍스트 반환)
 - [x] `POST /api/docs/index` API 구현 (문서 인덱싱)
 - [x] `GET /api/docs/index/stats` API 구현 (인덱스 통계)
+- [x] `POST /api/docs/chat` API 구현 (스트리밍 채팅)
 
 ## Phase 4: RAG UI 연동
 
-- [ ] 문서 뷰어 하단에 "AI에게 질문하기" 채팅 인터페이스 추가
-- [ ] 답변 스트리밍 처리 및 출처(Reference) 표시 기능
+- [x] `RagChat` 컴포넌트 구현 (채팅 인터페이스)
+- [x] DocsViewer에 채팅 패널 통합
+- [x] 인덱싱 버튼 및 통계 표시
+- [x] 답변 스트리밍 처리 및 마크다운 렌더링
+- [x] 출처(Reference) 문서 표시 기능
+

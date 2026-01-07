@@ -17,7 +17,9 @@ import { useDocsList, useDocContent, flattenDocTree, type DocItem } from '@/hook
 import { DocTreeItem } from './DocTree'
 import { MarkdownViewer } from './MarkdownViewer'
 import { MarkdownEditor } from './MarkdownEditor' // 에디터 import
+import { RagChat } from './RagChat' // RAG 채팅 import
 import { cn } from '@/lib/utils'
+import { useProjects } from '@/hooks/useProjects'
 
 interface DocsViewerProps {
   projectPath: string
@@ -33,6 +35,10 @@ export function DocsViewer({ projectPath, remote, onClose }: DocsViewerProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [showChatPanel, setShowChatPanel] = useState(false)
   const [isEditing, setIsEditing] = useState(false) // 편집 모드 상태
+
+  // 활성 프로젝트 ID 가져오기 (RAG용)
+  const { data: projectsData } = useProjects()
+  const projectId = projectsData?.activeProjectId || ''
 
   const { data: docsList, isLoading: isListLoading } = useDocsList(projectPath, remote)
   const { data: docContent, isLoading: isContentLoading } = useDocContent(
@@ -287,7 +293,7 @@ export function DocsViewer({ projectPath, remote, onClose }: DocsViewerProps) {
 
       {/* 우측: AI 채팅 패널 (RAG) */}
       {showChatPanel && (
-        <aside className="w-80 border-l bg-muted/10 flex flex-col shrink-0">
+        <aside className="w-96 border-l bg-muted/10 flex flex-col shrink-0">
             <div className="px-4 py-3 border-b flex items-center justify-between shrink-0 h-[57px] bg-background">
               <span className="font-semibold text-sm flex items-center gap-2">
                 <MessageSquare className="h-4 w-4 text-primary" />
@@ -298,18 +304,13 @@ export function DocsViewer({ projectPath, remote, onClose }: DocsViewerProps) {
               </Button>
             </div>
             
-            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-muted-foreground">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-                <MessageSquare className="h-6 w-6 text-primary" />
+            {projectId ? (
+              <RagChat projectId={projectId} className="flex-1" />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                <p className="text-sm">프로젝트를 선택해 주세요</p>
               </div>
-              <h3 className="font-medium mb-1">무엇이든 물어보세요</h3>
-              <p className="text-xs mb-6 max-w-[200px] leading-relaxed">
-                오픈스펙 및 프로젝트 문서 내용을 기반으로 AI가 답변해드립니다.
-              </p>
-              <Button disabled variant="secondary" size="sm">
-                준비 중... (Phase 4)
-              </Button>
-            </div>
+            )}
         </aside>
       )}
     </div>

@@ -669,4 +669,142 @@ router.get('/index/stats', async (req, res) => {
   }
 })
 
+/**
+ * POST /api/docs/chat - RAG 스트리밍 채팅 (Vercel AI SDK)
+ */
+router.post('/chat', async (req, res) => {
+  try {
+    const { messages, projectId } = req.body
+
+    if (!projectId || !messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: 'projectId and messages are required' })
+    }
+
+    // 마지막 사용자 메시지에서 질문 추출
+    const lastUserMessage = [...messages].reverse().find((m: { role: string }) => m.role === 'user')
+    if (!lastUserMessage) {
+      return res.status(400).json({ error: 'No user message found' })
+    }
+
+    const query = lastUserMessage.content
+
+    // RAG: 유사 문서 검색
+    const searchResults = await searchDocuments(projectId, query, 5)
+
+    // 컨텍스트 구성
+    let context = ''
+    if (searchResults.length > 0) {
+      context = searchResults
+        .map((r, i) => `[문서 ${i + 1}: ${r.filePath}]\n${r.content}`)
+        .join('\n\n---\n\n')
+    }
+
+    // 시스템 프롬프트 구성
+    const systemPrompt = `당신은 프로젝트 문서에 대해 답변하는 AI 어시스턴트입니다.
+아래 문서 컨텍스트를 기반으로 사용자의 질문에 정확하고 도움이 되는 답변을 제공해주세요.
+컨텍스트에 없는 내용에 대해서는 "문서에서 해당 정보를 찾을 수 없습니다"라고 답변해주세요.
+
+## 참조 문서:
+${context || '(인덱싱된 문서가 없습니다. 먼저 문서를 인덱싱해 주세요.)'}
+
+## 지침:
+- 답변은 한국어로 작성
+- 문서 내용을 기반으로 정확하게 답변
+- 출처 문서를 언급할 때는 파일 경로를 포함
+- 마크다운 형식으로 답변`
+
+    // Anthropic Claude API 직접 호출 (스트리밍)
+    const anthropicApiKey = process.env.ANTHROPIC_API_KEY
+    if (!anthropicApiKey) {
+      return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' })
+    }
+
+    // 스트리밍 응답 설정
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+    res.setHeader('Transfer-Encoding', 'chunked')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+
+    // Anthropic API 호출
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': anthropicApiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        stream: true,
+        system: systemPrompt,
+        messages: messages.map((m: { role: string; content: string }) => ({
+          role: m.role,
+          content: m.content,
+        })),
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[RAG Chat] Anthropic API error:', errorText)
+      return res.status(response.status).json({ error: 'Failed to get AI response' })
+    }
+
+    // SSE 스트리밍 처리
+    const reader = response.body?.getReader()
+    if (!reader) {
+      return res.status(500).json({ error: 'Failed to read stream' })
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6)
+          if (data === '[DONE]') continue
+          
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+              res.write(parsed.delta.text)
+            }
+          } catch {
+            // JSON 파싱 실패 무시
+          }
+        }
+      }
+    }
+
+    // 출처 정보 추가 (스트리밍 끝난 후)
+    if (searchResults.length > 0) {
+      res.write('\n\n---\n**📚 참조 문서:**\n')
+      for (const result of searchResults) {
+        res.write(`- \`${result.filePath}\`\n`)
+      }
+    }
+
+    res.end()
+  } catch (error) {
+    console.error('[RAG Chat] Error:', error)
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to process chat',
+      })
+    } else {
+      res.end()
+    }
+  }
+})
+
 export { router as docsRouter }
