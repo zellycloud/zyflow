@@ -266,7 +266,11 @@ export function DocsViewer({ projectPath, remote, onClose }: DocsViewerProps) {
                     <div className="px-8 py-8 max-w-4xl mx-auto pb-32 min-h-full">
                       <MarkdownViewer 
                         content={docContent.content}
-                        projectPath={projectPath}
+                        currentDocPath={docContent.path}
+                        onNavigate={(targetPath) => {
+                          // 내부 링크 클릭 시 해당 문서로 이동
+                          setSelectedDocPath(targetPath)
+                        }}
                         className="min-h-[500px]" 
                       />
                     </div>

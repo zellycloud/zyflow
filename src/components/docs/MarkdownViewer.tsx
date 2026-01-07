@@ -10,6 +10,8 @@ interface MarkdownViewerProps {
   content: string
   className?: string
   projectPath?: string
+  currentDocPath?: string // 현재 문서 경로 (상대 링크 계산용)
+  onNavigate?: (docPath: string) => void // 내부 링크 클릭 시 호출
 }
 
 // Mermaid 컴포넌트
@@ -116,15 +118,68 @@ function CodeBlock({
   )
 }
 
-export function MarkdownViewer({ content, className, projectPath }: MarkdownViewerProps) {
-  // 링크 처리 (로컬 파일 링크 등)
-  const transformLink = (href: string) => {
-    if (!href) return href
-    if (href.startsWith('http')) return href
+/**
+ * 상대 경로를 절대 경로로 변환
+ * @param basePath 현재 문서 경로 (예: docs/guide/intro.md)
+ * @param relativePath 상대 링크 경로 (예: ../api/ref.md)
+ */
+function resolveRelativePath(basePath: string, relativePath: string): string {
+  // 이미 절대 경로면 그대로 반환
+  if (relativePath.startsWith('/')) {
+    return relativePath.slice(1)
+  }
+
+  // basePath에서 디렉토리 경로 추출
+  const baseParts = basePath.split('/')
+  baseParts.pop() // 파일명 제거
+
+  const relativeParts = relativePath.split('/')
+  
+  for (const part of relativeParts) {
+    if (part === '..') {
+      baseParts.pop()
+    } else if (part !== '.' && part !== '') {
+      baseParts.push(part)
+    }
+  }
+
+  return baseParts.join('/')
+}
+
+export function MarkdownViewer({ 
+  content, 
+  className, 
+  currentDocPath,
+  onNavigate 
+}: MarkdownViewerProps) {
+  // 내부 링크인지 확인
+  const isInternalLink = (href: string): boolean => {
+    if (!href) return false
+    if (href.startsWith('http://') || href.startsWith('https://')) return false
+    if (href.startsWith('mailto:')) return false
+    if (href.startsWith('#')) return false // 앵커 링크
+    // .md 파일이거나, 경로가 ./ 또는 ../ 로 시작하면 내부 링크
+    return href.endsWith('.md') || href.startsWith('./') || href.startsWith('../')
+  }
+
+  // 내부 링크 클릭 핸들러
+  const handleInternalLinkClick = (e: React.MouseEvent, href: string) => {
+    e.preventDefault()
     
-    // TODO: 내부 문서 링크 라우팅 처리
-    // 현재는 그냥 둠
-    return href
+    if (!onNavigate) return
+    
+    // 상대 경로 해결
+    let targetPath = href
+    if (currentDocPath && (href.startsWith('./') || href.startsWith('../'))) {
+      targetPath = resolveRelativePath(currentDocPath, href)
+    }
+    
+    // .md 확장자가 없으면 추가
+    if (!targetPath.endsWith('.md')) {
+      targetPath += '.md'
+    }
+    
+    onNavigate(targetPath)
   }
 
   return (
@@ -146,6 +201,20 @@ export function MarkdownViewer({ content, className, projectPath }: MarkdownView
         code: CodeBlock,
         a: ({ href, children }) => {
           const isExternal = href?.startsWith('http')
+          const isInternal = href ? isInternalLink(href) : false
+          
+          if (isInternal && onNavigate) {
+            return (
+              <a
+                href={href}
+                onClick={(e) => handleInternalLinkClick(e, href!)}
+                className="inline-flex items-center gap-0.5 cursor-pointer text-blue-500 hover:underline"
+              >
+                {children}
+              </a>
+            )
+          }
+          
           return (
             <a
               href={href}
@@ -164,3 +233,4 @@ export function MarkdownViewer({ content, className, projectPath }: MarkdownView
     </ReactMarkdown>
   )
 }
+
