@@ -1,11 +1,12 @@
 {
   "mcpServers": {
     "zyflow": {
+      "type": "stdio",
       "command": "node",
-      "args": [
-        "/Users/hansoo./ZELLYY/zyflow/dist/mcp-server/index.js"
-      ],
-      "type": "stdio"
+      "args": ["${CLAUDE_PLUGIN_ROOT}/plugin/scripts/mcp-server.cjs"],
+      "env": {
+        "ZYFLOW_PROJECT": "${PROJECT_ROOT}"
+      }
     }
   }
 }

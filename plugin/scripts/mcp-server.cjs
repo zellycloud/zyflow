@@ -33832,12 +33832,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["session_id"]
         }
       }
-      // RAG Tools - 주석 처리 (네이티브 바이너리 번들링 이슈)
-      // RAG 기능은 ZyFlow API 서버를 통해 사용하거나 mcp-local-rag 같은 외부 도구 사용 권장
-      // {
-      //   name: 'zyflow_rag_search',
-      //   ...
-      // },
+      // RAG 기능 삭제됨 - LEANN 외부 MCP 서버(leann-server) 사용
     ]
   };
 });
@@ -34150,11 +34145,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleStartReplay(args);
       case "get_replay_progress":
         return await handleGetReplayProgress(args);
-      // RAG Tools - 주석 처리 (네이티브 바이너리 번들링 이슈)
-      // case 'zyflow_rag_search': { ... }
-      // case 'zyflow_rag_index': { ... }
-      // case 'zyflow_rag_index_project': { ... }
-      // case 'zyflow_rag_stats': { ... }
       default:
         throw new Error(`Unknown tool: ${name}`);
     }

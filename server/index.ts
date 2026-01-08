@@ -3,7 +3,7 @@ import { createServer } from 'http'
 import { app } from './app.js'
 import { initWebSocket } from './websocket.js'
 import { startTasksWatcher, stopTasksWatcher } from './watcher.js'
-import { startRagWatcher, stopRagWatcher } from './rag/watcher.js'
+// RAG 기능 삭제됨 - LEANN 외부 MCP 서버로 대체
 import { getActiveProject } from './config.js'
 import { syncFlowChanges } from './flow-sync.js'
 
@@ -53,13 +53,6 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
       startTasksWatcher(project.path, project.id)
       console.log('[Info] File watcher enabled for active project')
 
-      // RAG Watcher 시작 (문서 변경 감지 및 자동 인덱싱)
-      try {
-        await startRagWatcher(project.id, project.path)
-        console.log('[Info] RAG watcher enabled for document indexing')
-      } catch (ragError) {
-        console.error('[Warning] Failed to start RAG watcher:', ragError)
-      }
     } else if (project?.remote?.serverId) {
       console.log('[Info] Remote project - file watcher disabled')
     } else {
