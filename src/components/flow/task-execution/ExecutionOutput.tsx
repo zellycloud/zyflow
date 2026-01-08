@@ -20,7 +20,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import type { AIMessage, AIProviderConfig } from '@/hooks/useAI'
-import type { ClaudeFlowLogEntry } from '@/types'
+import type { SwarmLogEntry } from '@/types'
 import { PROVIDER_ICONS, type ProviderResult, type ConsensusResult } from '@/types/ai'
 
 export interface ExecutionOutputProps {
@@ -32,7 +32,7 @@ export interface ExecutionOutputProps {
   selectedProvider?: string
   selectedModel?: string
   // Swarm mode props
-  swarmLogs?: ClaudeFlowLogEntry[]
+  swarmLogs?: SwarmLogEntry[]
   swarmStatus?: string
   swarmProgress?: number
   swarmError?: string | null

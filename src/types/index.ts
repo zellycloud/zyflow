@@ -388,17 +388,17 @@ export interface SSHConfigResponse {
 }
 
 // =============================================
-// claude-flow 실행 관련 타입
+// Swarm 실행 관련 타입
 // =============================================
 
 /** 실행 모드 */
-export type ClaudeFlowExecutionMode = 'full' | 'single' | 'analysis'
+export type SwarmExecutionMode = 'full' | 'single' | 'analysis'
 
 /** swarm 전략 */
-export type ClaudeFlowStrategy = 'development' | 'research' | 'testing'
+export type SwarmStrategy = 'development' | 'research' | 'testing'
 
 /** 실행 상태 값 */
-export type ClaudeFlowStatusValue =
+export type SwarmStatusValue =
   | 'pending'
   | 'running'
   | 'completed'
@@ -406,7 +406,7 @@ export type ClaudeFlowStatusValue =
   | 'stopped'
 
 /** 로그 타입 */
-export type ClaudeFlowLogType =
+export type SwarmLogType =
   | 'info'
   | 'tool_use'
   | 'tool_result'
@@ -415,34 +415,34 @@ export type ClaudeFlowLogType =
   | 'system'
   | 'progress'
 
-/** AI Provider 타입 (claude-flow Swarm 용) */
-export type ClaudeFlowAIProvider = 'claude' | 'gemini' | 'codex' | 'qwen' | 'kilo' | 'opencode' | 'custom'
+/** AI Provider 타입 */
+export type SwarmAIProvider = 'claude' | 'gemini' | 'codex' | 'qwen' | 'kilo' | 'opencode' | 'custom'
 
 /** 실행 요청 */
-export interface ClaudeFlowExecutionRequest {
+export interface SwarmExecutionRequest {
   projectPath: string
   changeId: string
   taskId?: string
-  mode: ClaudeFlowExecutionMode
-  strategy?: ClaudeFlowStrategy
+  mode: SwarmExecutionMode
+  strategy?: SwarmStrategy
   maxAgents?: number
   timeout?: number
   /** AI Provider (v2 - 다중 Provider 지원) */
-  provider?: ClaudeFlowAIProvider
+  provider?: SwarmAIProvider
   /** 모델 (v2 - 다중 Provider 지원) */
   model?: string
 }
 
 /** 로그 항목 */
-export interface ClaudeFlowLogEntry {
+export interface SwarmLogEntry {
   timestamp: string
-  type: ClaudeFlowLogType
+  type: SwarmLogType
   content: string
   metadata?: Record<string, unknown>
 }
 
 /** 실행 결과 */
-export interface ClaudeFlowExecutionResult {
+export interface SwarmExecutionResult {
   completedTasks: number
   totalTasks: number
   modifiedFiles?: string[]
@@ -451,41 +451,72 @@ export interface ClaudeFlowExecutionResult {
 }
 
 /** 실행 상태 */
-export interface ClaudeFlowExecutionStatus {
+export interface SwarmExecutionStatus {
   id: string
-  request: ClaudeFlowExecutionRequest
-  status: ClaudeFlowStatusValue
+  request: SwarmExecutionRequest
+  status: SwarmStatusValue
   startedAt: string
   completedAt?: string
   progress: number
   currentTask?: string
-  logs: ClaudeFlowLogEntry[]
-  result?: ClaudeFlowExecutionResult
+  logs: SwarmLogEntry[]
+  result?: SwarmExecutionResult
 }
 
 /** 히스토리 항목 */
-export interface ClaudeFlowHistoryItem {
+export interface SwarmHistoryItem {
   id: string
   changeId: string
-  mode: ClaudeFlowExecutionMode
-  status: ClaudeFlowStatusValue
+  mode: SwarmExecutionMode
+  status: SwarmStatusValue
   startedAt: string
   completedAt?: string
-  result?: ClaudeFlowExecutionResult
+  result?: SwarmExecutionResult
 }
 
 /** API 응답: 실행 시작 */
-export interface ClaudeFlowExecuteResponse {
+export interface SwarmExecuteResponse {
   executionId: string
   message: string
 }
 
 /** API 응답: 상태 조회 */
-export interface ClaudeFlowStatusResponse {
-  execution: ClaudeFlowExecutionStatus
+export interface SwarmStatusResponse {
+  execution: SwarmExecutionStatus
 }
 
 /** API 응답: 히스토리 */
-export interface ClaudeFlowHistoryResponse {
-  history: ClaudeFlowHistoryItem[]
+export interface SwarmHistoryResponse {
+  history: SwarmHistoryItem[]
 }
+
+// =============================================
+// 하위 호환성 alias (deprecated)
+// =============================================
+/** @deprecated SwarmExecutionMode 사용 권장 */
+export type ClaudeFlowExecutionMode = SwarmExecutionMode
+/** @deprecated SwarmStrategy 사용 권장 */
+export type ClaudeFlowStrategy = SwarmStrategy
+/** @deprecated SwarmStatusValue 사용 권장 */
+export type ClaudeFlowStatusValue = SwarmStatusValue
+/** @deprecated SwarmLogType 사용 권장 */
+export type ClaudeFlowLogType = SwarmLogType
+/** @deprecated SwarmAIProvider 사용 권장 */
+export type ClaudeFlowAIProvider = SwarmAIProvider
+/** @deprecated SwarmExecutionRequest 사용 권장 */
+export type ClaudeFlowExecutionRequest = SwarmExecutionRequest
+/** @deprecated SwarmLogEntry 사용 권장 */
+export type ClaudeFlowLogEntry = SwarmLogEntry
+/** @deprecated SwarmExecutionResult 사용 권장 */
+export type ClaudeFlowExecutionResult = SwarmExecutionResult
+/** @deprecated SwarmExecutionStatus 사용 권장 */
+export type ClaudeFlowExecutionStatus = SwarmExecutionStatus
+/** @deprecated SwarmHistoryItem 사용 권장 */
+export type ClaudeFlowHistoryItem = SwarmHistoryItem
+/** @deprecated SwarmExecuteResponse 사용 권장 */
+export type ClaudeFlowExecuteResponse = SwarmExecuteResponse
+/** @deprecated SwarmStatusResponse 사용 권장 */
+export type ClaudeFlowStatusResponse = SwarmStatusResponse
+/** @deprecated SwarmHistoryResponse 사용 권장 */
+export type ClaudeFlowHistoryResponse = SwarmHistoryResponse
+

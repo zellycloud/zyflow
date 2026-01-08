@@ -11,16 +11,16 @@ import {
   ChevronUp,
   Trash2,
 } from 'lucide-react'
-import type { ClaudeFlowLogEntry, ClaudeFlowLogType } from '@/types'
+import type { SwarmLogEntry, SwarmLogType } from '@/types'
 
 interface LogViewerProps {
-  logs: ClaudeFlowLogEntry[]
+  logs: SwarmLogEntry[]
   onClear?: () => void
   maxHeight?: string
   autoScroll?: boolean
 }
 
-const LOG_TYPE_STYLES: Record<ClaudeFlowLogType, { bg: string; text: string; label: string }> = {
+const LOG_TYPE_STYLES: Record<SwarmLogType, { bg: string; text: string; label: string }> = {
   info: { bg: 'bg-blue-500/10', text: 'text-blue-400', label: 'INFO' },
   tool_use: { bg: 'bg-purple-500/10', text: 'text-purple-400', label: 'TOOL' },
   tool_result: { bg: 'bg-green-500/10', text: 'text-green-400', label: 'RESULT' },
@@ -38,7 +38,7 @@ export function LogViewer({
 }: LogViewerProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [isAutoScroll, setIsAutoScroll] = useState(autoScroll)
-  const [filter, setFilter] = useState<ClaudeFlowLogType | 'all'>('all')
+  const [filter, setFilter] = useState<SwarmLogType | 'all'>('all')
   const [isExpanded, setIsExpanded] = useState(true)
 
   // 자동 스크롤
@@ -92,7 +92,7 @@ export function LogViewer({
           {/* 필터 */}
           <select
             value={filter}
-            onChange={(e) => setFilter(e.target.value as ClaudeFlowLogType | 'all')}
+            onChange={(e) => setFilter(e.target.value as SwarmLogType | 'all')}
             className="h-7 text-xs bg-zinc-800 border-zinc-700 rounded px-2"
           >
             <option value="all">모두</option>

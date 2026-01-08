@@ -12,17 +12,17 @@ import {
   StopCircle,
   Circle,
 } from 'lucide-react'
-import type { ClaudeFlowStatusValue } from '@/types'
+import type { SwarmStatusValue } from '@/types'
 
 interface ProgressIndicatorProps {
-  status: ClaudeFlowStatusValue
+  status: SwarmStatusValue
   progress: number
   startedAt: string
   completedAt?: string
   currentTask?: string
 }
 
-const STATUS_CONFIG: Record<ClaudeFlowStatusValue, {
+const STATUS_CONFIG: Record<SwarmStatusValue, {
   icon: typeof Clock
   color: string
   label: string

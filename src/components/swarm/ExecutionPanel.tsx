@@ -1,5 +1,5 @@
 /**
- * claude-flow 실행 패널 컴포넌트
+ * Swarm 실행 패널 컴포넌트
  */
 
 import { useState } from 'react'
@@ -28,10 +28,10 @@ import {
   ListTodo,
   RotateCcw,
 } from 'lucide-react'
-import { useClaudeFlowExecution } from '@/hooks/useSwarm'
+import { useSwarm, type SwarmStrategy } from '@/hooks/useSwarm'
 import { LogViewer } from './LogViewer'
 import { ProgressIndicator } from './ProgressIndicator'
-import type { ClaudeFlowExecutionMode, ClaudeFlowStrategy } from '@/types'
+import type { SwarmExecutionMode } from '@/types'
 
 interface ExecutionPanelProps {
   changeId: string
@@ -39,7 +39,7 @@ interface ExecutionPanelProps {
   taskId?: string
 }
 
-const MODE_OPTIONS: { value: ClaudeFlowExecutionMode; label: string; icon: typeof Zap; description: string }[] = [
+const MODE_OPTIONS: { value: SwarmExecutionMode; label: string; icon: typeof Zap; description: string }[] = [
   {
     value: 'full',
     label: '전체 실행',
@@ -60,7 +60,7 @@ const MODE_OPTIONS: { value: ClaudeFlowExecutionMode; label: string; icon: typeo
   },
 ]
 
-const STRATEGY_OPTIONS: { value: ClaudeFlowStrategy; label: string }[] = [
+const STRATEGY_OPTIONS: { value: SwarmStrategy; label: string }[] = [
   { value: 'development', label: '개발' },
   { value: 'research', label: '연구' },
   { value: 'testing', label: '테스트' },
@@ -71,20 +71,20 @@ export function ExecutionPanel({
   projectPath,
   taskId,
 }: ExecutionPanelProps) {
-  const [mode, setMode] = useState<ClaudeFlowExecutionMode>('full')
-  const [strategy, setStrategy] = useState<ClaudeFlowStrategy>('development')
+  const [mode, setMode] = useState<SwarmExecutionMode>('full')
+  const [strategy, setStrategy] = useState<SwarmStrategy>('development')
   const [maxAgents, setMaxAgents] = useState(5)
   const [showSettings, setShowSettings] = useState(false)
 
   const {
-    status,
+    execution,
     logs,
     isRunning,
     error,
     execute,
     stop,
     clearLogs,
-  } = useClaudeFlowExecution()
+  } = useSwarm()
 
   const handleExecute = async () => {
     await execute({
@@ -109,17 +109,17 @@ export function ExecutionPanel({
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
             <Zap className="h-5 w-5 text-yellow-500" />
-            Claude Flow 실행
+            Swarm 실행
           </CardTitle>
-          {status && (
+          {execution.status !== 'idle' && (
             <Badge
               variant={
-                status.status === 'running' ? 'default' :
-                status.status === 'completed' ? 'secondary' :
-                status.status === 'failed' ? 'destructive' : 'outline'
+                execution.status === 'running' ? 'default' :
+                execution.status === 'completed' ? 'secondary' :
+                execution.status === 'failed' ? 'destructive' : 'outline'
               }
             >
-              {status.status}
+              {execution.status}
             </Badge>
           )}
         </div>
@@ -127,7 +127,7 @@ export function ExecutionPanel({
 
       <CardContent className="space-y-4">
         {/* 실행 중이 아닐 때: 설정 UI */}
-        {!isRunning && !status && (
+        {!isRunning && execution.status === 'idle' && (
           <>
             {/* 모드 선택 */}
             <div className="grid grid-cols-3 gap-2">
@@ -168,7 +168,7 @@ export function ExecutionPanel({
                 {/* 전략 선택 */}
                 <div className="flex items-center justify-between">
                   <label className="text-sm text-zinc-400">전략</label>
-                  <Select value={strategy} onValueChange={(v) => setStrategy(v as ClaudeFlowStrategy)}>
+                  <Select value={strategy} onValueChange={(v) => setStrategy(v as SwarmStrategy)}>
                     <SelectTrigger className="w-32">
                       <SelectValue />
                     </SelectTrigger>
@@ -214,14 +214,14 @@ export function ExecutionPanel({
         )}
 
         {/* 실행 중: 진행 상태 */}
-        {status && (
+        {execution.status !== 'idle' && (
           <>
             <ProgressIndicator
-              status={status.status}
-              progress={status.progress}
-              startedAt={status.startedAt}
-              completedAt={status.completedAt}
-              currentTask={status.currentTask}
+              status={execution.status}
+              progress={execution.progress}
+              startedAt={new Date().toISOString()}
+              completedAt={undefined}
+              currentTask={execution.currentTask}
             />
 
             {/* 중지 버튼 (실행 중일 때만) */}

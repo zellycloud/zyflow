@@ -35,7 +35,7 @@ import { formatRelativeDate, formatDateTime } from '@/lib/utils'
 import { RemoteStatusBanner } from '@/components/git/RemoteStatusBanner'
 import { ConflictResolutionDialog, ConflictBanner } from '@/components/git/ConflictResolutionDialog'
 import type { Stage } from '@/types'
-import { ExecutionPanel } from '@/components/claude-flow'
+import { ExecutionPanel } from '@/components/swarm'
 
 interface ChangeDetailProps {
   projectId: string

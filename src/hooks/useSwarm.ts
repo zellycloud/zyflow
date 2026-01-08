@@ -2,21 +2,20 @@
  * Swarm 실행 관리 훅
  * @module hooks/useSwarm
  *
- * claude-flow Swarm 멀티에이전트 실행을 관리하는 훅
- * (useClaudeFlowExecution에서 리네임)
+ * Swarm 멀티에이전트 실행을 관리하는 훅
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type {
-  ClaudeFlowExecutionMode,
-  ClaudeFlowStrategy,
-  ClaudeFlowExecutionStatus,
-  ClaudeFlowLogEntry,
-  ClaudeFlowHistoryItem,
-  ClaudeFlowExecuteResponse,
-  ClaudeFlowStatusResponse,
-  ClaudeFlowHistoryResponse,
+  SwarmExecutionMode,
+  SwarmStrategy as SwarmStrategyType,
+  SwarmExecutionStatus,
+  SwarmLogEntry,
+  SwarmHistoryItem,
+  SwarmExecuteResponse,
+  SwarmStatusResponse,
+  SwarmHistoryResponse,
 } from '@/types'
 import type { AIProvider, ConsensusConfig, ConsensusResult } from '@/types/ai'
 
@@ -25,10 +24,10 @@ import type { AIProvider, ConsensusConfig, ConsensusResult } from '@/types/ai'
 // =============================================
 
 /** Swarm 전략 */
-export type SwarmStrategy = ClaudeFlowStrategy
+export type SwarmStrategy = SwarmStrategyType
 
 /** Swarm 실행 모드 */
-export type SwarmMode = ClaudeFlowExecutionMode
+export type SwarmMode = SwarmExecutionMode
 
 /** Swarm 에이전트 상태 */
 export interface SwarmAgent {
@@ -47,7 +46,7 @@ export interface SwarmExecution {
   agents: SwarmAgent[]
   progress: number
   currentTask?: string
-  logs: ClaudeFlowLogEntry[]
+  logs: SwarmLogEntry[]
   error: string | null
   /** AI Provider (v2) */
   provider?: AIProvider
@@ -77,7 +76,7 @@ export interface SwarmExecuteParams {
 // 훅 구현
 // =============================================
 
-const API_BASE = '/api/claude-flow'
+const API_BASE = '/api/swarm'
 
 interface UseSwarmOptions {
   /** 자동으로 SSE 연결 */
@@ -90,7 +89,7 @@ interface UseSwarmReturn {
   /** 현재 실행 상태 */
   execution: SwarmExecution
   /** 로그 목록 (execution.logs와 동일, 편의성) */
-  logs: ClaudeFlowLogEntry[]
+  logs: SwarmLogEntry[]
   /** 실행 중 여부 */
   isRunning: boolean
   /** 에러 */
@@ -102,7 +101,7 @@ interface UseSwarmReturn {
   /** 상태 새로고침 */
   refresh: () => Promise<void>
   /** 히스토리 조회 */
-  fetchHistory: (changeId?: string) => Promise<ClaudeFlowHistoryItem[]>
+  fetchHistory: (changeId?: string) => Promise<SwarmHistoryItem[]>
   /** 로그 초기화 */
   clearLogs: () => void
   /** 상태 초기화 */
@@ -160,7 +159,7 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
     eventSourceRef.current = eventSource
 
     eventSource.addEventListener('log', (event) => {
-      const log: ClaudeFlowLogEntry = JSON.parse(event.data)
+      const log: SwarmLogEntry = JSON.parse(event.data)
       setExecution(prev => ({
         ...prev,
         logs: [...prev.logs, log]
@@ -178,7 +177,7 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
     })
 
     eventSource.addEventListener('status', (event) => {
-      const newStatus: ClaudeFlowExecutionStatus = JSON.parse(event.data)
+      const newStatus: SwarmExecutionStatus = JSON.parse(event.data)
       setExecution(prev => ({
         ...prev,
         status: newStatus.status as SwarmExecution['status'],
@@ -193,7 +192,7 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
     })
 
     eventSource.addEventListener('complete', (event) => {
-      const finalStatus: ClaudeFlowExecutionStatus = JSON.parse(event.data)
+      const finalStatus: SwarmExecutionStatus = JSON.parse(event.data)
       setExecution(prev => ({
         ...prev,
         status: finalStatus.status as SwarmExecution['status'],
@@ -260,7 +259,7 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
         throw new Error(errorData.error || 'Execution failed')
       }
 
-      const data: ClaudeFlowExecuteResponse = await response.json()
+      const data: SwarmExecuteResponse = await response.json()
       executionIdRef.current = data.executionId
       setExecution(prev => ({ ...prev, id: data.executionId }))
       setIsRunning(true)
@@ -318,7 +317,7 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
         throw new Error('Status fetch failed')
       }
 
-      const data: ClaudeFlowStatusResponse = await response.json()
+      const data: SwarmStatusResponse = await response.json()
       setExecution(prev => ({
         ...prev,
         status: data.execution.status as SwarmExecution['status'],
@@ -337,7 +336,7 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
    */
   const fetchHistory = useCallback(async (
     changeId?: string
-  ): Promise<ClaudeFlowHistoryItem[]> => {
+  ): Promise<SwarmHistoryItem[]> => {
     try {
       const url = new URL(`${API_BASE}/history`, window.location.origin)
       if (changeId) {
@@ -350,7 +349,7 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
         throw new Error('History fetch failed')
       }
 
-      const data: ClaudeFlowHistoryResponse = await response.json()
+      const data: SwarmHistoryResponse = await response.json()
       return data.history
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -451,8 +450,8 @@ export function useClaudeFlowExecution(options?: UseSwarmOptions) {
       projectPath: string
       changeId: string
       taskId?: string
-      mode?: ClaudeFlowExecutionMode
-      strategy?: ClaudeFlowStrategy
+      mode?: SwarmExecutionMode
+      strategy?: SwarmStrategy
       maxAgents?: number
     }) => swarm.execute(params),
     stop: swarm.stop,
