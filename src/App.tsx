@@ -3,6 +3,7 @@ import { Toaster } from 'sonner'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { ThemeProvider } from '@/context/theme-provider'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import { Button } from '@/components/ui/button'
 import { ResizableSidebar } from '@/components/ui/resizable-sidebar'
 import { FlowSidebar } from '@/components/layout/FlowSidebar'
 import { StatusBar } from '@/components/layout/StatusBar'
@@ -15,7 +16,7 @@ import { ThemeToggle } from '@/components/dashboard/ThemeToggle'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { API_ENDPOINTS } from '@/config/api'
-import { GitBranch, Circle, Wifi, WifiOff } from 'lucide-react'
+import { GitBranch, Circle, Wifi, WifiOff, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
@@ -211,11 +212,27 @@ function AppContent() {
       <div className="flex h-screen w-full flex-col bg-background">
         {/* Header - Full Width */}
         <header className="flex h-14 shrink-0 items-center justify-between border-b px-6">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-[200px]">
             <GitBranch className="h-5 w-5 text-primary" />
             <h1 className="text-lg font-semibold">ZyFlow</h1>
           </div>
-          <div className="flex items-center gap-4">
+
+          {/* 중앙 검색창 */}
+          <div className="flex-1 flex justify-center max-w-md mx-4">
+            <Button
+              variant="outline"
+              className="w-full relative h-9 justify-start text-sm text-muted-foreground sm:pr-12 md:w-64 lg:w-96 bg-secondary/50 hover:bg-secondary"
+              onClick={() => setGlobalCommandPaletteOpen(true)}
+            >
+              <Search className="mr-2 h-4 w-4" />
+              <span className="inline-flex">검색...</span>
+              <kbd className="pointer-events-none absolute right-1.5 top-1.5 hidden h-6 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
+                <span className="text-xs">⌘</span>K
+              </kbd>
+            </Button>
+          </div>
+
+          <div className="flex items-center justify-end gap-4 w-[200px]">
             <ApiStatusIndicator />
             <WebSocketIndicator isConnected={isConnected} />
             <ThemeToggle />
