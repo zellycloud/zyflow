@@ -4,6 +4,7 @@ import { app } from './app.js'
 import { initWebSocket } from './websocket.js'
 import { startTasksWatcher, stopTasksWatcher } from './watcher.js'
 import { getActiveProject } from './config.js'
+import { syncFlowChanges } from './flow-sync.js'
 
 const PORT = parseInt(process.env.PORT || '3100', 10)
 
@@ -30,6 +31,18 @@ initWebSocket(httpServer)
 // 서버 시작
 httpServer.listen(PORT, '0.0.0.0', async () => {
   console.log(`ZyFlow API server running on http://localhost:${PORT}`)
+
+  // 서버 시작 시 Flow changes DB 동기화 (파일 시스템 → DB)
+  try {
+    const syncResult = await syncFlowChanges()
+    if (syncResult.synced > 0) {
+      console.log(`[Sync] Flow changes synced: ${syncResult.created} created, ${syncResult.updated} updated (${syncResult.projects} projects)`)
+    } else {
+      console.log('[Sync] Flow changes sync completed (no changes)')
+    }
+  } catch (error) {
+    console.error('[Warning] Failed to sync flow changes:', error)
+  }
 
   // 활성 프로젝트가 있으면 watcher 시작
   try {

@@ -47,8 +47,6 @@ export const API_ENDPOINTS = {
   // Docs
   docs: `${API_BASE_URL}/api/docs`,
 
-  // Claude Flow
-  claudeFlow: `${API_BASE_URL}/api/claude-flow`,
 
   // AI
   ai: `${API_BASE_URL}/api/ai`,

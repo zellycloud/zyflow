@@ -28,7 +28,7 @@ import {
   ListTodo,
   RotateCcw,
 } from 'lucide-react'
-import { useClaudeFlowExecution } from '@/hooks/useClaudeFlowExecution'
+import { useClaudeFlowExecution } from '@/hooks/useSwarm'
 import { LogViewer } from './LogViewer'
 import { ProgressIndicator } from './ProgressIndicator'
 import type { ClaudeFlowExecutionMode, ClaudeFlowStrategy } from '@/types'

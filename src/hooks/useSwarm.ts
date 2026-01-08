@@ -439,6 +439,7 @@ export function useClaudeFlowExecution(options?: UseSwarmOptions) {
       },
       status: swarm.execution.status,
       startedAt: new Date().toISOString(),
+      completedAt: undefined as string | undefined,
       progress: swarm.execution.progress,
       currentTask: swarm.execution.currentTask,
       logs: swarm.execution.logs,
