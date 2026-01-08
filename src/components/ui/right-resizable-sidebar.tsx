@@ -124,7 +124,6 @@ export function RightResizableSidebar({
             'absolute left-0 top-0 h-full w-1 cursor-col-resize z-50', // z-index 추가
             'hover:bg-primary/20 active:bg-primary/30',
             'transition-colors duration-150',
-            'border-l border-border', // 왼쪽 보더
             isResizing && 'bg-primary/30'
           )}
           style={{ transform: 'translateX(-50%)' }} // 핸들이 경계선 중앙에 오도록 조정
