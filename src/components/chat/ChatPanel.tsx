@@ -45,9 +45,7 @@ import { useAgentSession, useAgentSessions, AgentMessage, AgentSessionState } fr
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useProjectsAllData } from '@/hooks/useProjects'
 import { projectApiUrl, cliApiUrl } from '@/config/api'
-
-const PANEL_WIDTH = 400
-const COLLAPSED_WIDTH = 0
+import { RightResizableSidebar } from '@/components/ui/right-resizable-sidebar'
 
 interface ChatPanelProps {
   className?: string
@@ -242,19 +240,7 @@ function SessionHistory({ sessions, onSelect, onDelete, onBack, onNewChat }: Ses
   )
 }
 
-export function ChatPanel({ className, collapsed: controlledCollapsed, onCollapsedChange }: ChatPanelProps) {
-  const [internalCollapsed, setInternalCollapsed] = useState(() => {
-    const saved = localStorage.getItem('chat-panel-collapsed')
-    return saved === 'true'
-  })
-
-  // Support both controlled and uncontrolled modes
-  const isCollapsed = controlledCollapsed ?? internalCollapsed
-  const setIsCollapsed = (value: boolean | ((prev: boolean) => boolean)) => {
-    const newValue = typeof value === 'function' ? value(isCollapsed) : value
-    setInternalCollapsed(newValue)
-    onCollapsedChange?.(newValue)
-  }
+export function ChatPanel({ className, collapsed, onCollapsedChange }: ChatPanelProps) {
   const [showHistory, setShowHistory] = useState(false)
   const [selectedChangeId, setSelectedChangeId] = useState<string | undefined>()
   const [loadedSessionId, setLoadedSessionId] = useState<string | undefined>()
@@ -300,33 +286,10 @@ export function ChatPanel({ className, collapsed: controlledCollapsed, onCollaps
     sendMessage,
   } = useAgentSession(loadedSessionId)
 
-
-
-  // Save collapsed state
-  useEffect(() => {
-    localStorage.setItem('chat-panel-collapsed', isCollapsed.toString())
-  }, [isCollapsed])
-
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
-
-  // Keyboard shortcut (Cmd/Ctrl + Shift + C) - handled by parent (App.tsx) when using controlled mode
-  useEffect(() => {
-    // Skip if controlled externally
-    if (controlledCollapsed !== undefined) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'c') {
-        e.preventDefault()
-        setIsCollapsed((prev) => !prev)
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [controlledCollapsed])
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
@@ -421,271 +384,259 @@ export function ChatPanel({ className, collapsed: controlledCollapsed, onCollaps
   const displayMessages = isGlobalChatMode ? globalMessages : messages
 
   return (
-    <div className={cn('relative flex h-full', className)}>
-      {/* Panel */}
-      <div
-        className={cn(
-          'flex h-full shrink-0 transition-[width] duration-200 ease-in-out border-l bg-background',
-          className
-        )}
-        style={{ width: isCollapsed ? COLLAPSED_WIDTH : PANEL_WIDTH }}
-      >
-        <div
-          className={cn(
-            'flex flex-col h-full w-full overflow-hidden',
-            'transition-opacity duration-200',
-            isCollapsed && 'opacity-0 pointer-events-none'
-          )}
-        >
-          {/* Show History View or Chat View */}
-          {showHistory ? (
-            <SessionHistory
-              sessions={sessions}
-              onSelect={(sid) => {
-                setLoadedSessionId(sid)
-                setShowHistory(false)
-              }}
-              onDelete={(sid) => {
-                if (loadedSessionId === sid) {
-                  setLoadedSessionId(undefined)
-                }
-              }}
-              onBack={() => setShowHistory(false)}
-              onNewChat={() => {
-                setLoadedSessionId(undefined)
-                setShowHistory(false)
-              }}
-            />
-          ) : (
-            <>
-              {/* Header - Row 1: Title and actions */}
-              <div className="flex items-center justify-between px-3 pt-3 pb-2">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-primary" />
-                  <span className="font-medium text-sm">Chat</span>
-                </div>
+    <RightResizableSidebar
+      className={className}
+      collapsed={collapsed}
+      onCollapsedChange={onCollapsedChange}
+    >
+      {/* Show History View or Chat View */}
+      {showHistory ? (
+        <SessionHistory
+          sessions={sessions}
+          onSelect={(sid) => {
+            setLoadedSessionId(sid)
+            setShowHistory(false)
+          }}
+          onDelete={(sid) => {
+            if (loadedSessionId === sid) {
+              setLoadedSessionId(undefined)
+            }
+          }}
+          onBack={() => setShowHistory(false)}
+          onNewChat={() => {
+            setLoadedSessionId(undefined)
+            setShowHistory(false)
+          }}
+        />
+      ) : (
+        <>
+          {/* Header - Row 1: Title and actions */}
+          <div className="flex items-center justify-between px-3 pt-3 pb-2">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-primary" />
+              <span className="font-medium text-sm">Chat</span>
+            </div>
 
-                <div className="flex items-center gap-1">
-                  {/* New Chat Button */}
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => {
-                            setLoadedSessionId(undefined)
-                            setSelectedChangeId(undefined)
-                          }}
-                        >
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>새 대화</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-
-                  {/* History Button */}
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => setShowHistory(true)}
-                        >
-                          <History className="w-4 h-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>대화 기록</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              </div>
-
-              {/* Header - Row 2: Change Selector */}
-              <div className="flex items-center gap-2 px-3 pb-2 border-b">
-                {/* Change Selector */}
-                {activeProject && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="gap-1 h-7 text-xs flex-1 justify-between">
-                        {selectedChange ? (
-                          <span className="truncate">
-                            {selectedChange.title}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">Change 선택</span>
-                        )}
-                        <ChevronDown className="w-3 h-3 shrink-0" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-[250px]">
-                      <DropdownMenuLabel className="text-xs">
-                        {activeProject.name}
-                      </DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      {activeChanges.length > 0 ? (
-                        activeChanges.map((change) => (
-                          <DropdownMenuItem
-                            key={change.id}
-                            onClick={() => setSelectedChangeId(change.id)}
-                            className={cn(
-                              'text-xs',
-                              selectedChangeId === change.id && 'bg-primary/10'
-                            )}
-                          >
-                            <span className="truncate">{change.title}</span>
-                          </DropdownMenuItem>
-                        ))
-                      ) : (
-                        <div className="p-2 text-xs text-muted-foreground text-center">
-                          활성 Change 없음
-                        </div>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </div>
-
-              {/* Messages Area */}
-              <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                {!activeProject && (
-                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                    <div className="text-center">
-                      <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                      <p className="text-sm">프로젝트를 선택하세요</p>
-                    </div>
-                  </div>
-                )}
-
-                {activeProject && displayMessages.length === 0 && (
-                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                    <div className="text-center">
-                      <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                      <p className="text-sm font-medium mb-1">
-                        {isGlobalChatMode ? '무엇이든 물어보세요' : '메시지를 보내 Agent를 시작하세요'}
-                      </p>
-                      <p className="text-xs opacity-70">
-                        {isGlobalChatMode 
-                          ? 'Change 선택 없이 일반 질문이 가능합니다'
-                          : 'Change를 선택하면 Agent 모드로 전환됩니다'}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {displayMessages.map((message, index) => (
-                  isGlobalChatMode ? (
-                    <div
-                      key={index}
-                      className={cn(
-                        'flex gap-3 p-3 rounded-lg text-sm',
-                        message.role === 'user' ? 'bg-primary/10 ml-8' : 'bg-muted mr-8'
-                      )}
-                    >
-                      {message.role === 'assistant' && (
-                        <Bot className="w-4 h-4 text-primary shrink-0" />
-                      )}
-                      <div className="flex-1 min-w-0 prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
-                        {message.content || '...'}
-                      </div>
-                      {message.role === 'user' && (
-                        <User className="w-4 h-4 text-muted-foreground shrink-0" />
-                      )}
-                    </div>
-                  ) : (
-                    <MessageBubble key={index} message={message as AgentMessage} />
-                  )
-                ))}
-
-                {(isStreaming || isGlobalChatLoading) && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground p-3">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    <span>{isGlobalChatMode ? 'AI가 답변 중...' : 'Agent가 생각 중...'}</span>
-                  </div>
-                )}
-
-                {error && (
-                  <div className="p-3 bg-red-500/10 rounded-lg text-red-600 dark:text-red-400 text-xs">
-                    {error}
-                  </div>
-                )}
-
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Status Bar */}
-              {sessionId && (
-                <div className="px-3 py-1.5 border-t bg-muted/50 text-xs text-muted-foreground flex items-center justify-between">
-                  <span>
-                    {sessionId.slice(0, 8)}...
-                    {status && ` • ${status}`}
-                  </span>
-                  {canResume && (
+            <div className="flex items-center gap-1">
+              {/* New Chat Button */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
-                      size="sm"
-                      onClick={handleResume}
-                      className="h-5 text-xs px-2"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => {
+                        setLoadedSessionId(undefined)
+                        setSelectedChangeId(undefined)
+                      }}
                     >
-                      <RefreshCw className="w-3 h-3 mr-1" />
-                      Resume
+                      <Plus className="w-4 h-4" />
                     </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>새 대화</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {/* History Button */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => setShowHistory(true)}
+                    >
+                      <History className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>대화 기록</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+
+          {/* Header - Row 2: Change Selector */}
+          <div className="flex items-center gap-2 px-3 pb-2 border-b">
+            {/* Change Selector */}
+            {activeProject && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1 h-7 text-xs flex-1 justify-between">
+                    {selectedChange ? (
+                      <span className="truncate">
+                        {selectedChange.title}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Change 선택</span>
+                    )}
+                    <ChevronDown className="w-3 h-3 shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[250px]">
+                  <DropdownMenuLabel className="text-xs">
+                    {activeProject.name}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {activeChanges.length > 0 ? (
+                    activeChanges.map((change) => (
+                      <DropdownMenuItem
+                        key={change.id}
+                        onClick={() => setSelectedChangeId(change.id)}
+                        className={cn(
+                          'text-xs',
+                          selectedChangeId === change.id && 'bg-primary/10'
+                        )}
+                      >
+                        <span className="truncate">{change.title}</span>
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <div className="p-2 text-xs text-muted-foreground text-center">
+                      활성 Change 없음
+                    </div>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+
+          {/* Messages Area */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {!activeProject && (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                <div className="text-center">
+                  <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                  <p className="text-sm">프로젝트를 선택하세요</p>
+                </div>
+              </div>
+            )}
+
+            {activeProject && displayMessages.length === 0 && (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                <div className="text-center">
+                  <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                  <p className="text-sm font-medium mb-1">
+                    {isGlobalChatMode ? '무엇이든 물어보세요' : '메시지를 보내 Agent를 시작하세요'}
+                  </p>
+                  <p className="text-xs opacity-70">
+                    {isGlobalChatMode 
+                      ? 'Change 선택 없이 일반 질문이 가능합니다'
+                      : 'Change를 선택하면 Agent 모드로 전환됩니다'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {displayMessages.map((message, index) => (
+              isGlobalChatMode ? (
+                <div
+                  key={index}
+                  className={cn(
+                    'flex gap-3 p-3 rounded-lg text-sm',
+                    message.role === 'user' ? 'bg-primary/10 ml-8' : 'bg-muted mr-8'
+                  )}
+                >
+                  {message.role === 'assistant' && (
+                    <Bot className="w-4 h-4 text-primary shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0 prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
+                    {message.content || '...'}
+                  </div>
+                  {message.role === 'user' && (
+                    <User className="w-4 h-4 text-muted-foreground shrink-0" />
                   )}
                 </div>
-              )}
+              ) : (
+                <MessageBubble key={index} message={message as AgentMessage} />
+              )
+            ))}
 
-              {/* Input Area */}
-              <div className="p-3 border-t">
-                <form onSubmit={handleSubmit} className="flex gap-2">
-                  <Textarea
-                    ref={textareaRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={
-                      isGlobalChatMode
-                        ? '무엇이든 물어보세요...'
-                        : '메시지를 입력하세요...'
-                    }
-                    disabled={!activeProject || isStreaming || isGlobalChatLoading}
-                    className="min-h-[60px] text-sm resize-none"
-                  />
-                  <div className="flex flex-col gap-1">
-                    {canStop ? (
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={handleStop}
-                      >
-                        <StopCircle className="w-4 h-4" />
-                      </Button>
-                    ) : (
-                      <Button
-                        type="submit"
-                        size="icon"
-                        className="h-8 w-8"
-                        disabled={!canSend}
-                      >
-                        {isStreaming ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Send className="w-4 h-4" />
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                </form>
+            {(isStreaming || isGlobalChatLoading) && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground p-3">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>{isGlobalChatMode ? 'AI가 답변 중...' : 'Agent가 생각 중...'}</span>
               </div>
-            </>
+            )}
+
+            {error && (
+              <div className="p-3 bg-red-500/10 rounded-lg text-red-600 dark:text-red-400 text-xs">
+                {error}
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Status Bar */}
+          {sessionId && (
+            <div className="px-3 py-1.5 border-t bg-muted/50 text-xs text-muted-foreground flex items-center justify-between">
+              <span>
+                {sessionId.slice(0, 8)}...
+                {status && ` • ${status}`}
+              </span>
+              {canResume && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResume}
+                  className="h-5 text-xs px-2"
+                >
+                  <RefreshCw className="w-3 h-3 mr-1" />
+                  Resume
+                </Button>
+              )}
+            </div>
           )}
-        </div>
-      </div>
-    </div>
+
+          {/* Input Area */}
+          <div className="p-3 border-t">
+            <form onSubmit={handleSubmit} className="flex gap-2">
+              <Textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  isGlobalChatMode
+                    ? '무엇이든 물어보세요...'
+                    : '메시지를 입력하세요...'
+                }
+                disabled={!activeProject || isStreaming || isGlobalChatLoading}
+                className="min-h-[60px] text-sm resize-none"
+              />
+              <div className="flex flex-col gap-1">
+                {canStop ? (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={handleStop}
+                  >
+                    <StopCircle className="w-4 h-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="submit"
+                    size="icon"
+                    className="h-8 w-8"
+                    disabled={!canSend}
+                  >
+                    {isStreaming ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                  </Button>
+                )}
+              </div>
+            </form>
+          </div>
+        </>
+      )}
+    </RightResizableSidebar>
   )
 }
+
