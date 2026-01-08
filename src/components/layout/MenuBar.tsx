@@ -26,7 +26,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import type { SelectedItem } from '@/App'
+import type { SelectedItem } from '@/types'
 
 interface MenuBarProps {
   selectedItem: SelectedItem

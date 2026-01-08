@@ -41,7 +41,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn, formatRelativeDate } from '@/lib/utils'
-import type { SelectedItem } from '@/App'
+import type { SelectedItem } from '@/types'
 
 interface FlowSidebarProps {
   selectedItem: SelectedItem

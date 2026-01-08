@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { FolderOpen, Loader2 } from 'lucide-react'
-import type { SelectedItem } from '@/App'
+import type { SelectedItem } from '@/types'
 import { ProjectDashboard } from './ProjectDashboard'
 import { ChangeDetail } from './ChangeDetail'
 import { StandaloneTasks } from './StandaloneTasks'

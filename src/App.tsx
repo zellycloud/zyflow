@@ -24,21 +24,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useURLSync, getInitialItemFromURL } from '@/hooks/useURLSync'
+import type { SelectedItem } from '@/types'
 
 // 선택된 항목 타입
-export type SelectedItem =
-  | { type: 'project'; projectId: string }
-  | { type: 'change'; projectId: string; changeId: string }
-  | { type: 'standalone-tasks'; projectId: string }
-  | { type: 'backlog'; projectId: string }
-  | { type: 'project-settings'; projectId: string }
-  | { type: 'agent'; projectId: string; changeId?: string }
-  | { type: 'post-task'; projectId: string }
-  | { type: 'archived'; projectId: string; archivedChangeId?: string }
-  | { type: 'docs'; projectId: string }
-  | { type: 'alerts'; projectId: string }
-  | { type: 'settings' }
-  | null
 
 const queryClient = new QueryClient()
 
@@ -119,7 +108,13 @@ function WebSocketIndicator({ isConnected }: { isConnected: boolean }) {
 
 function AppContent() {
   // 초기 상태를 로컬 스토리지에서 불러오기
+  // 초기 상태를 URL -> 로컬 스토리지 순으로 불러오기
   const [selectedItem, setSelectedItem] = useState<SelectedItem>(() => {
+    // 1. URL 체크
+    const fromURL = getInitialItemFromURL()
+    if (fromURL) return fromURL
+
+    // 2. 로컬 스토리지 체크
     try {
       const saved = localStorage.getItem('zyflow-selected-item')
       return saved ? JSON.parse(saved) : null
@@ -127,6 +122,9 @@ function AppContent() {
       return null
     }
   })
+
+  // URL 동기화 훅 사용
+  useURLSync(selectedItem, setSelectedItem)
 
   // Sidebar collapsed states
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(() => {
