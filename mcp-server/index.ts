@@ -61,6 +61,16 @@ import { getChangeLogManager } from '../server/change-log.js'
 import { getReplayEngine } from '../server/replay-engine.js'
 import type { EventFilter, ReplayOptions, EventType, EventSeverity, EventSource } from '../server/types/change-log.js'
 
+// RAG imports - 주석 처리 (네이티브 바이너리 번들링 이슈로 플러그인 빌드 실패)
+// RAG 기능은 ZyFlow API 서버를 통해 사용하거나 mcp-local-rag 같은 외부 도구 사용 권장
+// import {
+//   searchDocuments,
+//   indexDocument,
+//   indexProjectDocuments,
+//   getIndexStats,
+//   initRagDb,
+// } from '../server/rag/index.js'
+
 // MCP Handler Argument Types
 interface GetEventsArgs {
   event_types?: EventType[];
@@ -651,6 +661,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['session_id'],
         },
       },
+
+      // RAG Tools - 주석 처리 (네이티브 바이너리 번들링 이슈)
+      // RAG 기능은 ZyFlow API 서버를 통해 사용하거나 mcp-local-rag 같은 외부 도구 사용 권장
+      // {
+      //   name: 'zyflow_rag_search',
+      //   ...
+      // },
     ],
   }
 })
@@ -1008,6 +1025,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleStartReplay(args as unknown as StartReplayArgs);
       case 'get_replay_progress':
         return await handleGetReplayProgress(args as unknown as GetReplayProgressArgs);
+
+      // RAG Tools - 주석 처리 (네이티브 바이너리 번들링 이슈)
+      // case 'zyflow_rag_search': { ... }
+      // case 'zyflow_rag_index': { ... }
+      // case 'zyflow_rag_index_project': { ... }
+      // case 'zyflow_rag_stats': { ... }
 
       default:
         throw new Error(`Unknown tool: ${name}`)

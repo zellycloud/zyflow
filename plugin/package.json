@@ -1,0 +1,13 @@
+{
+  "name": "zyflow-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ZyFlow MCP Server Plugin",
+  "type": "commonjs",
+  "dependencies": {
+    "better-sqlite3": "^12.4.6"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

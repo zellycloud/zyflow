@@ -1,0 +1,18 @@
+{
+  "name": "zyflow-local",
+  "owner": {
+    "name": "ZellyCloud"
+  },
+  "metadata": {
+    "description": "ZyFlow 로컬 마켓플레이스",
+    "homepage": "https://github.com/zellycloud/zyflow"
+  },
+  "plugins": [
+    {
+      "name": "zyflow",
+      "version": "1.0.0",
+      "source": "./plugin",
+      "description": "OpenSpec 기반 태스크 관리 및 개발 플로우 도구"
+    }
+  ]
+}

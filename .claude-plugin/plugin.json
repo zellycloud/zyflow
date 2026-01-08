@@ -1,0 +1,17 @@
+{
+  "name": "zyflow",
+  "version": "1.0.0",
+  "description": "OpenSpec 기반 태스크 관리 및 개발 플로우 도구. 39+ MCP 도구 제공.",
+  "author": {
+    "name": "ZellyCloud"
+  },
+  "repository": "https://github.com/zellycloud/zyflow",
+  "license": "MIT",
+  "keywords": [
+    "openspec",
+    "task-management",
+    "mcp",
+    "development-workflow",
+    "agents"
+  ]
+}
