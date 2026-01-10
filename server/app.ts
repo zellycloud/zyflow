@@ -45,6 +45,8 @@ import { changesRouter } from './routes/changes.js'
 import { flowRouter } from './routes/flow.js'
 import { alertsRouter, setBroadcastAlert } from './routes/alerts.js'
 import { aiRouter } from './ai/index.js'
+import { ragRouter, memoryRouter } from './routes/search.js'
+import { leannRouter } from './routes/leann.js'
 // Remote plugin (optional - only if installed)
 let remoteRouter: import('express').Router | null = null
 let getRemoteServerById: ((id: string) => Promise<import('@zyflow/remote-plugin').RemoteServer | null>) | null = null
@@ -132,6 +134,15 @@ app.use('/api/ai', aiRouter)
 
 // Docs API 라우터 등록
 app.use('/api/docs', docsRouter)
+
+// RAG 검색 API 라우터 등록 (LEANN 연동)
+app.use('/api/rag', ragRouter)
+
+// Memory 검색 API 라우터 등록 (claude-mem 연동)
+app.use('/api/memory', memoryRouter)
+
+// LEANN 인덱스 관리 API 라우터 등록
+app.use('/api/leann', leannRouter)
 
 // Global Chat API 라우터 등록
 app.use('/api/chat', globalChatRouter)
