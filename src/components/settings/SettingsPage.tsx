@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { FolderOpen, Key, Terminal, Server } from 'lucide-react'
+import { FolderOpen, Key, Terminal, Server, Search } from 'lucide-react'
 import { ProjectsSettings } from './ProjectsSettings'
 import { IntegrationsSettings } from './IntegrationsSettings'
 import { CLISettings } from './CLISettings'
+import { SearchSettings } from './SearchSettings'
 import { RemoteServerList } from '@/components/remote'
 
 export function SettingsPage() {
@@ -24,6 +25,10 @@ export function SettingsPage() {
             <FolderOpen className="h-4 w-4" />
             Projects
           </TabsTrigger>
+          <TabsTrigger value="search" className="flex items-center gap-2">
+            <Search className="h-4 w-4" />
+            Search
+          </TabsTrigger>
           <TabsTrigger value="cli" className="flex items-center gap-2">
             <Terminal className="h-4 w-4" />
             AI CLI
@@ -40,6 +45,10 @@ export function SettingsPage() {
 
         <TabsContent value="projects" className="space-y-4">
           <ProjectsSettings />
+        </TabsContent>
+
+        <TabsContent value="search" className="space-y-4">
+          <SearchSettings />
         </TabsContent>
 
         <TabsContent value="cli" className="space-y-4">
