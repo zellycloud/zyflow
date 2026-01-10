@@ -309,6 +309,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
+        name: 'zyflow_global_search',
+        description: '모든 프로젝트에서 Changes를 검색합니다. 제목, ID, 프로젝트명으로 검색합니다.',
+        inputSchema: {
+          type: 'object' as const,
+          properties: {
+            query: {
+              type: 'string',
+              description: '검색어 (제목, ID, 프로젝트명에서 검색)',
+            },
+            limit: {
+              type: 'number',
+              description: '반환할 최대 결과 수 (기본: 10)',
+            },
+          },
+          required: ['query'],
+        },
+      },
+      {
         name: 'zyflow_list_changes',
         description: '현재 프로젝트의 OpenSpec 변경 제안 목록을 조회합니다. 각 변경의 ID, 제목, 진행률, 완료/전체 태스크 수를 반환합니다.',
         inputSchema: {
@@ -422,6 +440,32 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
           },
           required: ['changeId', 'taskId'],
+        },
+      },
+      {
+        name: 'zyflow_unified_context',
+        description: '통합 컨텍스트 검색입니다. OpenSpec의 Changes/Tasks 정보와 claude-mem의 Memory(이전 작업 기록, 결정사항)를 함께 검색합니다.',
+        inputSchema: {
+          type: 'object' as const,
+          properties: {
+            query: {
+              type: 'string',
+              description: '검색어',
+            },
+            includeChanges: {
+              type: 'boolean',
+              description: 'OpenSpec Changes 포함 여부 (기본: true)',
+            },
+            includeMemory: {
+              type: 'boolean',
+              description: 'claude-mem Memory 포함 여부 (기본: true)',
+            },
+            limit: {
+              type: 'number',
+              description: '각 카테고리별 최대 결과 수 (기본: 5)',
+            },
+          },
+          required: ['query'],
         },
       },
       // Task management tools (SQLite-based)
@@ -665,6 +709,71 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     switch (name) {
+      case 'zyflow_global_search': {
+        const { query, limit = 10 } = args as { query: string; limit?: number }
+
+        // Fetch all projects data from the API
+        const API_BASE = process.env.ZYFLOW_API_BASE || 'http://localhost:3200'
+        let allProjects: any[] = []
+
+        try {
+          const response = await fetch(`${API_BASE}/api/projects/all-data`)
+          if (response.ok) {
+            const json = await response.json() as { data?: { projects?: any[] } }
+            allProjects = json.data?.projects || []
+          }
+        } catch (err) {
+          // API not available, fall back to local project only
+          const localChanges = await listChanges()
+          allProjects = [{
+            id: 'local',
+            name: 'Current Project',
+            path: PROJECT_PATH,
+            changes: localChanges,
+          }]
+        }
+
+        // Collect all changes with project info
+        const allChanges: any[] = []
+        for (const project of allProjects) {
+          if (project.changes) {
+            for (const change of project.changes) {
+              allChanges.push({
+                id: change.id,
+                title: change.title,
+                progress: change.progress || 0,
+                totalTasks: change.totalTasks || 0,
+                completedTasks: change.completedTasks || 0,
+                projectId: project.id,
+                projectName: project.name,
+                projectPath: project.path,
+              })
+            }
+          }
+        }
+
+        // Search
+        const queryLower = query.toLowerCase()
+        const results = allChanges.filter(c =>
+          c.title.toLowerCase().includes(queryLower) ||
+          c.id.toLowerCase().includes(queryLower) ||
+          c.projectName.toLowerCase().includes(queryLower)
+        ).slice(0, limit)
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                query,
+                totalResults: results.length,
+                results,
+              }, null, 2),
+            },
+          ],
+        }
+      }
+
       case 'zyflow_list_changes': {
         const { projectPath } = args as { projectPath?: string }
         const changes = await listChanges(projectPath)
@@ -761,6 +870,112 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 task,
                 progress: `${completed}/${total}`,
                 message: `태스크 "${task.title}"를 미완료로 되돌렸습니다.`,
+              }, null, 2),
+            },
+          ],
+        }
+      }
+
+      case 'zyflow_unified_context': {
+        const { query, includeChanges = true, includeMemory = true, limit = 5 } = args as {
+          query: string
+          includeChanges?: boolean
+          includeMemory?: boolean
+          limit?: number
+        }
+
+        const results: {
+          changes?: any[]
+          memory?: any[]
+        } = {}
+
+        // 1. Changes/Tasks 검색
+        if (includeChanges) {
+          const API_BASE = process.env.ZYFLOW_API_BASE || 'http://localhost:3200'
+          try {
+            const response = await fetch(`${API_BASE}/api/projects/all-data`)
+            if (response.ok) {
+              const json = await response.json() as { data?: { projects?: any[] } }
+              const allProjects = json.data?.projects || []
+              const allChanges: any[] = []
+
+              for (const project of allProjects) {
+                if (project.changes) {
+                  for (const change of project.changes) {
+                    allChanges.push({
+                      id: change.id,
+                      title: change.title,
+                      progress: change.progress || 0,
+                      projectId: project.id,
+                      projectName: project.name,
+                    })
+                  }
+                }
+              }
+
+              const queryLower = query.toLowerCase()
+              results.changes = allChanges.filter(c =>
+                c.title.toLowerCase().includes(queryLower) ||
+                c.id.toLowerCase().includes(queryLower)
+              ).slice(0, limit)
+            }
+          } catch {
+            // API not available
+            results.changes = []
+          }
+        }
+
+        // 2. claude-mem Memory 검색
+        if (includeMemory) {
+          const homedir = process.env.HOME || process.env.USERPROFILE || ''
+          const memDbPath = `${homedir}/.claude-mem/memory.db`
+
+          try {
+            const fs = await import('fs')
+            if (fs.existsSync(memDbPath)) {
+              const Database = (await import('better-sqlite3')).default
+              const db = new Database(memDbPath, { readonly: true })
+
+              const searchPattern = `%${query}%`
+              const stmt = db.prepare(`
+                SELECT id, type, title, subtitle
+                FROM observations
+                WHERE title LIKE ? OR subtitle LIKE ? OR facts LIKE ? OR narrative LIKE ?
+                ORDER BY created_at DESC
+                LIMIT ?
+              `)
+              const rows = stmt.all(searchPattern, searchPattern, searchPattern, searchPattern, limit) as Array<{
+                id: number
+                type: string
+                title: string
+                subtitle: string | null
+              }>
+
+              results.memory = rows.map(row => ({
+                id: row.id,
+                type: row.type || 'unknown',
+                title: row.title || 'Untitled',
+                subtitle: row.subtitle || undefined,
+              }))
+
+              db.close()
+            } else {
+              results.memory = []
+            }
+          } catch {
+            results.memory = []
+          }
+        }
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: true,
+                query,
+                results,
+                message: `통합 검색 결과: Changes ${results.changes?.length || 0}개, Memory ${results.memory?.length || 0}개`,
               }, null, 2),
             },
           ],
