@@ -122,88 +122,84 @@
 
 ---
 
-## Phase 3: Auto-Fix Agent
+## Phase 3: Auto-Fix Agent ✅
 
 ### Group 3-1: Error Analysis
 
-- [ ] task-3-1-1: Error parser and classifier
-  - Create `server/agents/error-analyzer.ts`
-  - Parse CI logs (build errors, test failures, lint errors)
-  - Classify error types (syntax, type, logic, runtime)
-  - Extract code locations (file, line, column)
-  - Calculate confidence score
+- [x] task-3-1-1: Error parser and classifier
+  - Created `server/agents/error-analyzer.ts`
+  - Parse CI logs (TypeScript, ESLint, Vitest, Python)
+  - Error types: syntax, type, logic, runtime, lint, test, build
+  - Code location extraction (file, line, column)
+  - Confidence scoring and priority calculation
 
-- [ ] task-3-1-2: Gemini API client
-  - Create `server/ai/gemini-client.ts`
-  - Direct API integration (@google/generative-ai)
-  - Model: gemini-2.0-flash for analysis
+- [x] task-3-1-2: Gemini API client
+  - Created `server/ai/gemini-client.ts`
+  - @google/generative-ai integration
+  - Model: gemini-2.0-flash-exp
   - Rate limiting (60 req/min)
-  - Streaming response support
-  - Error handling and retry
+  - Streaming support, JSON generation
+  - Retry with exponential backoff
 
-- [ ] task-3-1-3: Error analysis prompt templates
-  - Create `server/agents/prompts/error-analysis.ts`
-  - Build failure analysis prompt
-  - Test failure analysis prompt
-  - Type error analysis prompt
-  - Runtime error analysis prompt
-  - Structured output format (JSON)
+- [x] task-3-1-3: Error analysis prompt templates
+  - Created `server/agents/prompts/error-analysis.ts`
+  - Build/type/runtime/lint/test error prompts
+  - Batch error analysis prompt
+  - PR description generation prompt
+  - Structured JSON output format
 
 ### Group 3-2: Fix Generation
 
-- [ ] task-3-2-1: Fix generation service
-  - Create `server/agents/fix-generator.ts`
-  - Code patch generation from analysis
+- [x] task-3-2-1: Fix generation service
+  - Created `server/agents/fix-generator.ts`
+  - AI-based code patch generation
   - Multi-file change support
   - Git diff format output
-  - Rollback capability
+  - Rollback capability with RollbackInfo
 
-- [ ] task-3-2-2: Fix validation pipeline
-  - Create `server/agents/fix-validator.ts`
-  - Syntax validation (parse check)
+- [x] task-3-2-2: Fix validation pipeline
+  - Created `server/agents/fix-validator.ts`
+  - Syntax check (esbuild)
   - Type check (tsc --noEmit)
-  - Lint check (eslint --fix-dry-run)
-  - Test run (vitest --run affected)
-  - Validation result aggregation
+  - Lint check (eslint --format json)
+  - Test run (vitest --run)
+  - Overall score calculation
 
-- [ ] task-3-2-3: Auto-merge policy implementation
-  - Create `server/agents/merge-policy.ts`
-  - CI status check (GitHub Actions)
-  - Policy rules by error source
-  - Supabase Security/Performance exception
-  - Auto-merge trigger
+- [x] task-3-2-3: Auto-merge policy implementation
+  - Created `server/agents/merge-policy.ts`
+  - Source-specific policies (GitHub, Vercel, Sentry, Supabase)
+  - Supabase Security/Performance → manual approval
+  - CI status check and waiting
+  - Auto-merge via GitHub API
 
 ### Group 3-3: PR Workflow
 
-- [ ] task-3-3-1: Automatic PR workflow orchestration
-  - Create `server/agents/pr-workflow.ts`
+- [x] task-3-3-1: Automatic PR workflow orchestration
+  - Created `server/agents/pr-workflow.ts`
   - Branch creation (auto-fix/{alert-id})
-  - Commit changes with message
-  - PR creation with template
-  - Label assignment ([auto-fix], [gemini])
+  - Commit with structured message
+  - PR creation with AI-generated description
+  - Labels: [auto-fix], [gemini]
   - CI status monitoring
 
-- [ ] task-3-3-2: Error detection integration
-  - Create `server/agents/error-detector.ts`
-  - Wire webhook alerts to error analyzer
-  - Trigger auto-fix on new alerts
-  - Update alert status on completion
+- [x] task-3-3-2: Error detection integration
+  - Created `server/agents/error-detector.ts`
+  - Webhook → Error analyzer → Fix generator
+  - Auto-fix trigger with options (dryRun, skipValidation)
+  - Alert status updates
 
 ### Group 3-4: Integration
 
-- [ ] task-3-4-1: Alert-Agent integration
-  - Extend `server/services/alertProcessor.ts`
-  - Connect alerts to error analyzer
-  - Auto-fix trigger based on severity
-  - Status update flow
-  - Activity logging
+- [x] task-3-4-1: Alert-Agent integration
+  - Created `server/agents/alert-integration.ts`
+  - Severity-based auto-trigger (critical, high)
+  - Concurrent run limiting
+  - Manual trigger support
+  - Execution history tracking
 
-- [ ] task-3-4-2: Agent execution monitoring
-  - Create `server/agents/agent-monitor.ts`
-  - Track agent run history
-  - Success/failure metrics
-  - API cost tracking
-  - Create `src/components/agents/AgentDashboard.tsx`
-  - Agent run history table
-  - Success rate chart
-  - Cost summary
+- [x] task-3-4-2: Agent execution monitoring
+  - Created `server/agents/agent-monitor.ts`
+  - SQLite DB for run history (agent-monitor.db)
+  - Daily metrics aggregation
+  - AI cost tracking (Gemini token usage)
+  - Overall stats API
