@@ -25,6 +25,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useURLSync, getInitialItemFromURL } from '@/hooks/useURLSync'
+import { useLeannIndexStatus } from '@/hooks/useLeannStatus'
 import type { SelectedItem } from '@/types'
 
 // 선택된 항목 타입
@@ -99,6 +100,59 @@ function WebSocketIndicator({ isConnected }: { isConnected: boolean }) {
         <TooltipContent side="bottom">
           <div className="text-xs">
             WebSocket: {isConnected ? 'Connected (실시간)' : 'Disconnected'}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+function IndexStatusIndicator({ onNavigate }: { onNavigate: () => void }) {
+  const { data } = useLeannIndexStatus()
+
+  const indexedCount = data?.projects.filter((p) => p.indexed).length ?? 0
+  const totalCount = data?.projects.length ?? 0
+
+  // LEANN이 설치되지 않았거나 프로젝트가 없으면 표시하지 않음
+  if (!data?.leannInstalled || totalCount === 0) {
+    return null
+  }
+
+  const isComplete = indexedCount === totalCount
+  const hasPartial = indexedCount > 0
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={onNavigate}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:opacity-80"
+          >
+            <Circle
+              className={cn(
+                'h-2 w-2 fill-current',
+                isComplete
+                  ? 'text-green-500'
+                  : hasPartial
+                    ? 'text-orange-500'
+                    : 'text-red-500'
+              )}
+            />
+            <span>AI</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <div className="text-xs space-y-1">
+            <div className="font-medium">AI 검색 인덱스</div>
+            <div>
+              {isComplete
+                ? '모든 프로젝트 인덱싱 완료'
+                : hasPartial
+                  ? `${indexedCount}개 프로젝트 인덱싱됨`
+                  : '인덱싱된 프로젝트 없음'}
+            </div>
+            <div className="text-muted-foreground">클릭하여 설정으로 이동</div>
           </div>
         </TooltipContent>
       </Tooltip>
@@ -233,6 +287,7 @@ function AppContent() {
           <div className="flex items-center justify-end gap-4 w-[200px]">
             <ApiStatusIndicator />
             <WebSocketIndicator isConnected={isConnected} />
+            <IndexStatusIndicator onNavigate={() => setSelectedItem({ type: 'settings' })} />
             <ThemeToggle />
           </div>
         </header>
@@ -305,7 +360,7 @@ function AppContent() {
           if (item.type === 'change' && item.id && item.projectId) {
             setSelectedItem({ type: 'change', projectId: item.projectId, changeId: item.id })
           } else if (item.type === 'docs' && item.projectId) {
-            setSelectedItem({ type: 'docs', projectId: item.projectId })
+            setSelectedItem({ type: 'docs', projectId: item.projectId, docPath: item.path })
           } else if (item.type === 'settings') {
             setSelectedItem({ type: 'settings' })
           }

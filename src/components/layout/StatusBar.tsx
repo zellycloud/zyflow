@@ -194,6 +194,7 @@ export function StatusBar({
             </Tooltip>
           </TooltipProvider>
         )}
+
       </div>
 
       {/* Right Side - Chat Toggle */}
