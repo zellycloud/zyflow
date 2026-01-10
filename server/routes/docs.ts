@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { readdir, readFile, access, stat, writeFile } from 'fs/promises'
 import { join, relative, basename, extname } from 'path'
 import { constants } from 'fs'
+import { loadConfig } from '../config'
 
 const router = Router()
 
@@ -485,6 +486,270 @@ router.get('/search', async (req, res) => {
     })
   }
 })
+
+/**
+ * 전역 문서 검색 (모든 프로젝트에서 검색)
+ * GET /api/docs/global-search?query=...&limit=...
+ */
+router.get('/global-search', async (req, res) => {
+  try {
+    const { query, limit = '20' } = req.query as { query?: string; limit?: string }
+
+    if (!query || typeof query !== 'string' || query.length < 2) {
+      return res.status(400).json({ error: 'query is required (min 2 chars)' })
+    }
+
+    const config = await loadConfig()
+    const searchLower = query.toLowerCase()
+    const maxResults = Math.min(parseInt(limit, 10) || 20, 50)
+
+    interface GlobalDocResult {
+      id: string
+      name: string
+      path: string
+      projectId: string
+      projectName: string
+      changeId?: string
+      matches: string[]
+    }
+
+    const results: GlobalDocResult[] = []
+
+    // 모든 프로젝트에서 검색
+    for (const project of config.projects) {
+      const projectPath = project.path
+
+      // openspec/changes 폴더 검색
+      const changesPath = join(projectPath, 'openspec', 'changes')
+
+      try {
+        await access(changesPath, constants.R_OK)
+        const changeEntries = await readdir(changesPath, { withFileTypes: true })
+
+        for (const changeEntry of changeEntries) {
+          if (!changeEntry.isDirectory() || changeEntry.name.startsWith('.')) continue
+
+          const changeId = changeEntry.name
+          const changePath = join(changesPath, changeId)
+
+          // 해당 change 폴더 내 모든 md 파일 검색
+          await searchInChangeDirectory(
+            changePath,
+            changePath,
+            project.id,
+            project.name,
+            changeId,
+            searchLower,
+            results,
+            maxResults
+          )
+
+          if (results.length >= maxResults) break
+        }
+      } catch {
+        // openspec/changes 없음
+      }
+
+      // 루트 문서 검색 (README.md, AGENTS.md 등)
+      const rootFiles = ['README.md', 'CHANGELOG.md', 'AGENTS.md', 'CLAUDE.md']
+      for (const fileName of rootFiles) {
+        if (results.length >= maxResults) break
+        const filePath = join(projectPath, fileName)
+        try {
+          await access(filePath, constants.R_OK)
+          const content = await readFile(filePath, 'utf-8')
+
+          // 파일명 또는 내용에서 검색
+          if (fileName.toLowerCase().includes(searchLower) || content.toLowerCase().includes(searchLower)) {
+            const matches = extractMatches(content, searchLower)
+            results.push({
+              id: `${project.id}-${fileName.replace('.md', '')}`,
+              name: fileName.replace('.md', ''),
+              path: fileName,
+              projectId: project.id,
+              projectName: project.name,
+              matches,
+            })
+          }
+        } catch {
+          // 파일 없음
+        }
+      }
+
+      // docs 폴더 검색
+      const docsPath = join(projectPath, 'docs')
+      try {
+        await access(docsPath, constants.R_OK)
+        await searchInDocsDirectory(
+          docsPath,
+          projectPath,
+          project.id,
+          project.name,
+          searchLower,
+          results,
+          maxResults
+        )
+      } catch {
+        // docs 폴더 없음
+      }
+
+      if (results.length >= maxResults) break
+    }
+
+    res.json({
+      success: true,
+      data: results.slice(0, maxResults),
+      total: results.length,
+    })
+
+  } catch (error) {
+    console.error('[Docs] Global search error:', error)
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to search docs globally',
+    })
+  }
+})
+
+// Helper: change 폴더 내 모든 md 파일 검색
+async function searchInChangeDirectory(
+  dirPath: string,
+  basePath: string,
+  projectId: string,
+  projectName: string,
+  changeId: string,
+  searchLower: string,
+  results: Array<{
+    id: string
+    name: string
+    path: string
+    projectId: string
+    projectName: string
+    changeId?: string
+    matches: string[]
+  }>,
+  maxResults: number
+): Promise<void> {
+  if (results.length >= maxResults) return
+
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (results.length >= maxResults) break
+
+      const fullPath = join(dirPath, entry.name)
+      const relativePath = relative(basePath, fullPath)
+
+      if (entry.isDirectory()) {
+        if (!entry.name.startsWith('.') && entry.name !== 'node_modules') {
+          await searchInChangeDirectory(
+            fullPath, basePath, projectId, projectName, changeId,
+            searchLower, results, maxResults
+          )
+        }
+      } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
+        try {
+          const content = await readFile(fullPath, 'utf-8')
+
+          if (entry.name.toLowerCase().includes(searchLower) || content.toLowerCase().includes(searchLower)) {
+            const matches = extractMatches(content, searchLower)
+            results.push({
+              id: `${projectId}-${changeId}-${relativePath.replace(/\//g, '-').replace('.md', '')}`,
+              name: entry.name.replace('.md', ''),
+              path: `openspec/changes/${changeId}/${relativePath}`,
+              projectId,
+              projectName,
+              changeId,
+              matches,
+            })
+          }
+        } catch {
+          // 읽기 실패
+        }
+      }
+    }
+  } catch {
+    // 디렉토리 접근 실패
+  }
+}
+
+// Helper: docs 폴더 내 검색
+async function searchInDocsDirectory(
+  dirPath: string,
+  projectPath: string,
+  projectId: string,
+  projectName: string,
+  searchLower: string,
+  results: Array<{
+    id: string
+    name: string
+    path: string
+    projectId: string
+    projectName: string
+    changeId?: string
+    matches: string[]
+  }>,
+  maxResults: number
+): Promise<void> {
+  if (results.length >= maxResults) return
+
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (results.length >= maxResults) break
+
+      const fullPath = join(dirPath, entry.name)
+      const relativePath = relative(projectPath, fullPath)
+
+      if (entry.isDirectory()) {
+        if (!entry.name.startsWith('.') && entry.name !== 'node_modules') {
+          await searchInDocsDirectory(
+            fullPath, projectPath, projectId, projectName,
+            searchLower, results, maxResults
+          )
+        }
+      } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
+        try {
+          const content = await readFile(fullPath, 'utf-8')
+
+          if (entry.name.toLowerCase().includes(searchLower) || content.toLowerCase().includes(searchLower)) {
+            const matches = extractMatches(content, searchLower)
+            results.push({
+              id: `${projectId}-${relativePath.replace(/\//g, '-').replace('.md', '')}`,
+              name: entry.name.replace('.md', ''),
+              path: relativePath,
+              projectId,
+              projectName,
+              matches,
+            })
+          }
+        } catch {
+          // 읽기 실패
+        }
+      }
+    }
+  } catch {
+    // 디렉토리 접근 실패
+  }
+}
+
+// Helper: 검색어가 포함된 라인 추출
+function extractMatches(content: string, searchLower: string): string[] {
+  const lines = content.split('\n')
+  const matches: string[] = []
+
+  for (const line of lines) {
+    if (line.toLowerCase().includes(searchLower)) {
+      const snippet = line.trim().slice(0, 150)
+      matches.push(snippet)
+      if (matches.length >= 3) break
+    }
+  }
+
+  return matches
+}
 
 // ============================================
 // RAG API - LEANN 외부 MCP 서버로 대체됨
