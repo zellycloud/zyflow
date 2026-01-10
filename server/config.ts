@@ -22,7 +22,20 @@ export interface Config {
   activeProjectId: string | null
 }
 
-const CONFIG_DIR = join(homedir(), '.zyflow')
+/**
+ * 설정 디렉토리 경로
+ * - Docker: DATA_DIR 환경변수 사용 (예: /app/data)
+ * - Local: ~/.zyflow
+ */
+function getConfigDir(): string {
+  const dataDir = process.env.DATA_DIR
+  if (dataDir) {
+    return dataDir
+  }
+  return join(homedir(), '.zyflow')
+}
+
+const CONFIG_DIR = getConfigDir()
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json')
 
 const DEFAULT_CONFIG: Config = {

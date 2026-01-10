@@ -11,11 +11,16 @@ let currentDbPath: string | null = null;
 
 /**
  * 중앙 DB 경로 반환
- * 모든 프로젝트가 ~/.zyflow/tasks.db를 공유
+ * - Docker: DATA_DIR 환경변수 사용 (예: /app/data)
+ * - Local: ~/.zyflow/tasks.db
  * projectRoot 파라미터는 하위 호환성을 위해 유지하지만 무시됨
  */
 export function getDbPath(_projectRoot?: string): string {
-  return join(homedir(), '.zyflow', 'tasks.db');
+  const dataDir = process.env.DATA_DIR
+  if (dataDir) {
+    return join(dataDir, 'tasks.db')
+  }
+  return join(homedir(), '.zyflow', 'tasks.db')
 }
 
 export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof schema>> {

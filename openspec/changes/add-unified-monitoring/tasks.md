@@ -64,62 +64,61 @@
 
 ---
 
-## Phase 2: Docker Deployment
+## Phase 2: Docker Deployment ✅
 
 ### Group 2-1: Container Configuration
 
-- [ ] task-2-1-1: Multi-stage Dockerfile
-  - Create `Dockerfile`
-  - Build stage: node:20-alpine, npm ci, build
-  - Production stage: minimal runtime
-  - Non-root user (node)
-  - Health check instruction (curl /api/health)
+- [x] task-2-1-1: Multi-stage Dockerfile
+  - Created `Dockerfile`
+  - Build stage: node:20-alpine with native module support
+  - Production stage: minimal runtime with non-root user (zyflow)
+  - Health check: curl /api/health (30s interval)
+  - Native modules: better-sqlite3, node-pty rebuild
 
-- [ ] task-2-1-2: Docker Compose configuration
-  - Create `docker-compose.yml`
-  - zyflow-server service
-  - Volume mounts for /app/data (SQLite)
+- [x] task-2-1-2: Docker Compose configuration
+  - Created `docker-compose.yml`
+  - zyflow-server service on port 3100
+  - Volume: zyflow-data:/app/data (SQLite persistence)
   - Environment variables from .env
-  - Health check configuration
-  - Restart policy (unless-stopped)
+  - Health check and restart policy (unless-stopped)
+  - JSON logging with rotation (10m, 3 files)
 
-- [ ] task-2-1-3: Production environment template
-  - Create `.env.production.template`
-  - NODE_ENV=production
-  - DATA_DIR=/app/data
-  - SLACK_WEBHOOK_URL placeholder
-  - GEMINI_API_KEY placeholder
-  - GITHUB_TOKEN placeholder
-  - SECRET_KEY generation instructions
+- [x] task-2-1-3: Production environment template
+  - Created `.env.production.template`
+  - All required env vars documented
+  - SECRET_KEY, SLACK_WEBHOOK_URL
+  - Webhook secrets (GitHub, Vercel, Sentry, Supabase)
+  - GEMINI_API_KEY for Phase 3
 
 ### Group 2-2: Path & Configuration
 
-- [ ] task-2-2-1: Database path configuration
-  - Modify `server/tasks/db/client.ts`
-  - Support DATA_DIR environment variable
-  - Fallback to ~/.zyflow for local development
-  - Ensure directory creation if not exists
+- [x] task-2-2-1: Database path configuration
+  - Modified `server/tasks/db/client.ts`
+  - DATA_DIR env var support for Docker
+  - Fallback to ~/.zyflow/tasks.db for local dev
 
-- [ ] task-2-2-2: Config path configuration
-  - Modify `server/config.ts`
-  - Support CONFIG_DIR environment variable
-  - Consistent path handling for Docker
+- [x] task-2-2-2: Config path configuration
+  - Modified `server/config.ts`
+  - DATA_DIR env var support (same as DB)
+  - Consistent path: Docker=/app/data, Local=~/.zyflow
 
 ### Group 2-3: Deployment Infrastructure
 
-- [ ] task-2-3-1: Nginx reverse proxy configuration
-  - Create `nginx/zyflow.conf`
-  - SSL/TLS termination setup
-  - WebSocket proxy for /ws
-  - Static file caching
-  - Rate limiting rules
+- [x] task-2-3-1: Nginx reverse proxy configuration
+  - Created `nginx/zyflow.conf`
+  - HTTPS with TLS 1.2/1.3, HSTS
+  - Rate limiting: API 30r/s, Webhooks 10r/s
+  - WebSocket proxy (/ws) with 24h timeout
+  - Static file caching (7 days)
+  - Security headers (X-Frame-Options, CSP, etc.)
 
-- [ ] task-2-3-2: Deployment scripts
-  - Create `scripts/deploy.sh`
-  - Docker image build and tag
-  - Push to registry (optional)
-  - Deploy command for remote servers
-  - Health check verification after deploy
+- [x] task-2-3-2: Deployment scripts
+  - Created `scripts/deploy.sh`
+  - Commands: setup, build, start, stop, restart
+  - logs, status, backup, update
+  - Auto SECRET_KEY generation
+  - Database backup with 7-day retention
+  - Docker Compose v1/v2 compatibility
 
 ---
 

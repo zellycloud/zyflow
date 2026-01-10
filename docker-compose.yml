@@ -1,0 +1,52 @@
+# ==============================================
+# ZyFlow Docker Compose Configuration
+# ==============================================
+# Usage:
+#   docker-compose up -d        # Start in background
+#   docker-compose logs -f      # View logs
+#   docker-compose down         # Stop and remove
+#   docker-compose restart      # Restart service
+# ==============================================
+
+services:
+  zyflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zyflow-server
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3100}:3100"
+    volumes:
+      # Persist SQLite database
+      - zyflow-data:/app/data
+      # Optional: mount local data directory for development
+      # - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3100
+      - DATA_DIR=/app/data
+      # Secrets (from .env file or environment)
+      - SECRET_KEY=${SECRET_KEY}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET:-}
+      - VERCEL_WEBHOOK_SECRET=${VERCEL_WEBHOOK_SECRET:-}
+      - SENTRY_WEBHOOK_SECRET=${SENTRY_WEBHOOK_SECRET:-}
+      - SUPABASE_WEBHOOK_SECRET=${SUPABASE_WEBHOOK_SECRET:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3100/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  zyflow-data:
+    driver: local
