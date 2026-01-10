@@ -6,6 +6,8 @@ import { startTasksWatcher, stopTasksWatcher } from './watcher.js'
 // RAG 기능 삭제됨 - LEANN 외부 MCP 서버로 대체
 import { getActiveProject } from './config.js'
 import { syncFlowChanges } from './flow-sync.js'
+import { getProcessManager } from './cli-adapter/process-manager.js'
+import { closeDb } from './tasks/index.js'
 
 const PORT = parseInt(process.env.PORT || '3100', 10)
 
@@ -66,11 +68,33 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
 // Graceful shutdown 함수
 async function gracefulShutdown(reason: string) {
   console.log(`\n[Shutdown] Initiating graceful shutdown (reason: ${reason})...`)
+
+  // 1. 새 요청 거부 - watcher 중지
   stopTasksWatcher()
+
+  // 2. 활성 프로세스 정리
+  try {
+    const processManager = getProcessManager()
+    processManager.cleanup(0) // 모든 완료된 프로세스 즉시 정리
+    console.log('[Shutdown] Process manager cleaned up')
+  } catch {
+    // ProcessManager가 초기화되지 않은 경우 무시
+  }
+
+  // 3. DB 연결 종료
+  try {
+    closeDb()
+    console.log('[Shutdown] Database connection closed')
+  } catch {
+    // DB가 초기화되지 않은 경우 무시
+  }
+
+  // 4. HTTP 서버 종료
   httpServer.close(() => {
     console.log('[Shutdown] Server closed')
     process.exit(reason === 'SIGINT' ? 0 : 1)
   })
+
   // 강제 종료 타임아웃 (10초)
   setTimeout(() => {
     console.error('[Shutdown] Forced exit after timeout')
@@ -78,4 +102,15 @@ async function gracefulShutdown(reason: string) {
   }, 10000)
 }
 
+// 프로세스 자동 정리 (5분 이상 된 완료 프로세스 정리, 매 1분마다)
+setInterval(() => {
+  try {
+    const processManager = getProcessManager()
+    processManager.cleanup(300000) // 5분 이상 된 완료 프로세스 정리
+  } catch {
+    // ProcessManager가 초기화되지 않은 경우 무시
+  }
+}, 60000)
+
 process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
