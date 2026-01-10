@@ -28,6 +28,8 @@ dist-ssr
 
 # Local data
 .zyflow/
+.leann/
+.serena/
 
 # Build artifacts
 server/server/
