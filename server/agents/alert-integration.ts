@@ -9,7 +9,20 @@
  */
 
 import { triggerAutoFix, summarizeAutoFix, type AlertData, type AutoFixResult, type AutoFixOptions } from './error-detector'
-import type { Alert } from '../routes/alerts'
+
+// Alert 타입 정의 (routes/alerts.ts와 동일 구조)
+export interface Alert {
+  id: string
+  project_id: string
+  source: 'github' | 'vercel' | 'sentry' | 'supabase' | 'custom'
+  severity: 'critical' | 'high' | 'medium' | 'low'
+  status: 'new' | 'in_progress' | 'resolved' | 'ignored'
+  title: string
+  message?: string
+  metadata?: Record<string, unknown>
+  created_at: number
+  updated_at: number
+}
 
 export interface AgentConfig {
   enabled: boolean
