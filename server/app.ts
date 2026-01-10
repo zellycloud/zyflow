@@ -44,6 +44,7 @@ import { startTasksWatcher, stopTasksWatcher } from './watcher.js'
 import { changesRouter } from './routes/changes.js'
 import { flowRouter } from './routes/flow.js'
 import { alertsRouter, setBroadcastAlert } from './routes/alerts.js'
+import { webhooksRouter, setWebhookBroadcast } from './routes/webhooks.js'
 import { aiRouter } from './ai/index.js'
 import { ragRouter, memoryRouter } from './routes/search.js'
 import { leannRouter } from './routes/leann.js'
@@ -159,6 +160,9 @@ app.use('/api/flow', flowRouter)
 // Alerts API 라우터 등록
 app.use('/api/alerts', alertsRouter)
 
+// Webhooks API 라우터 등록
+app.use('/api/alerts/webhooks', webhooksRouter)
+
 // Remote Server API 라우터 등록 (플러그인이 설치된 경우만)
 if (remoteRouter) {
   app.use('/api/remote', remoteRouter)
@@ -166,6 +170,9 @@ if (remoteRouter) {
 
 // Alert WebSocket broadcast 설정
 setBroadcastAlert((data) => {
+  emit('alert', data)
+})
+setWebhookBroadcast((data) => {
   emit('alert', data)
 })
 

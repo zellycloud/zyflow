@@ -1,62 +1,66 @@
 # add-unified-monitoring Tasks
 
-## Phase 1: Alert System Completion
+## Phase 1: Alert System Completion ✅
 
 ### Group 1-1: Webhook Infrastructure
 
-- [ ] task-1-1-1: Webhook receiver endpoints
-  - Create `server/routes/webhooks.ts`
+- [x] task-1-1-1: Webhook receiver endpoints
+  - Created `server/routes/webhooks.ts`
   - POST /api/alerts/webhooks/github (GitHub Actions)
   - POST /api/alerts/webhooks/vercel (Vercel deployments)
   - POST /api/alerts/webhooks/sentry (Sentry issues)
   - POST /api/alerts/webhooks/supabase (Supabase alerts)
+  - POST /api/alerts/webhooks/custom/:configId (Custom webhooks)
   - Source-specific payload parsers
 
-- [ ] task-1-1-2: Webhook signature verification
-  - Create `server/utils/webhook-verify.ts`
+- [x] task-1-1-2: Webhook signature verification
+  - Created `server/utils/webhook-verify.ts`
   - GitHub: HMAC-SHA256 with X-Hub-Signature-256
-  - Vercel: Bearer token verification
-  - Sentry: Sentry-Hook-Signature verification
-  - Supabase: Custom secret verification
+  - Vercel: HMAC-SHA1 with x-vercel-signature
+  - Sentry: HMAC-SHA256 with Sentry-Hook-Signature
+  - Supabase: Custom HMAC-SHA256 verification
+  - Timing-safe comparison
 
-- [ ] task-1-1-3: Secret encryption utility
-  - Create `server/utils/crypto.ts`
+- [x] task-1-1-3: Secret encryption utility
+  - Created `server/utils/crypto.ts`
   - AES-256-GCM encryption for webhook secrets
-  - Secure key derivation (PBKDF2)
-  - Encrypt/decrypt functions for Slack URL, webhook secrets
+  - Secure key derivation (PBKDF2, 100k iterations)
+  - encrypt/decrypt/safeDecrypt functions
+  - maskValue/maskUrl for UI display
+  - generateSecret/generateApiKey utilities
 
 ### Group 1-2: Configuration API
 
-- [ ] task-1-2-1: Webhook config CRUD endpoints
-  - Extend `server/routes/alerts.ts`
+- [x] task-1-2-1: Webhook config CRUD endpoints
+  - Extended `server/routes/alerts.ts`
   - GET /api/alerts/webhook-configs
   - POST /api/alerts/webhook-configs
   - PATCH /api/alerts/webhook-configs/:id
   - DELETE /api/alerts/webhook-configs/:id
   - POST /api/alerts/webhook-configs/:id/regenerate-secret
 
-- [ ] task-1-2-2: Notification config API endpoints
-  - Extend `server/routes/alerts.ts`
-  - GET /api/alerts/notification-config
+- [x] task-1-2-2: Notification config API endpoints
+  - Extended `server/routes/alerts.ts`
+  - GET /api/alerts/notification-config (nested format for frontend)
   - PATCH /api/alerts/notification-config
   - POST /api/alerts/notification-config/test
 
 ### Group 1-3: Slack Integration
 
-- [ ] task-1-3-1: Slack notification sender service
-  - Create `server/services/slackNotifier.ts`
+- [x] task-1-3-1: Slack notification sender service
+  - Created `server/services/slackNotifier.ts`
   - Block Kit message builder
   - Severity-based color coding (critical=red, warning=yellow, info=blue)
-  - Channel routing (zellyy vs jayoo projects)
+  - Project group routing (zellyy vs jayoo)
   - Rate limiting (1 msg/sec)
-  - Error handling and retry logic
+  - Error handling and test notification
 
-- [ ] task-1-3-2: Slack configuration UI update
-  - Update `src/components/alerts/AlertSettings.tsx`
+- [x] task-1-3-2: Slack configuration UI update
+  - UI already complete in `src/components/alerts/AlertSettings.tsx`
   - Webhook URL input with validation
-  - Channel selection dropdown
-  - Notification level selector (all, critical only, auto-fix only)
+  - Notification rules (onCritical, onAutofix, onAll)
   - Test notification button
+  - Webhook endpoints management
 
 ---
 

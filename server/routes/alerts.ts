@@ -22,6 +22,8 @@ import {
   isPollerRunning,
 } from '../services/githubActionsPoller.js'
 import { getProjectById } from '../config.js'
+import { encrypt, safeDecrypt, maskUrl, generateSecret } from '../utils/crypto.js'
+import { sendTestNotification } from '../services/slackNotifier.js'
 
 // WebSocket broadcast 함수 (app.ts에서 주입)
 let broadcastAlert: ((alert: unknown) => void) | null = null
@@ -241,8 +243,8 @@ alertsRouter.get('/dashboard-stats', async (_req, res) => {
   }
 })
 
-// GET /alerts/:id - Get single alert
-alertsRouter.get('/:id', async (req, res) => {
+// GET /alerts/:id - Get single alert (UUID format only)
+alertsRouter.get('/:id([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', async (req, res) => {
   try {
     const sqlite = getSqlite()
     const alert = sqlite.prepare('SELECT * FROM alerts WHERE id = ?').get(req.params.id)
@@ -258,8 +260,8 @@ alertsRouter.get('/:id', async (req, res) => {
   }
 })
 
-// PATCH /alerts/:id - Update alert status
-alertsRouter.patch('/:id', async (req, res) => {
+// PATCH /alerts/:id - Update alert status (UUID format only)
+alertsRouter.patch('/:id([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', async (req, res) => {
   try {
     const sqlite = getSqlite()
     const { status } = req.body
@@ -286,8 +288,8 @@ alertsRouter.patch('/:id', async (req, res) => {
   }
 })
 
-// POST /alerts/:id/ignore - Mark alert as ignored
-alertsRouter.post('/:id/ignore', async (req, res) => {
+// POST /alerts/:id/ignore - Mark alert as ignored (UUID format only)
+alertsRouter.post('/:id([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/ignore', async (req, res) => {
   try {
     const sqlite = getSqlite()
     const alertId = req.params.id
@@ -507,5 +509,360 @@ alertsRouter.post('/github/poller/stop', async (_req, res) => {
   } catch (error) {
     console.error('Error stopping poller:', error)
     res.status(500).json({ success: false, error: 'Failed to stop poller' })
+  }
+})
+
+// =============================================
+// Notification Config Endpoints
+// =============================================
+
+// GET /notification-config - 알림 설정 조회
+alertsRouter.get('/notification-config', async (_req, res) => {
+  try {
+    const sqlite = getSqlite()
+
+    // 기본 설정 생성 (없으면)
+    const existing = sqlite.prepare('SELECT * FROM notification_config WHERE id = ?').get('default')
+    if (!existing) {
+      const now = Date.now()
+      sqlite.prepare(`
+        INSERT INTO notification_config (id, slack_enabled, rule_on_critical, rule_on_autofix, rule_on_all, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run('default', 0, 1, 1, 0, now, now)
+    }
+
+    const config = sqlite.prepare('SELECT * FROM notification_config WHERE id = ?').get('default') as {
+      id: string
+      slack_webhook_url: string | null
+      slack_channel: string | null
+      slack_enabled: number
+      rule_on_critical: number
+      rule_on_autofix: number
+      rule_on_all: number
+      created_at: number
+      updated_at: number
+    }
+
+    // 프론트엔드가 기대하는 중첩 형식으로 변환
+    res.json({
+      success: true,
+      data: {
+        slack: {
+          webhookUrl: config.slack_webhook_url ? maskUrl(safeDecrypt(config.slack_webhook_url)) : undefined,
+          channel: config.slack_channel || undefined,
+          enabled: Boolean(config.slack_enabled),
+        },
+        rules: {
+          onCritical: Boolean(config.rule_on_critical),
+          onAutofix: Boolean(config.rule_on_autofix),
+          onAll: Boolean(config.rule_on_all),
+        },
+      },
+    })
+  } catch (error) {
+    console.error('Error getting notification config:', error)
+    res.status(500).json({ success: false, error: 'Failed to get notification config' })
+  }
+})
+
+// PATCH /notification-config - 알림 설정 수정
+// 프론트엔드 형식: { slack: { webhookUrl, channel, enabled }, rules: { onCritical, onAutofix, onAll } }
+alertsRouter.patch('/notification-config', async (req, res) => {
+  try {
+    const sqlite = getSqlite()
+    const { slack, rules } = req.body as {
+      slack?: { webhookUrl?: string; channel?: string; enabled?: boolean }
+      rules?: { onCritical?: boolean; onAutofix?: boolean; onAll?: boolean }
+    }
+    const now = Date.now()
+
+    // 현재 설정 조회/생성
+    const existing = sqlite.prepare('SELECT id FROM notification_config WHERE id = ?').get('default')
+    if (!existing) {
+      sqlite.prepare(`
+        INSERT INTO notification_config (id, slack_enabled, rule_on_critical, rule_on_autofix, rule_on_all, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run('default', 0, 1, 1, 0, now, now)
+    }
+
+    const updates: string[] = []
+    const params: (string | number | null)[] = []
+
+    // Slack 설정
+    if (slack?.webhookUrl !== undefined) {
+      updates.push('slack_webhook_url = ?')
+      params.push(slack.webhookUrl ? encrypt(slack.webhookUrl) : null)
+    }
+    if (slack?.channel !== undefined) {
+      updates.push('slack_channel = ?')
+      params.push(slack.channel || null)
+    }
+    if (slack?.enabled !== undefined) {
+      updates.push('slack_enabled = ?')
+      params.push(slack.enabled ? 1 : 0)
+    }
+
+    // 알림 규칙
+    if (rules?.onCritical !== undefined) {
+      updates.push('rule_on_critical = ?')
+      params.push(rules.onCritical ? 1 : 0)
+    }
+    if (rules?.onAutofix !== undefined) {
+      updates.push('rule_on_autofix = ?')
+      params.push(rules.onAutofix ? 1 : 0)
+    }
+    if (rules?.onAll !== undefined) {
+      updates.push('rule_on_all = ?')
+      params.push(rules.onAll ? 1 : 0)
+    }
+
+    if (updates.length > 0) {
+      updates.push('updated_at = ?')
+      params.push(now)
+      params.push('default')
+
+      sqlite.prepare(`
+        UPDATE notification_config SET ${updates.join(', ')} WHERE id = ?
+      `).run(...params)
+
+      createActivityLog(null, 'user', 'notification_config.updated', 'Notification config updated')
+    }
+
+    res.json({ success: true, message: 'Notification config updated' })
+  } catch (error) {
+    console.error('Error updating notification config:', error)
+    res.status(500).json({ success: false, error: 'Failed to update notification config' })
+  }
+})
+
+// POST /notification-config/test - Slack 테스트 알림 발송
+alertsRouter.post('/notification-config/test', async (req, res) => {
+  try {
+    const { webhook_url } = req.body
+
+    let url = webhook_url
+
+    // webhook_url이 없으면 저장된 URL 사용
+    if (!url) {
+      const sqlite = getSqlite()
+      const config = sqlite.prepare('SELECT slack_webhook_url FROM notification_config WHERE id = ?').get('default') as {
+        slack_webhook_url: string | null
+      } | undefined
+
+      if (!config?.slack_webhook_url) {
+        return res.status(400).json({ success: false, error: 'No webhook URL configured' })
+      }
+
+      url = safeDecrypt(config.slack_webhook_url)
+    }
+
+    const result = await sendTestNotification(url)
+
+    if (result.success) {
+      createActivityLog(null, 'user', 'notification.test', 'Test notification sent successfully')
+      res.json({ success: true, message: 'Test notification sent' })
+    } else {
+      res.status(400).json({ success: false, error: result.error })
+    }
+  } catch (error) {
+    console.error('Error sending test notification:', error)
+    res.status(500).json({ success: false, error: 'Failed to send test notification' })
+  }
+})
+
+// =============================================
+// Webhook Config CRUD Endpoints
+// =============================================
+
+// GET /webhook-configs - Webhook 설정 목록 조회
+alertsRouter.get('/webhook-configs', async (_req, res) => {
+  try {
+    const sqlite = getSqlite()
+    const configs = sqlite.prepare(`
+      SELECT id, name, source, endpoint_path, enabled, created_at, updated_at
+      FROM webhook_configs
+      ORDER BY created_at DESC
+    `).all() as Array<{
+      id: string
+      name: string
+      source: string
+      endpoint_path: string
+      enabled: number
+      created_at: number
+      updated_at: number
+    }>
+
+    res.json({
+      success: true,
+      data: configs.map(c => ({
+        id: c.id,
+        name: c.name,
+        source: c.source,
+        endpoint: c.endpoint_path, // frontend expects 'endpoint'
+        enabled: Boolean(c.enabled),
+        created_at: c.created_at,
+        updated_at: c.updated_at,
+        // 시크릿은 노출하지 않음
+        has_secret: true,
+      })),
+    })
+  } catch (error) {
+    console.error('Error getting webhook configs:', error)
+    res.status(500).json({ success: false, error: 'Failed to get webhook configs' })
+  }
+})
+
+// POST /webhook-configs - 새 Webhook 설정 생성
+alertsRouter.post('/webhook-configs', async (req, res) => {
+  try {
+    const sqlite = getSqlite()
+    const { name, source, project_filter } = req.body
+
+    if (!name || !source) {
+      return res.status(400).json({ success: false, error: 'name and source are required' })
+    }
+
+    const id = randomUUID()
+    const secret = generateSecret()
+    const endpointPath = `/api/alerts/webhooks/custom/${id}`
+    const now = Date.now()
+
+    sqlite.prepare(`
+      INSERT INTO webhook_configs (id, name, source, secret, endpoint_path, project_filter, enabled, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      name,
+      source,
+      encrypt(secret),
+      endpointPath,
+      project_filter ? JSON.stringify(project_filter) : null,
+      1,
+      now,
+      now
+    )
+
+    createActivityLog(null, 'user', 'webhook_config.created', `Webhook config "${name}" created`)
+
+    res.json({
+      success: true,
+      data: {
+        id,
+        name,
+        source,
+        endpoint: endpointPath, // frontend expects 'endpoint'
+        secret, // 생성 시에만 시크릿 반환
+        enabled: true,
+      },
+    })
+  } catch (error) {
+    console.error('Error creating webhook config:', error)
+    res.status(500).json({ success: false, error: 'Failed to create webhook config' })
+  }
+})
+
+// PATCH /webhook-configs/:id - Webhook 설정 수정
+alertsRouter.patch('/webhook-configs/:id', async (req, res) => {
+  try {
+    const sqlite = getSqlite()
+    const { id } = req.params
+    const { name, source, project_filter, enabled } = req.body
+
+    const existing = sqlite.prepare('SELECT * FROM webhook_configs WHERE id = ?').get(id)
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Webhook config not found' })
+    }
+
+    const updates: string[] = []
+    const params: (string | number | null)[] = []
+
+    if (name !== undefined) {
+      updates.push('name = ?')
+      params.push(name)
+    }
+
+    if (source !== undefined) {
+      updates.push('source = ?')
+      params.push(source)
+    }
+
+    if (project_filter !== undefined) {
+      updates.push('project_filter = ?')
+      params.push(project_filter ? JSON.stringify(project_filter) : null)
+    }
+
+    if (enabled !== undefined) {
+      updates.push('enabled = ?')
+      params.push(enabled ? 1 : 0)
+    }
+
+    if (updates.length > 0) {
+      updates.push('updated_at = ?')
+      params.push(Date.now())
+      params.push(id)
+
+      sqlite.prepare(`
+        UPDATE webhook_configs SET ${updates.join(', ')} WHERE id = ?
+      `).run(...params)
+
+      createActivityLog(null, 'user', 'webhook_config.updated', `Webhook config "${id}" updated`)
+    }
+
+    res.json({ success: true, message: 'Webhook config updated' })
+  } catch (error) {
+    console.error('Error updating webhook config:', error)
+    res.status(500).json({ success: false, error: 'Failed to update webhook config' })
+  }
+})
+
+// DELETE /webhook-configs/:id - Webhook 설정 삭제
+alertsRouter.delete('/webhook-configs/:id', async (req, res) => {
+  try {
+    const sqlite = getSqlite()
+    const { id } = req.params
+
+    const existing = sqlite.prepare('SELECT name FROM webhook_configs WHERE id = ?').get(id) as { name: string } | undefined
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Webhook config not found' })
+    }
+
+    sqlite.prepare('DELETE FROM webhook_configs WHERE id = ?').run(id)
+    createActivityLog(null, 'user', 'webhook_config.deleted', `Webhook config "${existing.name}" deleted`)
+
+    res.json({ success: true, message: 'Webhook config deleted' })
+  } catch (error) {
+    console.error('Error deleting webhook config:', error)
+    res.status(500).json({ success: false, error: 'Failed to delete webhook config' })
+  }
+})
+
+// POST /webhook-configs/:id/regenerate-secret - 시크릿 재생성
+alertsRouter.post('/webhook-configs/:id/regenerate-secret', async (req, res) => {
+  try {
+    const sqlite = getSqlite()
+    const { id } = req.params
+
+    const existing = sqlite.prepare('SELECT name FROM webhook_configs WHERE id = ?').get(id) as { name: string } | undefined
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Webhook config not found' })
+    }
+
+    const newSecret = generateSecret()
+
+    sqlite.prepare(`
+      UPDATE webhook_configs SET secret = ?, updated_at = ? WHERE id = ?
+    `).run(encrypt(newSecret), Date.now(), id)
+
+    createActivityLog(null, 'user', 'webhook_config.secret_regenerated', `Webhook config "${existing.name}" secret regenerated`)
+
+    res.json({
+      success: true,
+      data: {
+        secret: newSecret, // 재생성 시에만 반환
+      },
+    })
+  } catch (error) {
+    console.error('Error regenerating webhook secret:', error)
+    res.status(500).json({ success: false, error: 'Failed to regenerate webhook secret' })
   }
 })

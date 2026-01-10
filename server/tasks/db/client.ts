@@ -727,11 +727,10 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
       id TEXT PRIMARY KEY,
       source TEXT NOT NULL CHECK(source IN ('github', 'vercel', 'sentry', 'supabase', 'custom')),
       name TEXT NOT NULL,
-      endpoint TEXT NOT NULL,
+      endpoint_path TEXT NOT NULL,
       secret TEXT,
       enabled INTEGER NOT NULL DEFAULT 1,
-      rules TEXT,
-      project_ids TEXT,
+      project_filter TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -803,6 +802,34 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
     sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_project_id ON alerts(project_id);`);
   } catch {
     // Index already exists, ignore
+  }
+
+  // Migration: Recreate webhook_configs with correct schema (endpoint_path, project_filter)
+  try {
+    // Check if old schema exists by checking for 'endpoint' column
+    const tableInfo = sqlite.prepare(`PRAGMA table_info(webhook_configs)`).all() as Array<{ name: string }>
+    const hasOldSchema = tableInfo.some((col) => col.name === 'endpoint')
+    if (hasOldSchema) {
+      // Drop old table and let CREATE TABLE IF NOT EXISTS recreate it
+      sqlite.exec(`DROP TABLE IF EXISTS webhook_configs`)
+      sqlite.exec(`
+        CREATE TABLE webhook_configs (
+          id TEXT PRIMARY KEY,
+          source TEXT NOT NULL CHECK(source IN ('github', 'vercel', 'sentry', 'supabase', 'custom')),
+          name TEXT NOT NULL,
+          endpoint_path TEXT NOT NULL,
+          secret TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          project_filter TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      `)
+      sqlite.exec(`CREATE INDEX idx_webhook_configs_source ON webhook_configs(source);`)
+      sqlite.exec(`CREATE INDEX idx_webhook_configs_enabled ON webhook_configs(enabled);`)
+    }
+  } catch {
+    // Ignore migration errors
   }
 
   // =============================================
