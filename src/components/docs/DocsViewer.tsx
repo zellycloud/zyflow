@@ -20,10 +20,11 @@ interface DocsViewerProps {
   projectPath: string
   remote?: { serverId: string }
   onClose?: () => void
+  initialDocPath?: string
 }
 
-export function DocsViewer({ projectPath, remote, onClose }: DocsViewerProps) {
-  const [selectedDocPath, setSelectedDocPath] = useState<string | null>(null)
+export function DocsViewer({ projectPath, remote, onClose, initialDocPath }: DocsViewerProps) {
+  const [selectedDocPath, setSelectedDocPath] = useState<string | null>(initialDocPath ?? null)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     () => new Set(['docs', 'openspec'])
   )

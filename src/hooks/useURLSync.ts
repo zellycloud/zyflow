@@ -46,6 +46,9 @@ export function useURLSync(
         break
       case 'docs':
         newPath = `/project/${selectedItem.projectId}/docs`
+        if (selectedItem.docPath) {
+          newPath += `?path=${encodeURIComponent(selectedItem.docPath)}`
+        }
         break
       case 'backlog':
         newPath = `/project/${selectedItem.projectId}/backlog`
@@ -73,7 +76,8 @@ export function useURLSync(
         break
     }
 
-    if (window.location.pathname !== newPath) {
+    const currentUrl = window.location.pathname + window.location.search
+    if (currentUrl !== newPath) {
       window.history.pushState(null, '', newPath)
     }
   }, [selectedItem])
@@ -92,7 +96,9 @@ export function getInitialItemFromURL(): SelectedItem | null {
         if (parts[2] === 'change' && parts[3]) {
             return { type: 'change', projectId: decodedProjectId, changeId: decodeURIComponent(parts[3]) }
         } else if (parts[2] === 'docs') {
-            return { type: 'docs', projectId: decodedProjectId }
+            const urlParams = new URLSearchParams(window.location.search)
+            const docPath = urlParams.get('path')
+            return { type: 'docs', projectId: decodedProjectId, docPath: docPath ?? undefined }
         } else if (parts[2] === 'backlog') {
             return { type: 'backlog', projectId: decodedProjectId }
         } else if (parts[2] === 'settings') {

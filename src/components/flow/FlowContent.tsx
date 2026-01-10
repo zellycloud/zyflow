@@ -143,9 +143,10 @@ export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
       }
       return (
         <Suspense fallback={<LazyLoader />}>
-          <DocsViewer 
+          <DocsViewer
             projectPath={selectedProject.path}
-            remote={selectedProject.remote} // 원격 정보 전달
+            remote={selectedProject.remote}
+            initialDocPath={selectedItem.docPath}
             onClose={() => {
               // 문서 뷰어를 닫고 프로젝트 대시보드로 이동
               onSelectItem?.({ type: 'project', projectId: selectedItem.projectId })

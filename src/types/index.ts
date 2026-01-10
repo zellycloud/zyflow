@@ -532,7 +532,7 @@ export type SelectedItem =
   | { type: 'agent'; projectId: string; changeId?: string }
   | { type: 'post-task'; projectId: string }
   | { type: 'archived'; projectId: string; archivedChangeId?: string }
-  | { type: 'docs'; projectId: string }
+  | { type: 'docs'; projectId: string; docPath?: string }
   | { type: 'alerts'; projectId: string }
   | { type: 'settings' }
   | null
