@@ -1,0 +1,25 @@
+# Language Configuration
+# All language preferences for conversation, documentation, and code
+
+language:
+  # Primary conversation language for user interaction
+  conversation_language: "ko"
+  conversation_language_name: "Korean"
+
+  # Language for agent prompts (English recommended for token efficiency)
+  agent_prompt_language: "en"
+
+  # Documentation language
+  documentation_language: "ko"
+
+  # Code comments language
+  code_comments: "en"
+
+  # Supported languages for multilingual documentation
+  supported_languages:
+    - code: "ko"
+      name: "Korean"
+      native_name: "한국어"
+    - code: "en"
+      name: "English"
+      native_name: "English"

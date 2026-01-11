@@ -1,0 +1,30 @@
+# Git Strategy Configuration
+# Git workflow and branching configuration
+
+git:
+  # Workflow mode: personal or team
+  mode: "personal"
+
+  # Branch naming convention
+  branch_naming:
+    feature: "feature/SPEC-{id}-{description}"
+    bugfix: "bugfix/SPEC-{id}-{description}"
+    hotfix: "hotfix/{description}"
+    release: "release/v{version}"
+
+  # Commit message format
+  commit:
+    format: "conventional"
+    # Types: feat, fix, docs, style, refactor, test, chore
+    include_spec_id: true
+    template: "{type}(SPEC-{id}): {description}"
+
+  # Pull request settings
+  pull_request:
+    require_review: false
+    auto_merge: false
+    delete_branch_on_merge: true
+
+  # Protected branches
+  protected_branches:
+    - "main"

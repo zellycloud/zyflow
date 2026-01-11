@@ -1,0 +1,12 @@
+# User Configuration
+# Personal settings for user identification and preferences
+
+user:
+  # User name for personalized greetings and commit attribution
+  name: "Hansoo"
+
+  # User role in the project
+  role: "developer"
+
+  # Preferred notification style
+  notification_style: "detailed"

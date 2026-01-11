@@ -1,0 +1,33 @@
+# Project Configuration
+# Project metadata and classification
+
+project:
+  # Project identification
+  name: "zyflow"
+  display_name: "ZyFlow"
+  description: "AI 워크플로우 자동화 플랫폼"
+
+  # Project classification
+  type: "fullstack_platform"
+  category: "ai_automation"
+
+  # Repository information
+  repository:
+    url: "https://github.com/zellycloud/zyflow.git"
+    default_branch: "main"
+
+  # Project domains
+  domains:
+    - "frontend"
+    - "backend"
+    - "ai"
+    - "workflow"
+
+  # Architecture pattern
+  architecture:
+    pattern: "orchestrator-worker"
+    structure: "three-tier"
+    layers:
+      - "frontend"
+      - "backend"
+      - "ai-layer"
