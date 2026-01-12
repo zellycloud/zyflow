@@ -167,6 +167,94 @@ function determineCurrentStage(stages: Record<Stage, { total: number; completed:
   return 'docs'
 }
 
+// Helper: Get stages for a remote change via SSH
+async function getRemoteChangeStages(
+  changeId: string,
+  project: { path: string; remote: { serverId: string } }
+): Promise<Record<Stage, { total: number; completed: number; tasks: unknown[] }>> {
+  const stages: Record<Stage, { total: number; completed: number; tasks: unknown[] }> = {
+    spec: { total: 0, completed: 0, tasks: [] },
+    changes: { total: 0, completed: 0, tasks: [] },
+    task: { total: 0, completed: 0, tasks: [] },
+    code: { total: 0, completed: 0, tasks: [] },
+    test: { total: 0, completed: 0, tasks: [] },
+    commit: { total: 0, completed: 0, tasks: [] },
+    docs: { total: 0, completed: 0, tasks: [] },
+  }
+
+  try {
+    const plugin = await import('@zyflow/remote-plugin')
+    const server = await plugin.getRemoteServerById(project.remote.serverId)
+    if (!server) return stages
+
+    const tasksPath = `${project.path}/openspec/changes/${changeId}/tasks.md`
+    const tasksContent = await plugin.readRemoteFile(server, tasksPath)
+
+    const parsed = parseTasksFile(changeId, tasksContent)
+
+    // ExtendedTaskGroup 타입으로 캐스팅하여 확장 필드 접근
+    interface ExtendedGroup {
+      title: string
+      tasks: Array<{
+        id: string
+        title: string
+        completed: boolean
+        lineNumber: number
+        displayId?: string
+      }>
+      majorOrder?: number
+      majorTitle?: string
+      subOrder?: number
+      groupTitle?: string
+      groupOrder?: number
+    }
+
+    // tasks.md의 모든 태스크는 'task' stage에 매핑
+    for (const group of parsed.groups as ExtendedGroup[]) {
+      const majorOrder = group.majorOrder ?? 1
+      const majorTitle = group.majorTitle ?? group.title
+      const subOrder = group.subOrder ?? 1
+      const groupTitle = group.groupTitle ?? group.title
+      const groupOrder = group.groupOrder ?? majorOrder
+
+      for (let taskIdx = 0; taskIdx < group.tasks.length; taskIdx++) {
+        const task = group.tasks[taskIdx]
+        const taskOrder = taskIdx + 1
+
+        stages.task.total++
+        if (task.completed) {
+          stages.task.completed++
+        }
+        stages.task.tasks.push({
+          id: task.id,
+          changeId,
+          stage: 'task',
+          title: task.title,
+          description: null,
+          status: task.completed ? 'done' : 'todo',
+          priority: 'medium',
+          tags: [],
+          assignee: null,
+          order: taskOrder,
+          groupTitle,
+          groupOrder,
+          taskOrder,
+          majorTitle,
+          subOrder,
+          displayId: task.displayId || null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          archivedAt: null,
+        })
+      }
+    }
+  } catch (error) {
+    console.error('Failed to get remote change stages:', error)
+  }
+
+  return stages
+}
+
 // GET /changes/counts - 프로젝트별 Change 수 (상태별 집계)
 flowRouter.get('/changes/counts', async (req, res) => {
   try {
@@ -332,7 +420,11 @@ flowRouter.get('/changes/:id', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Project not found for this change' })
     }
 
-    const stages = getChangeStages(change.id, project.id)
+    // 원격 프로젝트인 경우 SSH로 tasks.md 읽어서 stages 계산
+    // 로컬 프로젝트인 경우 DB에서 조회
+    const stages = project.remote
+      ? await getRemoteChangeStages(change.id, project as { path: string; remote: { serverId: string } })
+      : getChangeStages(change.id, project.id)
     const progress = calculateProgress(stages)
     const currentStage = determineCurrentStage(stages)
 
