@@ -268,7 +268,7 @@ async function syncLocalProjectChanges(project: { id: string; name: string; path
 
   console.log(`[Project] Activated local "${project.name}" (${activeChangeIds.length} changes)`)
 
-  startTasksWatcher(project.path)
+  startTasksWatcher(project.path, project.id)
 }
 
 async function syncRemoteProjectChanges(project: {
