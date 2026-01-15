@@ -92,7 +92,7 @@ function getChangeStages(changeId: string, projectId?: string) {
     : `SELECT * FROM tasks WHERE change_id = ? AND status != 'archived' ORDER BY stage, group_order, sub_order, task_order, "order"`
   const params = projectId ? [changeId, projectId] : [changeId]
 
-  const tasks = sqlite.prepare(sql).all(...params) as Array<{
+  let tasks = sqlite.prepare(sql).all(...params) as Array<{
     id: number
     change_id: string
     stage: Stage
@@ -113,6 +113,12 @@ function getChangeStages(changeId: string, projectId?: string) {
     updated_at: number
     archived_at: number | null
   }>
+
+  // Fallback: project_id로 필터링했는데 결과가 없으면, project_id 없이 재시도 (레거시 데이터 지원)
+  if (tasks.length === 0 && projectId) {
+    const fallbackSql = `SELECT * FROM tasks WHERE change_id = ? AND status != 'archived' ORDER BY stage, group_order, sub_order, task_order, "order"`
+    tasks = sqlite.prepare(fallbackSql).all(changeId) as typeof tasks
+  }
 
   for (const task of tasks) {
     const stage = task.stage as Stage
@@ -1127,7 +1133,7 @@ flowRouter.post('/sync/all', async (_req, res) => {
 
         const changeId = entry.name
         try {
-          const result = await syncChangeTasksForProject(changeId, project.path)
+          const result = await syncChangeTasksForProject(changeId, project.path, project.id)
           totalCreated += result.tasksCreated
           totalUpdated += result.tasksUpdated
         } catch (syncError) {
