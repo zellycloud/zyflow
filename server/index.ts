@@ -3,6 +3,7 @@ import { createServer } from 'http'
 import { app } from './app.js'
 import { initWebSocket } from './websocket.js'
 import { startTasksWatcher, stopTasksWatcher } from './watcher.js'
+import { startRemoteWatcher, stopAllRemoteWatchers } from './remote-watcher.js'
 // RAG 기능 삭제됨 - LEANN 외부 MCP 서버로 대체
 import { getActiveProject } from './config.js'
 import { syncFlowChanges } from './flow-sync.js'
@@ -56,7 +57,9 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
       console.log('[Info] File watcher enabled for active project')
 
     } else if (project?.remote?.serverId) {
-      console.log('[Info] Remote project - file watcher disabled')
+      // 원격 프로젝트는 remote watcher 시작
+      startRemoteWatcher(project, project.remote.serverId)
+      console.log('[Info] Remote file watcher enabled for active project')
     } else {
       console.log('[Info] No active project - file watcher not started')
     }
@@ -71,6 +74,7 @@ async function gracefulShutdown(reason: string) {
 
   // 1. 새 요청 거부 - watcher 중지
   stopTasksWatcher()
+  stopAllRemoteWatchers()
 
   // 2. 활성 프로세스 정리
   try {

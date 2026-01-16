@@ -25,6 +25,7 @@ import { initDb } from '../tasks/index.js'
 import { getSqlite } from '../tasks/db/client.js'
 import { parseTasksFile } from '../parser.js'
 import { startTasksWatcher, stopTasksWatcher } from '../watcher.js'
+import { startRemoteWatcher, stopRemoteWatcher } from '../remote-watcher.js'
 
 // Remote plugin is optional - only load if installed
 let remotePlugin: {
@@ -268,6 +269,8 @@ async function syncLocalProjectChanges(project: { id: string; name: string; path
 
   console.log(`[Project] Activated local "${project.name}" (${activeChangeIds.length} changes)`)
 
+  // Stop any remote watcher and start local watcher
+  stopRemoteWatcher(project.id)
   startTasksWatcher(project.path, project.id)
 }
 
@@ -450,6 +453,10 @@ async function syncRemoteProjectChanges(project: {
   console.log(
     `[Project] Activated remote "${project.name}" via SSH (${activeChangeIds.length} changes)`
   )
+
+  // Stop local watcher and start remote watcher for task file changes
+  stopTasksWatcher()
+  startRemoteWatcher(project, project.remote.serverId)
 }
 
 // PUT /:id/path - Update project path
