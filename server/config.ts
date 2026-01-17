@@ -23,6 +23,17 @@ export interface Config {
 }
 
 /**
+ * 틸드(~)를 홈 디렉토리로 확장
+ * Node.js는 셸과 달리 ~를 자동으로 확장하지 않음
+ */
+function expandTilde(path: string): string {
+  if (path.startsWith('~')) {
+    return path.replace(/^~/, homedir())
+  }
+  return path
+}
+
+/**
  * 설정 디렉토리 경로
  * - Docker: DATA_DIR 환경변수 사용 (예: /app/data)
  * - Local: ~/.zyflow
@@ -30,7 +41,7 @@ export interface Config {
 function getConfigDir(): string {
   const dataDir = process.env.DATA_DIR
   if (dataDir) {
-    return dataDir
+    return expandTilde(dataDir)
   }
   return join(homedir(), '.zyflow')
 }

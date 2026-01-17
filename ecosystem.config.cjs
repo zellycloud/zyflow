@@ -1,33 +1,87 @@
 require('dotenv').config()
+const path = require('path')
+const os = require('os')
+
+const CWD = '/Users/hansoo./ZELLYY/zyflow'
+
+// Common settings for all server instances
+const commonServerSettings = {
+  script: 'npx',
+  args: 'tsx server/index.ts',
+  cwd: CWD,
+  max_memory_restart: '512M',
+  restart_delay: 5000,
+  max_restarts: 10,
+  min_uptime: 10000,
+  kill_timeout: 10000,
+}
 
 module.exports = {
   apps: [
+    // ========================================
+    // ZyFlow - Personal Instance (개인용)
+    // Frontend: 3100, API: 3101
+    // ========================================
     {
+      ...commonServerSettings,
       name: 'zyflow-server',
-      script: 'npx',
-      args: 'tsx server/index.ts',
-      cwd: '/Users/hansoo./ZELLYY/zyflow',
-      // 안정성 설정
-      max_memory_restart: '512M',    // 메모리 512MB 초과 시 재시작
-      restart_delay: 5000,           // 재시작 전 5초 대기
-      max_restarts: 10,              // 최대 10번 재시작
-      min_uptime: 10000,             // 10초 이상 실행되어야 정상
-      kill_timeout: 10000,           // 종료 대기 시간
-      // 환경 설정
       env: {
         NODE_ENV: 'development',
+        INSTANCE_NAME: 'zyflow',
+        INSTANCE_DISPLAY_NAME: 'ZyFlow',
+        PORT: 3101,
+        DATA_DIR: path.join(os.homedir(), '.zyflow'),
+        DEFAULT_PROJECT_ROOT: path.join(os.homedir(), 'ZELLYY'),
         GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_PERSONAL_ACCESS_TOKEN,
       },
       env_production: {
         NODE_ENV: 'production',
+        INSTANCE_NAME: 'zyflow',
+        INSTANCE_DISPLAY_NAME: 'ZyFlow',
+        PORT: 3101,
+        DATA_DIR: path.join(os.homedir(), '.zyflow'),
+        DEFAULT_PROJECT_ROOT: path.join(os.homedir(), 'ZELLYY'),
         GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_PERSONAL_ACCESS_TOKEN,
       },
     },
     {
       name: 'zyflow-vite',
       script: 'npx',
-      args: 'vite --host',
-      cwd: '/Users/hansoo./ZELLYY/zyflow',
+      args: 'vite --host --port 3100',
+      cwd: CWD,
+    },
+
+    // ========================================
+    // _Flow - Work Instance (회사용)
+    // Frontend: 3200, API: 3201
+    // ========================================
+    {
+      ...commonServerSettings,
+      name: '_flow-server',
+      env: {
+        NODE_ENV: 'development',
+        INSTANCE_NAME: '_flow',
+        INSTANCE_DISPLAY_NAME: '_Flow',
+        PORT: 3201,
+        DATA_DIR: path.join(os.homedir(), '._flow'),
+        DEFAULT_PROJECT_ROOT: path.join(os.homedir(), 'JAYOO'),
+        GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_PERSONAL_ACCESS_TOKEN,
+      },
+      env_production: {
+        NODE_ENV: 'production',
+        INSTANCE_NAME: '_flow',
+        INSTANCE_DISPLAY_NAME: '_Flow',
+        PORT: 3201,
+        DATA_DIR: path.join(os.homedir(), '._flow'),
+        DEFAULT_PROJECT_ROOT: path.join(os.homedir(), 'JAYOO'),
+        GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_PERSONAL_ACCESS_TOKEN,
+      },
+    },
+    {
+      name: '_flow-vite',
+      script: 'npx',
+      args: 'vite --host --port 3200',
+      cwd: CWD,
     },
   ],
 }

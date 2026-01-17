@@ -13,11 +13,22 @@ import { join } from 'path'
 import { homedir } from 'os'
 import type { AutoFixResult } from './error-detector'
 
+/**
+ * 틸드(~)를 홈 디렉토리로 확장
+ * Node.js는 셸과 달리 ~를 자동으로 확장하지 않음
+ */
+function expandTilde(path: string): string {
+  if (path.startsWith('~')) {
+    return path.replace(/^~/, homedir())
+  }
+  return path
+}
+
 // DB 경로 (기존 tasks.db와 동일 위치)
 function getDbPath(): string {
   const dataDir = process.env.DATA_DIR
   if (dataDir) {
-    return join(dataDir, 'agent-monitor.db')
+    return join(expandTilde(dataDir), 'agent-monitor.db')
   }
   return join(homedir(), '.zyflow', 'agent-monitor.db')
 }

@@ -13,6 +13,9 @@ dist-ssr
 *.local
 
 .env
+.env.zyflow
+.env._flow
+.env.*.local
 
 # Editor directories and files
 .vscode/*

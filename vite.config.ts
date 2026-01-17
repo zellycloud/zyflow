@@ -5,8 +5,10 @@ import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
 
 // Port configuration from environment variables
-const VITE_PORT = parseInt(process.env.VITE_PORT || '3200', 10)
-const API_PORT = parseInt(process.env.API_PORT || '3100', 10)
+// VITE_PORT: Frontend dev server port (끝자리 0: 3100 for zyflow, 3200 for _flow)
+// PORT: Backend API server port (끝자리 1: 3101 for zyflow, 3201 for _flow)
+const VITE_PORT = parseInt(process.env.VITE_PORT || '3100', 10)
+const API_PORT = parseInt(process.env.PORT || process.env.API_PORT || '3101', 10)
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

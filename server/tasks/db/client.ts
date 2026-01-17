@@ -10,6 +10,17 @@ let sqlite: Database.Database | null = null;
 let currentDbPath: string | null = null;
 
 /**
+ * 틸드(~)를 홈 디렉토리로 확장
+ * Node.js는 셸과 달리 ~를 자동으로 확장하지 않음
+ */
+function expandTilde(path: string): string {
+  if (path.startsWith('~')) {
+    return path.replace(/^~/, homedir())
+  }
+  return path
+}
+
+/**
  * 중앙 DB 경로 반환
  * - Docker: DATA_DIR 환경변수 사용 (예: /app/data)
  * - Local: ~/.zyflow/tasks.db
@@ -18,7 +29,7 @@ let currentDbPath: string | null = null;
 export function getDbPath(_projectRoot?: string): string {
   const dataDir = process.env.DATA_DIR
   if (dataDir) {
-    return join(dataDir, 'tasks.db')
+    return join(expandTilde(dataDir), 'tasks.db')
   }
   return join(homedir(), '.zyflow', 'tasks.db')
 }
@@ -54,17 +65,40 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
     INSERT OR IGNORE INTO sequences (name, value) VALUES ('task_openspec', 0);
   `);
 
-  // Sync sequence values with actual max task IDs per origin
+  // Create tasks table FIRST (before sequences sync that references it)
   sqlite.exec(`
-    UPDATE sequences
-    SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0)
-    WHERE name = 'task_inbox' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0);
+    CREATE TABLE IF NOT EXISTS tasks (
+      id INTEGER PRIMARY KEY,
+      change_id TEXT,
+      stage TEXT NOT NULL DEFAULT 'task' CHECK(stage IN ('spec', 'task', 'code', 'test', 'commit', 'docs')),
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL DEFAULT 'todo' CHECK(status IN ('todo', 'in-progress', 'review', 'done', 'archived')),
+      priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('low', 'medium', 'high')),
+      tags TEXT,
+      assignee TEXT,
+      "order" INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      archived_at INTEGER
+    );
   `);
-  sqlite.exec(`
-    UPDATE sequences
-    SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'openspec'), 0)
-    WHERE name = 'task_openspec' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'openspec'), 0);
-  `);
+
+  // Sync sequence values with actual max task IDs per origin (tasks table now exists)
+  try {
+    sqlite.exec(`
+      UPDATE sequences
+      SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0)
+      WHERE name = 'task_inbox' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0);
+    `);
+    sqlite.exec(`
+      UPDATE sequences
+      SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'openspec'), 0)
+      WHERE name = 'task_openspec' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'openspec'), 0);
+    `);
+  } catch {
+    // origin column may not exist yet, will be added in migrations below
+  }
 
   // Create changes table (Flow의 최상위 단위)
   // 복합 기본키: (id, project_id) - 같은 change id가 다른 프로젝트에서 사용 가능
@@ -137,25 +171,6 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
   } catch (err) {
     console.error('[Migration] Error migrating changes table:', err);
   }
-
-  // Create tasks table
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS tasks (
-      id INTEGER PRIMARY KEY,
-      change_id TEXT,
-      stage TEXT NOT NULL DEFAULT 'task' CHECK(stage IN ('spec', 'task', 'code', 'test', 'commit', 'docs')),
-      title TEXT NOT NULL,
-      description TEXT,
-      status TEXT NOT NULL DEFAULT 'todo' CHECK(status IN ('todo', 'in-progress', 'review', 'done', 'archived')),
-      priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('low', 'medium', 'high')),
-      tags TEXT,
-      assignee TEXT,
-      "order" INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      archived_at INTEGER
-    );
-  `);
 
   // Migration: Add archived_at column if it doesn't exist
   try {

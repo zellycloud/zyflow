@@ -3,6 +3,7 @@ import cors from 'cors'
 import { readdir, readFile, writeFile, access, mkdir } from 'fs/promises'
 import type { Dirent } from 'fs'
 import { join, basename } from 'path'
+import os from 'os'
 import { exec, spawn } from 'child_process'
 import { promisify } from 'util'
 import { parseTasksFile, toggleTaskInFile } from './parser.js'
@@ -181,6 +182,24 @@ app.get('/api/health', (_req, res) => {
       status: 'ok',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
+    },
+  })
+})
+
+// Instance info endpoint (for multi-instance branding)
+app.get('/api/instance', (_req, res) => {
+  const instanceName = process.env.INSTANCE_NAME || 'zyflow'
+  const displayName = process.env.INSTANCE_DISPLAY_NAME || 'ZyFlow'
+  const defaultProjectRoot = process.env.DEFAULT_PROJECT_ROOT || os.homedir()
+
+  res.json({
+    success: true,
+    data: {
+      name: instanceName,
+      displayName: displayName,
+      port: process.env.PORT || 3100,
+      dataDir: process.env.DATA_DIR || join(os.homedir(), '.zyflow'),
+      defaultProjectRoot: defaultProjectRoot.replace(/^~/, os.homedir()),
     },
   })
 })

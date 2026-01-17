@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/tooltip'
 import { useURLSync, getInitialItemFromURL } from '@/hooks/useURLSync'
 import { useLeannIndexStatus } from '@/hooks/useLeannStatus'
+import { useInstance } from '@/hooks/useInstance'
 import type { SelectedItem } from '@/types'
 
 // 선택된 항목 타입
@@ -161,6 +162,9 @@ function IndexStatusIndicator({ onNavigate }: { onNavigate: () => void }) {
 }
 
 function AppContent() {
+  // Instance info for branding (multi-instance support)
+  const { data: instanceInfo } = useInstance()
+
   // 초기 상태를 로컬 스토리지에서 불러오기
   // 초기 상태를 URL -> 로컬 스토리지 순으로 불러오기
   const [selectedItem, setSelectedItem] = useState<SelectedItem>(() => {
@@ -266,7 +270,7 @@ function AppContent() {
         <header className="flex h-14 shrink-0 items-center justify-between border-b px-6">
           <div className="flex items-center gap-2 w-[200px]">
             <GitBranch className="h-5 w-5 text-primary" />
-            <h1 className="text-lg font-semibold">ZyFlow</h1>
+            <h1 className="text-lg font-semibold">{instanceInfo?.displayName ?? 'ZyFlow'}</h1>
           </div>
 
           {/* 중앙 검색창 */}
