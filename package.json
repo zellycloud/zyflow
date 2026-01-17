@@ -9,6 +9,8 @@
     "server": "tsx watch server/index.ts",
     "kill:ports": "lsof -ti:3100,3200 | xargs kill -9 || true",
     "dev:all": "npm run kill:ports && concurrently \"npm run server\" \"npm run dev\"",
+    "start": "npm run kill:ports && concurrently \"npm run server\" \"npm run dev\"",
+    "start:build": "npm run build && npm run server",
     "build:mcp": "tsc -p tsconfig.mcp.json",
     "build:plugin": "npx tsx scripts/build-plugin.ts",
     "mcp": "node dist/mcp-server/index.js",

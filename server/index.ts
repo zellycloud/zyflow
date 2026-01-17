@@ -10,7 +10,8 @@ import { syncFlowChanges } from './flow-sync.js'
 import { getProcessManager } from './cli-adapter/process-manager.js'
 import { closeDb } from './tasks/index.js'
 
-const PORT = parseInt(process.env.PORT || '3100', 10)
+// Port configuration: API_PORT > PORT > default 3100
+const PORT = parseInt(process.env.API_PORT || process.env.PORT || '3100', 10)
 
 // 처리되지 않은 예외 핸들러 - 서버 크래시 방지 및 로깅
 process.on('uncaughtException', (error) => {

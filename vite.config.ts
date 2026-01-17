@@ -4,6 +4,10 @@ import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
 
+// Port configuration from environment variables
+const VITE_PORT = parseInt(process.env.VITE_PORT || '3200', 10)
+const API_PORT = parseInt(process.env.API_PORT || '3100', 10)
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -12,14 +16,14 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3200,
+    port: VITE_PORT,
     proxy: {
       '/api': {
-        target: 'http://localhost:3100',
+        target: `http://localhost:${API_PORT}`,
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:3100',
+        target: `ws://localhost:${API_PORT}`,
         ws: true,
       },
     },
@@ -30,14 +34,14 @@ export default defineConfig({
   },
   // 프리뷰 서버에도 동일 적용
   preview: {
-    port: 3200,
+    port: VITE_PORT,
     proxy: {
       '/api': {
-        target: 'http://localhost:3100',
+        target: `http://localhost:${API_PORT}`,
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:3100',
+        target: `ws://localhost:${API_PORT}`,
         ws: true,
       },
     },
