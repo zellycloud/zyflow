@@ -45,7 +45,7 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
       : 0
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="w-full max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold">{project.name}</h1>

@@ -125,7 +125,7 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
   // Spec 탭: specs/{spec-id}/spec.md (기능 명세서)
   if (stage === 'spec') {
     return (
-      <div className="space-y-4">
+      <div className="w-full min-w-0 space-y-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <FileText className="h-4 w-4" />
           <span>기능 명세서 (Spec)</span>
@@ -154,7 +154,7 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
     const hasDesign = !!designContent
 
     return (
-      <div className="space-y-4">
+      <div className="w-full min-w-0 space-y-4">
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -281,7 +281,7 @@ export function StageContent({ changeId, stage, tasks }: StageContentProps) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="w-full min-w-0 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">

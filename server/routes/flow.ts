@@ -17,15 +17,19 @@ import type { Stage, ChangeStatus, TaskOrigin } from '../tasks/db/schema.js'
 import { emit } from '../websocket.js'
 
 // Remote plugin is optional - only load if installed
-let remotePlugin: {
+interface RemotePlugin {
   getRemoteServerById: (id: string) => Promise<unknown>
-} | null = null
+  listDirectory: (server: unknown, path: string) => Promise<{ entries: Array<{ type: string; name: string }> }>
+  readRemoteFile: (server: unknown, path: string) => Promise<string>
+}
 
-async function getRemotePlugin() {
+let remotePlugin: RemotePlugin | null = null
+
+async function getRemotePlugin(): Promise<RemotePlugin | null> {
   if (remotePlugin) return remotePlugin
   try {
     const mod = await import('@zyflow/remote-plugin')
-    remotePlugin = mod
+    remotePlugin = mod as unknown as RemotePlugin
     return remotePlugin
   } catch {
     return null
@@ -71,6 +75,24 @@ async function getProjectPaths() {
     specsDir: join(project.path, 'openspec', 'specs'),
     plansDir: join(project.path, '.zyflow', 'plans'),
   }
+}
+
+// Helper to get project info for a specific change (supports remote projects)
+async function getProjectForChange(changeId: string) {
+  initDb()
+  const config = await loadConfig()
+  const sqlite = getSqlite()
+
+  // Find the change in database to get project_id
+  const change = sqlite
+    .prepare('SELECT project_id FROM changes WHERE id = ?')
+    .get(changeId) as { project_id: string } | undefined
+
+  if (!change) return null
+
+  // Find the project from config
+  const project = config.projects.find((p) => p.id === change.project_id)
+  return project || null
 }
 
 // Helper: Get stages for a change
@@ -881,14 +903,36 @@ flowRouter.post('/tasks', async (req, res) => {
 // GET /changes/:id/proposal - Change의 proposal.md 내용
 flowRouter.get('/changes/:id/proposal', async (req, res) => {
   try {
-    const paths = await getProjectPaths()
-    if (!paths) {
-      return res.status(400).json({ success: false, error: 'No active project' })
+    const changeId = req.params.id
+    const project = await getProjectForChange(changeId)
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'Project not found for change' })
     }
 
-    const changeId = req.params.id
-    const proposalPath = join(paths.openspecDir, changeId, 'proposal.md')
+    const proposalPath = `${project.path}/openspec/changes/${changeId}/proposal.md`
 
+    // Remote project: use SSH plugin
+    if (project.remote) {
+      const plugin = await getRemotePlugin()
+      if (!plugin) {
+        return res.json({ success: true, data: { changeId, content: null } })
+      }
+
+      const server = await plugin.getRemoteServerById(project.remote.serverId)
+      if (!server) {
+        return res.json({ success: true, data: { changeId, content: null } })
+      }
+
+      try {
+        const content = await plugin.readRemoteFile(server, proposalPath)
+        return res.json({ success: true, data: { changeId, content } })
+      } catch {
+        return res.json({ success: true, data: { changeId, content: null } })
+      }
+    }
+
+    // Local project: use filesystem
     try {
       const content = await readFile(proposalPath, 'utf-8')
       res.json({ success: true, data: { changeId, content } })
@@ -904,14 +948,36 @@ flowRouter.get('/changes/:id/proposal', async (req, res) => {
 // GET /changes/:id/design - Change의 design.md 내용
 flowRouter.get('/changes/:id/design', async (req, res) => {
   try {
-    const paths = await getProjectPaths()
-    if (!paths) {
-      return res.status(400).json({ success: false, error: 'No active project' })
+    const changeId = req.params.id
+    const project = await getProjectForChange(changeId)
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'Project not found for change' })
     }
 
-    const changeId = req.params.id
-    const designPath = join(paths.openspecDir, changeId, 'design.md')
+    const designPath = `${project.path}/openspec/changes/${changeId}/design.md`
 
+    // Remote project: use SSH plugin
+    if (project.remote) {
+      const plugin = await getRemotePlugin()
+      if (!plugin) {
+        return res.json({ success: true, data: { changeId, content: null } })
+      }
+
+      const server = await plugin.getRemoteServerById(project.remote.serverId)
+      if (!server) {
+        return res.json({ success: true, data: { changeId, content: null } })
+      }
+
+      try {
+        const content = await plugin.readRemoteFile(server, designPath)
+        return res.json({ success: true, data: { changeId, content } })
+      } catch {
+        return res.json({ success: true, data: { changeId, content: null } })
+      }
+    }
+
+    // Local project: use filesystem
     try {
       const content = await readFile(designPath, 'utf-8')
       res.json({ success: true, data: { changeId, content } })
@@ -927,14 +993,47 @@ flowRouter.get('/changes/:id/design', async (req, res) => {
 // GET /changes/:id/spec - Change의 첫 번째 spec.md 내용
 flowRouter.get('/changes/:id/spec', async (req, res) => {
   try {
-    const paths = await getProjectPaths()
-    if (!paths) {
-      return res.status(400).json({ success: false, error: 'No active project' })
+    const changeId = req.params.id
+    const project = await getProjectForChange(changeId)
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'Project not found for change' })
     }
 
-    const changeId = req.params.id
-    const specsDir = join(paths.openspecDir, changeId, 'specs')
+    const specsDir = `${project.path}/openspec/changes/${changeId}/specs`
 
+    // Remote project: use SSH plugin
+    if (project.remote) {
+      const plugin = await getRemotePlugin()
+      if (!plugin) {
+        return res.json({ success: true, data: { changeId, content: null, specId: null } })
+      }
+
+      const server = await plugin.getRemoteServerById(project.remote.serverId)
+      if (!server) {
+        return res.json({ success: true, data: { changeId, content: null, specId: null } })
+      }
+
+      try {
+        const listing = await plugin.listDirectory(server, specsDir)
+        const specFolders = listing.entries
+          .filter((e) => e.type === 'directory')
+          .map((e) => e.name)
+
+        if (specFolders.length === 0) {
+          return res.json({ success: true, data: { changeId, content: null, specId: null } })
+        }
+
+        const firstSpecId = specFolders[0]
+        const specPath = `${specsDir}/${firstSpecId}/spec.md`
+        const content = await plugin.readRemoteFile(server, specPath)
+        return res.json({ success: true, data: { changeId, content, specId: firstSpecId } })
+      } catch {
+        return res.json({ success: true, data: { changeId, content: null, specId: null } })
+      }
+    }
+
+    // Local project: use filesystem
     try {
       const specFolders = await readdir(specsDir)
       if (specFolders.length === 0) {
@@ -957,14 +1056,46 @@ flowRouter.get('/changes/:id/spec', async (req, res) => {
 // GET /changes/:changeId/specs/:specId - 특정 spec.md 내용
 flowRouter.get('/changes/:changeId/specs/:specId', async (req, res) => {
   try {
-    const paths = await getProjectPaths()
-    if (!paths) {
-      return res.status(400).json({ success: false, error: 'No active project' })
+    const { changeId, specId } = req.params
+    const project = await getProjectForChange(changeId)
+
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'Project not found for change' })
     }
 
-    const { changeId, specId } = req.params
+    const changeSpecPath = `${project.path}/openspec/changes/${changeId}/specs/${specId}/spec.md`
+    const archivedSpecPath = `${project.path}/openspec/specs/${specId}/spec.md`
 
-    const changeSpecPath = join(paths.openspecDir, changeId, 'specs', specId, 'spec.md')
+    // Remote project: use SSH plugin
+    if (project.remote) {
+      const plugin = await getRemotePlugin()
+      if (!plugin) {
+        return res.json({ success: true, data: { specId, content: null, location: null } })
+      }
+
+      const server = await plugin.getRemoteServerById(project.remote.serverId)
+      if (!server) {
+        return res.json({ success: true, data: { specId, content: null, location: null } })
+      }
+
+      // Try change specs first
+      try {
+        const content = await plugin.readRemoteFile(server, changeSpecPath)
+        return res.json({ success: true, data: { specId, content, location: 'change' } })
+      } catch {
+        // Not found in change, try archived
+      }
+
+      // Try archived specs
+      try {
+        const content = await plugin.readRemoteFile(server, archivedSpecPath)
+        return res.json({ success: true, data: { specId, content, location: 'archived' } })
+      } catch {
+        return res.json({ success: true, data: { specId, content: null, location: null } })
+      }
+    }
+
+    // Local project: use filesystem
     try {
       const content = await readFile(changeSpecPath, 'utf-8')
       return res.json({ success: true, data: { specId, content, location: 'change' } })
@@ -972,7 +1103,6 @@ flowRouter.get('/changes/:changeId/specs/:specId', async (req, res) => {
       // Change 내에 없으면 archived specs에서 찾기
     }
 
-    const archivedSpecPath = join(paths.specsDir, specId, 'spec.md')
     try {
       const content = await readFile(archivedSpecPath, 'utf-8')
       return res.json({ success: true, data: { specId, content, location: 'archived' } })

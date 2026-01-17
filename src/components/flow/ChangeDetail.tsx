@@ -125,7 +125,7 @@ export function ChangeDetail({ projectId, changeId, onArchived }: ChangeDetailPr
   const { change, stages } = data
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="w-full max-w-4xl mx-auto space-y-6">
       {/* 충돌 알림 배너 */}
       {isOnChangeBranch && conflictsData?.hasConflicts && (
         <ConflictBanner onOpenDialog={() => setShowConflictDialog(true)} />
