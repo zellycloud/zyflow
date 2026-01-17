@@ -388,13 +388,28 @@ changesRouter.get('/archived/:id', async (req, res) => {
     let changeDir: string | null = null
 
     for (const archiveBase of archiveLocations) {
+      // First try exact match
       const candidatePath = join(archiveBase, changeId)
       try {
         await access(candidatePath)
         changeDir = candidatePath
         break
       } catch {
-        // Not found in this location, try next
+        // Not found with exact match, try date-prefixed pattern
+      }
+
+      // Try date-prefixed pattern (e.g., 2025-10-20-change-id)
+      try {
+        const entries = await readdir(archiveBase, { withFileTypes: true })
+        const matchingFolder = entries.find(
+          (entry) => entry.isDirectory() && (entry.name === changeId || entry.name.endsWith(`-${changeId}`))
+        )
+        if (matchingFolder) {
+          changeDir = join(archiveBase, matchingFolder.name)
+          break
+        }
+      } catch {
+        // Archive location not found, try next
       }
     }
 
