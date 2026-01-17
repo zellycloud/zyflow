@@ -11,7 +11,6 @@ import { useSelectedData } from '@/hooks/useFlowChanges'
 
 // Lazy load heavy components to reduce initial bundle size
 const AgentPage = lazy(() => import('@/components/agent').then(m => ({ default: m.AgentPage })))
-const PostTaskView = lazy(() => import('@/components/post-task').then(m => ({ default: m.PostTaskView })))
 const ArchivedChangesPage = lazy(() => import('@/components/dashboard/ArchivedChangesPage').then(m => ({ default: m.ArchivedChangesPage })))
 const DocsViewer = lazy(() => import('@/components/docs').then(m => ({ default: m.DocsViewer })))
 const AlertCenter = lazy(() => import('@/components/alerts').then(m => ({ default: m.AlertCenter })))
@@ -112,15 +111,6 @@ export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
             projectId={selectedItem.projectId}
             changeId={selectedItem.changeId}
             projectPath={selectedProject?.path}
-          />
-        </Suspense>
-      )
-    case 'post-task':
-      return (
-        <Suspense fallback={<LazyLoader />}>
-          <PostTaskView
-            projectId={selectedItem.projectId}
-            projectPath={selectedProject?.path ?? ''}
           />
         </Suspense>
       )

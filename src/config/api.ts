@@ -41,9 +41,6 @@ export const API_ENDPOINTS = {
   // Integrations
   integrations: `${API_BASE_URL}/api/integrations`,
 
-  // Post-Task
-  postTask: `${API_BASE_URL}/api/post-task`,
-
   // Docs
   docs: `${API_BASE_URL}/api/docs`,
 

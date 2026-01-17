@@ -62,9 +62,6 @@ export function useURLSync(
       case 'agent':
         newPath = `/project/${selectedItem.projectId}/agents`
         break
-      case 'post-task':
-        newPath = `/project/${selectedItem.projectId}/post-task`
-        break
       case 'alerts':
         newPath = `/project/${selectedItem.projectId}/alerts`
         break
@@ -107,8 +104,6 @@ export function getInitialItemFromURL(): SelectedItem | null {
             return { type: 'standalone-tasks', projectId: decodedProjectId }
         } else if (parts[2] === 'agents') {
              return { type: 'agent', projectId: decodedProjectId }
-        } else if (parts[2] === 'post-task') {
-             return { type: 'post-task', projectId: decodedProjectId }
         } else if (parts[2] === 'alerts') {
              return { type: 'alerts', projectId: decodedProjectId }
         } else if (parts[2] === 'archives') {

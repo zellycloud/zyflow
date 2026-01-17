@@ -36,7 +36,6 @@ import { integrationsRouter, initIntegrationsDb } from './integrations/index.js'
 import { getSqlite } from './tasks/db/client.js'
 import type { Stage, ChangeStatus } from './tasks/db/schema.js'
 import { cliRoutes } from './cli-adapter/index.js'
-import { postTaskRouter } from './routes/post-task.js'
 import { docsRouter } from './routes/docs.js'
 import { globalChatRouter } from './routes/global-chat.js'
 import { projectsRouter } from './routes/projects.js'
@@ -127,8 +126,6 @@ app.use('/api/integrations', integrationsRouter)
 // CLI Adapter API 라우터 등록
 app.use('/api/cli', cliRoutes)
 
-// Post-Task API 라우터 등록
-app.use('/api/post-task', postTaskRouter)
 
 // AI Execution API 라우터 등록 (단일 Provider 실행)
 app.use('/api/ai', aiRouter)

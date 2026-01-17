@@ -10,7 +10,6 @@ import {
   Inbox,
   Archive,
   Bot,
-  Sparkles,
   BookOpen,
   Settings,
   ChevronDown,
@@ -73,9 +72,6 @@ export function MenuBar({
       case 'agent':
         onSelectItem({ type: 'agent', projectId: activeProjectId })
         break
-      case 'post-task':
-        onSelectItem({ type: 'post-task', projectId: activeProjectId })
-        break
       case 'docs':
         onSelectItem({ type: 'docs', projectId: activeProjectId })
         break
@@ -96,8 +92,9 @@ export function MenuBar({
   const isInboxActive = selectedItem?.type === 'standalone-tasks'
   const isBacklogActive = selectedItem?.type === 'backlog'
   const isArchivedActive = selectedItem?.type === 'archived'
-  const isToolsActive = selectedItem?.type === 'agent' || selectedItem?.type === 'post-task'
-  const isViewActive = selectedItem?.type === 'docs' || selectedItem?.type === 'project-settings'
+  const isAgentActive = selectedItem?.type === 'agent'
+  const isDocsActive = selectedItem?.type === 'docs'
+  const isSettingsActive = selectedItem?.type === 'project-settings'
   const isAlertsActive = selectedItem?.type === 'alerts'
 
   return (
@@ -170,74 +167,47 @@ export function MenuBar({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Tools Menu */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              'h-7 gap-1 text-xs',
-              isToolsActive && 'bg-accent'
-            )}
-          >
-            <Bot className="h-3.5 w-3.5" />
-            Tools
-            <ChevronDown className="h-3 w-3 opacity-50" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuItem
-            onClick={() => handleSelect('agent')}
-            className={cn(selectedItem?.type === 'agent' && 'bg-accent')}
-          >
-            <Bot className="h-4 w-4 mr-2" />
-            Agent
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => handleSelect('post-task')}
-            className={cn(selectedItem?.type === 'post-task' && 'bg-accent')}
-          >
-            <Sparkles className="h-4 w-4 mr-2" />
-            Post-Task
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {/* Agent Button */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className={cn(
+          'h-7 gap-1 text-xs',
+          isAgentActive && 'bg-accent'
+        )}
+        onClick={() => handleSelect('agent')}
+      >
+        <Bot className="h-3.5 w-3.5" />
+        Agent
+      </Button>
 
-      {/* View Menu */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              'h-7 gap-1 text-xs',
-              isViewActive && 'bg-accent'
-            )}
-          >
-            <BookOpen className="h-3.5 w-3.5" />
-            View
-            <ChevronDown className="h-3 w-3 opacity-50" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuItem
-            onClick={() => handleSelect('docs')}
-            className={cn(selectedItem?.type === 'docs' && 'bg-accent')}
-          >
-            <BookOpen className="h-4 w-4 mr-2" />
-            Docs
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => handleSelect('project-settings')}
-            className={cn(selectedItem?.type === 'project-settings' && 'bg-accent')}
-          >
-            <Settings className="h-4 w-4 mr-2" />
-            Project Settings
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {/* Docs Button */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className={cn(
+          'h-7 gap-1 text-xs',
+          isDocsActive && 'bg-accent'
+        )}
+        onClick={() => handleSelect('docs')}
+      >
+        <BookOpen className="h-3.5 w-3.5" />
+        Docs
+      </Button>
+
+      {/* Project Settings Button */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className={cn(
+          'h-7 gap-1 text-xs',
+          isSettingsActive && 'bg-accent'
+        )}
+        onClick={() => handleSelect('project-settings')}
+      >
+        <Settings className="h-3.5 w-3.5" />
+        Settings
+      </Button>
 
       {/* Alerts Button */}
       <Button
