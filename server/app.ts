@@ -923,20 +923,111 @@ app.get('/api/changes/archived', async (_req, res) => {
 // GET /api/changes/archived/:id - Get archived change detail
 app.get('/api/changes/archived/:id', async (req, res) => {
   try {
-    const paths = await getProjectPaths()
-    if (!paths) {
+    const project = await getActiveProject()
+    if (!project) {
       return res.status(400).json({ success: false, error: 'No active project' })
     }
 
     const changeId = req.params.id
-    let changeDir: string | null = null
+    const files: Record<string, string> = {}
 
-    // Check all three archive locations
+    // Remote project: use SSH plugin
+    if (project.remote) {
+      if (!getRemoteServerById || !listDirectory || !readRemoteFile) {
+        return res.status(400).json({ success: false, error: 'Remote plugin not available' })
+      }
+
+      const server = await getRemoteServerById(project.remote.serverId)
+      if (!server) {
+        return res.status(400).json({ success: false, error: 'Remote server not found' })
+      }
+
+      // Archive locations for remote projects
+      const archiveLocations = [
+        `${project.path}/openspec/changes/archive`,
+        `${project.path}/openspec/archive`,
+        `${project.path}/openspec/archived`,
+      ]
+
+      let changeDir: string | null = null
+
+      // Search for the change folder in archive locations
+      for (const archiveBase of archiveLocations) {
+        try {
+          const listing = await listDirectory(server, archiveBase)
+          // Look for exact match or date-prefixed match (e.g., 2026-01-17-change-id)
+          const matchingFolder = listing.entries.find(
+            (entry) => entry.type === 'directory' && (entry.name === changeId || entry.name.endsWith(`-${changeId}`))
+          )
+          if (matchingFolder) {
+            changeDir = `${archiveBase}/${matchingFolder.name}`
+            break
+          }
+        } catch {
+          // Archive location not found, try next
+        }
+      }
+
+      if (!changeDir) {
+        return res.status(404).json({ success: false, error: 'Archived change not found' })
+      }
+
+      // Read all .md files in the change directory
+      try {
+        const entries = await listDirectory(server, changeDir)
+        for (const entry of entries.entries) {
+          if (entry.type === 'file' && entry.name.endsWith('.md')) {
+            try {
+              const content = await readRemoteFile(server, `${changeDir}/${entry.name}`)
+              files[entry.name] = content
+            } catch {
+              // Skip unreadable files
+            }
+          }
+          // Also check specs subdirectory
+          if (entry.type === 'directory' && entry.name === 'specs') {
+            try {
+              const specsDir = `${changeDir}/specs`
+              const specEntries = await listDirectory(server, specsDir)
+              for (const specEntry of specEntries.entries) {
+                if (specEntry.type === 'directory') {
+                  // Each spec is in its own folder
+                  try {
+                    const specPath = `${specsDir}/${specEntry.name}/spec.md`
+                    const content = await readRemoteFile(server, specPath)
+                    files[`specs/${specEntry.name}/spec.md`] = content
+                  } catch {
+                    // Skip unreadable spec files
+                  }
+                }
+              }
+            } catch {
+              // Skip if specs dir not accessible
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error reading remote archived change:', error)
+        return res.status(500).json({ success: false, error: 'Failed to read archived change' })
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          id: changeId,
+          files,
+        },
+      })
+    }
+
+    // Local project: use filesystem
     const archiveLocations = [
-      paths.archiveDir, // openspec/changes/archive/
-      paths.legacyArchiveDir, // openspec/archive/
-      paths.archivedDir, // openspec/archived/
+      join(project.path, 'openspec', 'changes', 'archive'),
+      join(project.path, 'openspec', 'archive'),
+      join(project.path, 'openspec', 'archived'),
     ]
+
+    let changeDir: string | null = null
 
     for (const archiveBase of archiveLocations) {
       const candidatePath = join(archiveBase, changeId)
@@ -954,7 +1045,6 @@ app.get('/api/changes/archived/:id', async (req, res) => {
     }
 
     // Read all files in the change directory
-    const files: Record<string, string> = {}
     const entries = await readdir(changeDir, { withFileTypes: true })
 
     for (const entry of entries) {

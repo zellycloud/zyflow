@@ -95,6 +95,25 @@ async function getProjectForChange(changeId: string) {
   return project || null
 }
 
+// Helper to find archive folder path for a change (remote projects use date-prefixed folders)
+async function findRemoteArchivePath(
+  plugin: RemotePlugin,
+  server: unknown,
+  archiveDir: string,
+  changeId: string
+): Promise<string | null> {
+  try {
+    const result = await plugin.listDirectory(server, archiveDir)
+    // Archive folders are named like "2026-01-17-change-id" or just "change-id"
+    const matchingFolder = result.entries.find(
+      (entry) => entry.type === 'directory' && (entry.name === changeId || entry.name.endsWith(`-${changeId}`))
+    )
+    return matchingFolder ? `${archiveDir}/${matchingFolder.name}` : null
+  } catch {
+    return null
+  }
+}
+
 // Helper: Get stages for a change
 function getChangeStages(changeId: string, projectId?: string) {
   const sqlite = getSqlite()
@@ -911,6 +930,7 @@ flowRouter.get('/changes/:id/proposal', async (req, res) => {
     }
 
     const proposalPath = `${project.path}/openspec/changes/${changeId}/proposal.md`
+    const archiveDir = `${project.path}/openspec/changes/archive`
 
     // Remote project: use SSH plugin
     if (project.remote) {
@@ -924,10 +944,21 @@ flowRouter.get('/changes/:id/proposal', async (req, res) => {
         return res.json({ success: true, data: { changeId, content: null } })
       }
 
+      // Try active changes folder first
       try {
         const content = await plugin.readRemoteFile(server, proposalPath)
         return res.json({ success: true, data: { changeId, content } })
       } catch {
+        // Fallback: try archive folder
+        const archiveFolderPath = await findRemoteArchivePath(plugin, server, archiveDir, changeId)
+        if (archiveFolderPath) {
+          try {
+            const content = await plugin.readRemoteFile(server, `${archiveFolderPath}/proposal.md`)
+            return res.json({ success: true, data: { changeId, content } })
+          } catch {
+            return res.json({ success: true, data: { changeId, content: null } })
+          }
+        }
         return res.json({ success: true, data: { changeId, content: null } })
       }
     }
@@ -937,7 +968,14 @@ flowRouter.get('/changes/:id/proposal', async (req, res) => {
       const content = await readFile(proposalPath, 'utf-8')
       res.json({ success: true, data: { changeId, content } })
     } catch {
-      res.json({ success: true, data: { changeId, content: null } })
+      // Fallback: try archive folder
+      const archivePath = join(project.path, 'openspec', 'changes', 'archive', changeId, 'proposal.md')
+      try {
+        const content = await readFile(archivePath, 'utf-8')
+        res.json({ success: true, data: { changeId, content } })
+      } catch {
+        res.json({ success: true, data: { changeId, content: null } })
+      }
     }
   } catch (error) {
     console.error('Error reading proposal:', error)
@@ -956,6 +994,7 @@ flowRouter.get('/changes/:id/design', async (req, res) => {
     }
 
     const designPath = `${project.path}/openspec/changes/${changeId}/design.md`
+    const archiveDir = `${project.path}/openspec/changes/archive`
 
     // Remote project: use SSH plugin
     if (project.remote) {
@@ -969,10 +1008,21 @@ flowRouter.get('/changes/:id/design', async (req, res) => {
         return res.json({ success: true, data: { changeId, content: null } })
       }
 
+      // Try active changes folder first
       try {
         const content = await plugin.readRemoteFile(server, designPath)
         return res.json({ success: true, data: { changeId, content } })
       } catch {
+        // Fallback: try archive folder
+        const archiveFolderPath = await findRemoteArchivePath(plugin, server, archiveDir, changeId)
+        if (archiveFolderPath) {
+          try {
+            const content = await plugin.readRemoteFile(server, `${archiveFolderPath}/design.md`)
+            return res.json({ success: true, data: { changeId, content } })
+          } catch {
+            return res.json({ success: true, data: { changeId, content: null } })
+          }
+        }
         return res.json({ success: true, data: { changeId, content: null } })
       }
     }
@@ -982,7 +1032,14 @@ flowRouter.get('/changes/:id/design', async (req, res) => {
       const content = await readFile(designPath, 'utf-8')
       res.json({ success: true, data: { changeId, content } })
     } catch {
-      res.json({ success: true, data: { changeId, content: null } })
+      // Fallback: try archive folder
+      const archivePath = join(project.path, 'openspec', 'changes', 'archive', changeId, 'design.md')
+      try {
+        const content = await readFile(archivePath, 'utf-8')
+        res.json({ success: true, data: { changeId, content } })
+      } catch {
+        res.json({ success: true, data: { changeId, content: null } })
+      }
     }
   } catch (error) {
     console.error('Error reading design:', error)
@@ -1001,6 +1058,7 @@ flowRouter.get('/changes/:id/spec', async (req, res) => {
     }
 
     const specsDir = `${project.path}/openspec/changes/${changeId}/specs`
+    const archiveDir = `${project.path}/openspec/changes/archive`
 
     // Remote project: use SSH plugin
     if (project.remote) {
@@ -1014,39 +1072,75 @@ flowRouter.get('/changes/:id/spec', async (req, res) => {
         return res.json({ success: true, data: { changeId, content: null, specId: null } })
       }
 
+      // Try active changes folder first
       try {
         const listing = await plugin.listDirectory(server, specsDir)
         const specFolders = listing.entries
           .filter((e) => e.type === 'directory')
           .map((e) => e.name)
 
-        if (specFolders.length === 0) {
-          return res.json({ success: true, data: { changeId, content: null, specId: null } })
+        if (specFolders.length > 0) {
+          const firstSpecId = specFolders[0]
+          const specPath = `${specsDir}/${firstSpecId}/spec.md`
+          const content = await plugin.readRemoteFile(server, specPath)
+          return res.json({ success: true, data: { changeId, content, specId: firstSpecId } })
         }
-
-        const firstSpecId = specFolders[0]
-        const specPath = `${specsDir}/${firstSpecId}/spec.md`
-        const content = await plugin.readRemoteFile(server, specPath)
-        return res.json({ success: true, data: { changeId, content, specId: firstSpecId } })
       } catch {
-        return res.json({ success: true, data: { changeId, content: null, specId: null } })
+        // Active folder not found, try archive
       }
+
+      // Fallback: try archive folder
+      const archiveFolderPath = await findRemoteArchivePath(plugin, server, archiveDir, changeId)
+      if (archiveFolderPath) {
+        try {
+          const archiveSpecsDir = `${archiveFolderPath}/specs`
+          const listing = await plugin.listDirectory(server, archiveSpecsDir)
+          const specFolders = listing.entries
+            .filter((e) => e.type === 'directory')
+            .map((e) => e.name)
+
+          if (specFolders.length > 0) {
+            const firstSpecId = specFolders[0]
+            const specPath = `${archiveSpecsDir}/${firstSpecId}/spec.md`
+            const content = await plugin.readRemoteFile(server, specPath)
+            return res.json({ success: true, data: { changeId, content, specId: firstSpecId } })
+          }
+        } catch {
+          // Archive specs not found
+        }
+      }
+
+      return res.json({ success: true, data: { changeId, content: null, specId: null } })
     }
 
     // Local project: use filesystem
     try {
       const specFolders = await readdir(specsDir)
-      if (specFolders.length === 0) {
-        return res.json({ success: true, data: { changeId, content: null, specId: null } })
+      if (specFolders.length > 0) {
+        const firstSpecId = specFolders[0]
+        const specPath = join(specsDir, firstSpecId, 'spec.md')
+        const content = await readFile(specPath, 'utf-8')
+        return res.json({ success: true, data: { changeId, content, specId: firstSpecId } })
       }
-
-      const firstSpecId = specFolders[0]
-      const specPath = join(specsDir, firstSpecId, 'spec.md')
-      const content = await readFile(specPath, 'utf-8')
-      res.json({ success: true, data: { changeId, content, specId: firstSpecId } })
     } catch {
-      res.json({ success: true, data: { changeId, content: null, specId: null } })
+      // Active folder not found, try archive
     }
+
+    // Fallback: try archive folder
+    try {
+      const archiveSpecsDir = join(project.path, 'openspec', 'changes', 'archive', changeId, 'specs')
+      const specFolders = await readdir(archiveSpecsDir)
+      if (specFolders.length > 0) {
+        const firstSpecId = specFolders[0]
+        const specPath = join(archiveSpecsDir, firstSpecId, 'spec.md')
+        const content = await readFile(specPath, 'utf-8')
+        return res.json({ success: true, data: { changeId, content, specId: firstSpecId } })
+      }
+    } catch {
+      // Archive specs not found
+    }
+
+    res.json({ success: true, data: { changeId, content: null, specId: null } })
   } catch (error) {
     console.error('Error reading spec:', error)
     res.status(500).json({ success: false, error: 'Failed to read spec' })
