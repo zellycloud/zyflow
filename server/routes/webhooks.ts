@@ -14,6 +14,8 @@ import { getSqlite } from '../tasks/db/client.js'
 import type { AlertSource, AlertSeverity } from '../tasks/db/schema.js'
 import { verifyGitHubSignature, verifyVercelSignature, verifySentrySignature, verifySupabaseSignature } from '../utils/webhook-verify.js'
 import { sendSlackNotification } from '../services/slackNotifier.js'
+import { processAlertForAutoFix, type Alert } from '../agents/alert-integration.js'
+import { getActiveProject } from '../config.js'
 
 // WebSocket broadcast 함수 (app.ts에서 주입)
 let broadcastAlert: ((alert: unknown) => void) | null = null
@@ -37,6 +39,12 @@ interface CreateAlertParams {
   message: string
   metadata: Record<string, unknown>
   externalUrl?: string
+  // For Auto-Fix
+  repository?: {
+    owner: string
+    repo: string
+    branch: string
+  }
 }
 
 // =============================================
@@ -108,6 +116,51 @@ async function createAlert(params: CreateAlertParams): Promise<string> {
     console.error('[Webhook] Failed to send Slack notification:', error)
   }
 
+  // Auto-Fix 트리거 (critical severity일 때만, 비동기로 실행)
+  if (params.severity === 'critical' && params.repository) {
+    const activeProject = getActiveProject()
+    const projectPath = activeProject?.path || process.cwd()
+
+    // 비동기로 실행 (webhook 응답 지연 방지)
+    setImmediate(async () => {
+      try {
+        const alert: Alert = {
+          id: alertId,
+          project_id: params.projectId,
+          source: params.source,
+          severity: params.severity as 'critical' | 'high' | 'medium' | 'low',
+          status: 'new',
+          title: params.title,
+          message: params.message,
+          metadata: params.metadata,
+          created_at: now,
+          updated_at: now,
+        }
+
+        console.log(`[Webhook] Triggering Auto-Fix for alert ${alertId}`)
+        const result = await processAlertForAutoFix(
+          alert,
+          projectPath,
+          params.repository,
+          {
+            enabled: true,
+            githubToken: process.env.GITHUB_TOKEN || '',
+            triggerOnSeverity: ['critical', 'high'],
+            autoMergeEnabled: true,
+            dryRunMode: false,
+            maxConcurrentRuns: 3,
+          }
+        )
+
+        if (result) {
+          console.log(`[Webhook] Auto-Fix completed for alert ${alertId}: ${result.success ? 'SUCCESS' : 'FAILED'}`)
+        }
+      } catch (error) {
+        console.error(`[Webhook] Auto-Fix failed for alert ${alertId}:`, error)
+      }
+    })
+  }
+
   return alertId
 }
 
@@ -177,6 +230,9 @@ webhooksRouter.post('/github', async (req: Request, res: Response) => {
     const repoName = workflowRun.repository.name
     const repoFullName = workflowRun.repository.full_name
 
+    // Parse owner/repo from full_name
+    const [owner, repo] = repoFullName.split('/')
+
     const alertId = await createAlert({
       source: 'github',
       severity: 'critical',
@@ -193,6 +249,11 @@ webhooksRouter.post('/github', async (req: Request, res: Response) => {
         commitAuthor: workflowRun.head_commit?.author.name,
       },
       externalUrl: workflowRun.html_url,
+      repository: {
+        owner,
+        repo,
+        branch: workflowRun.head_branch,
+      },
     })
 
     console.log(`[Webhook] GitHub alert created: ${alertId} for ${repoFullName}`)

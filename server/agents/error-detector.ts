@@ -22,6 +22,7 @@ import { fullValidate, summarizeValidation, type ValidationResult } from './fix-
 import { decideMerge, waitForCI, autoMerge, summarizeMergeDecision, type AlertSource, type MergeDecision } from './merge-policy'
 import { executeWorkflow, summarizeWorkflow, type PRConfig, type WorkflowResult } from './pr-workflow'
 import { getGeminiClient } from '../ai/gemini-client'
+import { sendAutoFixNotification } from '../services/slackNotifier.js'
 
 export interface AlertData {
   id: string
@@ -31,6 +32,7 @@ export interface AlertData {
   rawPayload: unknown
   projectPath: string
   projectId: string
+  projectName?: string // For Slack notification routing
   repository?: {
     owner: string
     repo: string
@@ -77,7 +79,17 @@ export async function triggerAutoFix(
     duration: 0,
   }
 
+  // Get project name for Slack notification routing
+  const projectName = alert.projectName || alert.projectId || 'unknown'
+
   try {
+    // Send "started" Slack notification
+    await sendAutoFixNotification({
+      alertId: alert.id,
+      projectName,
+      status: 'started',
+    }).catch(err => console.error('[AutoFix] Failed to send started notification:', err))
+
     // 1. 알림 데이터 파싱
     console.log(`[AutoFix] Starting for alert ${alert.id}`)
     const analysis = await parseAlertData(alert)
@@ -85,7 +97,7 @@ export async function triggerAutoFix(
 
     if (analysis.errors.length === 0) {
       result.error = 'No errors found in alert'
-      return finishResult(result, startTime)
+      return finishResultWithNotification(result, startTime, projectName)
     }
 
     // 자동 수정 가능한 에러 필터링
@@ -96,7 +108,7 @@ export async function triggerAutoFix(
 
     if (fixableErrors.length === 0) {
       result.error = 'No auto-fixable errors found'
-      return finishResult(result, startTime)
+      return finishResultWithNotification(result, startTime, projectName)
     }
 
     console.log(`[AutoFix] Found ${fixableErrors.length} fixable errors`)
@@ -111,7 +123,7 @@ export async function triggerAutoFix(
 
     if (!fixResult.success) {
       result.error = `Fix generation failed: ${fixResult.errors.join(', ')}`
-      return finishResult(result, startTime)
+      return finishResultWithNotification(result, startTime, projectName)
     }
 
     console.log(`[AutoFix] Generated ${fixResult.changes.length} file changes`)
@@ -125,7 +137,7 @@ export async function triggerAutoFix(
 
       if (!validation.passed) {
         result.error = `Validation failed: ${validation.errors.join(', ')}`
-        return finishResult(result, startTime)
+        return finishResultWithNotification(result, startTime, projectName)
       }
     } else {
       // 검증 건너뛰기 시 기본 통과
@@ -165,13 +177,13 @@ export async function triggerAutoFix(
     if (options.dryRun) {
       result.success = true
       result.error = 'Dry run - PR not created'
-      return finishResult(result, startTime)
+      return finishResult(result, startTime) // No notification for dry run
     }
 
     // 6. 리포지토리 정보 확인
     if (!alert.repository) {
       result.error = 'Repository information not available'
-      return finishResult(result, startTime)
+      return finishResultWithNotification(result, startTime, projectName)
     }
 
     // 7. PR 워크플로우 실행
@@ -200,7 +212,7 @@ export async function triggerAutoFix(
 
     if (!workflowResult.success) {
       result.error = 'PR workflow failed'
-      return finishResult(result, startTime)
+      return finishResultWithNotification(result, startTime, projectName)
     }
 
     // 8. 자동 머지가 활성화되어 있으면 CI 대기 후 머지
@@ -235,9 +247,27 @@ export async function triggerAutoFix(
     }
 
     result.success = true
+
+    // Send "success" Slack notification
+    await sendAutoFixNotification({
+      alertId: alert.id,
+      projectName,
+      status: 'success',
+      prUrl: result.workflowResult?.finalPR?.url,
+    }).catch(err => console.error('[AutoFix] Failed to send success notification:', err))
+
     return finishResult(result, startTime)
   } catch (err) {
     result.error = `Unexpected error: ${err}`
+
+    // Send "failed" Slack notification
+    await sendAutoFixNotification({
+      alertId: alert.id,
+      projectName,
+      status: 'failed',
+      error: String(err),
+    }).catch(notifyErr => console.error('[AutoFix] Failed to send failed notification:', notifyErr))
+
     return finishResult(result, startTime)
   }
 }
@@ -329,7 +359,31 @@ function extractVercelLog(payload: Record<string, unknown>): string {
 }
 
 /**
- * 결과 마무리
+ * 결과 마무리 및 실패 알림 전송
+ */
+async function finishResultWithNotification(
+  result: AutoFixResult,
+  startTime: number,
+  projectName: string
+): Promise<AutoFixResult> {
+  result.duration = Date.now() - startTime
+  console.log(`[AutoFix] Completed in ${result.duration}ms - ${result.success ? 'SUCCESS' : 'FAILED'}: ${result.error || 'OK'}`)
+
+  // Send failure notification if not successful (success notification is sent separately)
+  if (!result.success && result.error) {
+    await sendAutoFixNotification({
+      alertId: result.alertId,
+      projectName,
+      status: 'failed',
+      error: result.error,
+    }).catch(err => console.error('[AutoFix] Failed to send failed notification:', err))
+  }
+
+  return result
+}
+
+/**
+ * 결과 마무리 (레거시 - 알림 없이)
  */
 function finishResult(result: AutoFixResult, startTime: number): AutoFixResult {
   result.duration = Date.now() - startTime

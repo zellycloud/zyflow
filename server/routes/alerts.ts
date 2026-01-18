@@ -21,9 +21,10 @@ import {
   stopBackgroundPoller,
   isPollerRunning,
 } from '../services/githubActionsPoller.js'
-import { getProjectById } from '../config.js'
+import { getProjectById, getActiveProject } from '../config.js'
 import { encrypt, safeDecrypt, maskUrl, generateSecret } from '../utils/crypto.js'
 import { sendTestNotification } from '../services/slackNotifier.js'
+import { processAlertForAutoFix, getRunningJobs, getAgentStats, type Alert } from '../agents/alert-integration.js'
 
 // WebSocket broadcast 함수 (app.ts에서 주입)
 let broadcastAlert: ((alert: unknown) => void) | null = null
@@ -864,5 +865,164 @@ alertsRouter.post('/webhook-configs/:id/regenerate-secret', async (req, res) => 
   } catch (error) {
     console.error('Error regenerating webhook secret:', error)
     res.status(500).json({ success: false, error: 'Failed to regenerate webhook secret' })
+  }
+})
+
+// =============================================
+// Auto-Fix Agent Endpoints
+// =============================================
+
+// POST /alerts/:id/trigger-autofix - 수동 Auto-fix 트리거
+alertsRouter.post('/:id([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/trigger-autofix', async (req, res) => {
+  try {
+    const sqlite = getSqlite()
+    const alertId = req.params.id
+
+    // Alert 조회
+    const alertRow = sqlite.prepare('SELECT * FROM alerts WHERE id = ?').get(alertId) as {
+      id: string
+      project_id: string
+      source: string
+      severity: string
+      status: string
+      title: string
+      message: string | null
+      metadata: string | null
+      data: string | null
+      created_at: number
+      updated_at: number
+    } | undefined
+
+    if (!alertRow) {
+      return res.status(404).json({ success: false, error: 'Alert not found' })
+    }
+
+    // 이미 처리 중인지 확인
+    const runningJobs = getRunningJobs()
+    if (runningJobs.includes(alertId)) {
+      return res.status(409).json({ success: false, error: 'Auto-fix already in progress for this alert' })
+    }
+
+    // Alert 객체 변환
+    const alert: Alert = {
+      id: alertRow.id,
+      project_id: alertRow.project_id,
+      source: alertRow.source as Alert['source'],
+      severity: alertRow.severity as Alert['severity'],
+      status: alertRow.status as Alert['status'],
+      title: alertRow.title,
+      message: alertRow.message || undefined,
+      metadata: alertRow.metadata ? JSON.parse(alertRow.metadata) : undefined,
+      data: alertRow.data ? JSON.parse(alertRow.data) : undefined,
+      created_at: alertRow.created_at,
+      updated_at: alertRow.updated_at,
+    }
+
+    // 프로젝트 경로 조회
+    const projectPath = alertRow.project_id
+      ? await getProjectPath(alertRow.project_id)
+      : null
+    const activeProject = getActiveProject()
+    const targetPath = projectPath || activeProject?.path || process.cwd()
+
+    // Repository 정보 추출 (metadata에서)
+    let repository: { owner: string; repo: string; branch: string } | undefined
+    if (alert.metadata?.repository) {
+      const repoInfo = alert.metadata.repository as { owner?: string; repo?: string; branch?: string }
+      if (repoInfo.owner && repoInfo.repo) {
+        repository = {
+          owner: repoInfo.owner,
+          repo: repoInfo.repo,
+          branch: repoInfo.branch || 'main',
+        }
+      }
+    }
+
+    // GitHub Token 확인
+    const githubToken = process.env.GITHUB_TOKEN
+    if (!githubToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'GITHUB_TOKEN environment variable not configured',
+      })
+    }
+
+    // Alert 상태 업데이트
+    const now = Date.now()
+    sqlite.prepare(`
+      UPDATE alerts SET status = 'processing', updated_at = ? WHERE id = ?
+    `).run(now, alertId)
+
+    createActivityLog(alertId, 'user', 'autofix.triggered', 'Manual auto-fix triggered')
+
+    // Auto-fix 비동기 실행
+    setImmediate(async () => {
+      try {
+        const result = await processAlertForAutoFix(alert, targetPath, repository, {
+          githubToken,
+          enabled: true,
+          triggerOnSeverity: ['critical', 'high', 'medium'],
+          autoMergeEnabled: false, // 수동 트리거는 auto-merge 비활성화
+          dryRunMode: false,
+          maxConcurrentRuns: 3,
+        })
+
+        // 결과에 따라 Alert 상태 업데이트
+        const finalStatus = result?.success ? 'resolved' : 'pending'
+        const resolvedAt = result?.success ? Date.now() : null
+
+        sqlite.prepare(`
+          UPDATE alerts SET status = ?, updated_at = ?, resolved_at = ? WHERE id = ?
+        `).run(finalStatus, Date.now(), resolvedAt, alertId)
+
+        createActivityLog(
+          alertId,
+          'agent',
+          result?.success ? 'autofix.completed' : 'autofix.failed',
+          result?.success
+            ? `Auto-fix completed. PR: ${result.workflowResult?.finalPR?.url || 'N/A'}`
+            : `Auto-fix failed: ${result?.error || 'Unknown error'}`
+        )
+      } catch (error) {
+        console.error(`[AutoFix] Manual trigger failed for alert ${alertId}:`, error)
+
+        sqlite.prepare(`
+          UPDATE alerts SET status = 'pending', updated_at = ? WHERE id = ?
+        `).run(Date.now(), alertId)
+
+        createActivityLog(alertId, 'agent', 'autofix.error', `Auto-fix error: ${error}`)
+      }
+    })
+
+    res.json({
+      success: true,
+      message: 'Auto-fix triggered',
+      data: {
+        alertId,
+        status: 'processing',
+      },
+    })
+  } catch (error) {
+    console.error('Error triggering auto-fix:', error)
+    res.status(500).json({ success: false, error: 'Failed to trigger auto-fix' })
+  }
+})
+
+// GET /autofix/status - Auto-fix Agent 상태 조회
+alertsRouter.get('/autofix/status', async (_req, res) => {
+  try {
+    const stats = getAgentStats()
+    const running = getRunningJobs()
+
+    res.json({
+      success: true,
+      data: {
+        stats,
+        runningJobs: running,
+      },
+    })
+  } catch (error) {
+    console.error('Error getting auto-fix status:', error)
+    res.status(500).json({ success: false, error: 'Failed to get auto-fix status' })
   }
 })

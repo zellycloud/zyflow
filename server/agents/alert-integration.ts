@@ -20,6 +20,7 @@ export interface Alert {
   title: string
   message?: string
   metadata?: Record<string, unknown>
+  data?: Record<string, unknown> // Raw webhook payload
   created_at: number
   updated_at: number
 }
@@ -101,9 +102,10 @@ export async function processAlertForAutoFix(
     source: alert.source as AlertData['source'],
     subtype: extractSubtype(alert),
     title: alert.title,
-    rawPayload: alert.data || {},
+    rawPayload: alert.data || alert.metadata || {},
     projectPath,
-    projectId: alert.projectId || 'default',
+    projectId: alert.project_id || 'default',
+    projectName: alert.project_id, // For Slack notification routing
     repository,
   }
 
