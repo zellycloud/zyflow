@@ -10,7 +10,7 @@
     "kill:ports": "lsof -ti:3100,3101,3200,3201 | xargs kill -9 2>/dev/null || true",
     "kill:zyflow": "lsof -ti:3100,3101 | xargs kill -9 2>/dev/null || true",
     "kill:_flow": "lsof -ti:3200,3201 | xargs kill -9 2>/dev/null || true",
-    "dev:all": "npm run kill:ports && concurrently \"npm run server\" \"npm run dev\"",
+    "dev:all": "npm run kill:ports && concurrently --kill-others-on-fail -n zyflow-api,zyflow-web,_flow-api,_flow-web -c blue,cyan,magenta,yellow \"env-cmd -f .env.zyflow npm run server\" \"env-cmd -f .env.zyflow npm run dev\" \"env-cmd -f .env._flow npm run server\" \"env-cmd -f .env._flow npm run dev\"",
     "start": "npm run kill:ports && concurrently \"npm run server\" \"npm run dev\"",
     "dev:zyflow": "npm run kill:zyflow && env-cmd -f .env.zyflow concurrently --kill-others-on-fail \"npm run server\" \"npm run dev\"",
     "dev:_flow": "npm run kill:_flow && env-cmd -f .env._flow concurrently --kill-others-on-fail \"npm run server\" \"npm run dev\"",
