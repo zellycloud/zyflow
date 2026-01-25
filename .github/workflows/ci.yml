@@ -87,3 +87,66 @@ jobs:
         run: |
           test -f dist/mcp-server/index.js
           echo "MCP Server build successful"
+
+  # Slack 알림 (실패 시에만)
+  notify-slack:
+    name: Slack 알림
+    runs-on: ubuntu-latest
+    needs: [node-tests, python-tests, build-mcp]
+    if: failure() && vars.SLACK_NOTIFICATIONS_ENABLED == 'true'
+
+    steps:
+      - name: Slack 실패 알림
+        uses: slackapi/slack-github-action@v2.0.0
+        env:
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BRANCH_NAME: ${{ github.ref_name }}
+          REPO_NAME: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "❌ CI 파이프라인 실패",
+                    "emoji": true
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\nzyflow"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ env.BRANCH_NAME }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Trigger:*\n${{ env.EVENT_NAME }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "🔍 로그 확인",
+                        "emoji": true
+                      },
+                      "url": "${{ env.WORKFLOW_URL }}"
+                    }
+                  ]
+                }
+              ]
+            }
