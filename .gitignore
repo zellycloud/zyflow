@@ -237,3 +237,7 @@ htmlcov/
 Thumbs.db
 *-key.*
 .moai/logs/
+
+# SonarQube
+.scannerwork/
+sonar-project.properties
