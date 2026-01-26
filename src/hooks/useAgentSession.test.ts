@@ -188,24 +188,24 @@ describe('useAgentSessions', () => {
   it('should fetch sessions list', async () => {
     const mockSessions = [
       {
-        session_id: 'session-1',
-        change_id: 'change-1',
+        id: 'session-1',
+        changeId: 'change-1',
         status: 'running',
-        completed_tasks: 2,
-        total_tasks: 5,
+        startedAt: '2024-01-01T00:00:00Z',
+        projectPath: '/test/path',
       },
       {
-        session_id: 'session-2',
-        change_id: 'change-2',
+        id: 'session-2',
+        changeId: 'change-2',
         status: 'completed',
-        completed_tasks: 3,
-        total_tasks: 3,
+        startedAt: '2024-01-02T00:00:00Z',
+        projectPath: '/test/path',
       },
     ]
 
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
-      json: async () => mockSessions,
+      json: async () => ({ sessions: mockSessions }),
     } as Response)
 
     const { result } = renderHook(() => useAgentSessions(), {
