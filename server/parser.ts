@@ -1,5 +1,8 @@
 import type { TaskGroup, Task, TasksFile } from '../src/types/index.js'
-import { parseTasksFileFlexible } from './parser-utils.js'
+import { parseTasksFile as parseWithNewParser, setTaskStatus as setStatusWithNewParser } from '@zyflow/parser'
+
+// Re-export from new parser package
+export { parseTasksFile as parseTasksFileNew, setTaskStatus } from '@zyflow/parser'
 
 /**
  * Extended TaskGroup with hierarchy info for 3-level structure
@@ -17,6 +20,8 @@ interface ExtendedTaskGroup extends TaskGroup {
 
 /**
  * Parse tasks.md content into structured data
+ * Now uses @zyflow/parser package with OpenSpec 1.0 support
+ *
  * Supports multiple formats:
  * - 3-level: "## 1. Major" > "### 1.1 Sub" > "- [ ] 1.1.1 Task"
  * - 2-level: "## 1. Section" > "- [ ] Task"
@@ -26,11 +31,11 @@ interface ExtendedTaskGroup extends TaskGroup {
  */
 export function parseTasksFile(changeId: string, content: string): TasksFile {
   try {
-    // 먼저 유연한 파서로 시도
-    return parseTasksFileFlexible(changeId, content)
+    // Use new @zyflow/parser package
+    return parseWithNewParser(changeId, content)
   } catch (error) {
-    console.warn('유연한 파서 실패, 기존 파서로 시도:', error)
-    // 기존 파서로 fallback
+    console.warn('New parser failed, falling back to original:', error)
+    // Fallback to original parser
     return parseTasksFileOriginal(changeId, content)
   }
 }

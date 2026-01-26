@@ -1,4 +1,13 @@
 import type { TaskGroup, Task, TasksFile } from './types.js'
+import {
+  parseTasksFile as parseWithNewParser,
+  setTaskStatus as setStatusWithNewParser,
+  LegacyIdResolver,
+  TasksParser,
+} from '@zyflow/parser'
+
+// Re-export from new parser package for consumers
+export { parseTasksFile as parseTasksFileNew, setTaskStatus as setTaskStatusNew } from '@zyflow/parser'
 
 /**
  * Extended TaskGroup with hierarchy info for 3-level structure
@@ -28,8 +37,24 @@ interface PhaseInfo {
  * 1. tasks.md의 명시적 넘버링(task-1-1 등)은 무시
  * 2. 순서 기반으로 displayId 자동 생성 (1.1.1, 1.1.2, ...)
  * 3. lineNumber는 파일 참조용으로만 사용
+ *
+ * Now uses @zyflow/parser package with OpenSpec 1.0 support
  */
 export function parseTasksFile(changeId: string, content: string): TasksFile {
+  try {
+    // Use new @zyflow/parser package
+    return parseWithNewParser(changeId, content)
+  } catch (error) {
+    console.warn('New parser failed, falling back to original:', error)
+    // Fallback to original parser
+    return parseTasksFileOriginal(changeId, content)
+  }
+}
+
+/**
+ * 기존 파서 로직 (fallback용)
+ */
+function parseTasksFileOriginal(changeId: string, content: string): TasksFile {
   const lines = content.split('\n')
   const rawGroups: ExtendedTaskGroup[] = []
   let currentGroup: ExtendedTaskGroup | null = null
@@ -218,8 +243,28 @@ export function parseTasksFile(changeId: string, content: string): TasksFile {
  * 1. displayId로 찾기 (권장)
  * 2. 제목 패턴 매칭으로 찾기 (폴백)
  * 3. lineNumber는 현재 파일에서 실시간으로 찾음
+ *
+ * Now uses @zyflow/parser package with LegacyIdResolver
  */
 export function setTaskStatus(
+  content: string,
+  taskId: string,
+  completed: boolean
+): { newContent: string; task: Task } {
+  try {
+    // Use new @zyflow/parser package
+    return setStatusWithNewParser(content, taskId, completed)
+  } catch (error) {
+    console.warn('New setTaskStatus failed, falling back to original:', error)
+    // Fallback to original implementation
+    return setTaskStatusOriginal(content, taskId, completed)
+  }
+}
+
+/**
+ * 기존 setTaskStatus 로직 (fallback용)
+ */
+function setTaskStatusOriginal(
   content: string,
   taskId: string,
   completed: boolean
@@ -227,7 +272,7 @@ export function setTaskStatus(
   const lines = content.split('\n')
 
   // 먼저 파일을 파싱해서 태스크 찾기
-  const parsed = parseTasksFile('temp', content)
+  const parsed = parseTasksFileOriginal('temp', content)
 
   // taskId로 태스크 찾기 (id 또는 displayId)
   let targetTask: Task | null = null
@@ -319,12 +364,49 @@ export function setTaskStatus(
 /**
  * 제목으로 태스크 찾기 (보조 함수)
  * 태스크 제목의 일부로 검색
+ *
+ * Uses @zyflow/parser's LegacyIdResolver for robust title matching
  */
 export function findTaskByTitle(
   content: string,
   titlePattern: string
 ): Task | null {
-  const parsed = parseTasksFile('temp', content)
+  try {
+    // Use new parser for consistent results
+    const parser = new TasksParser()
+    const result = parser.parse('temp', content)
+    const resolver = new LegacyIdResolver(result)
+
+    // Try to resolve by title using the new resolver
+    const resolved = resolver.resolveWithFallback(titlePattern)
+    if (resolved) {
+      return {
+        id: resolved.task.id,
+        title: resolved.task.title,
+        completed: resolved.task.completed,
+        groupId: resolved.task.groupId,
+        lineNumber: resolved.task.lineNumber,
+        indent: resolved.task.indent,
+        displayId: resolved.task.displayId,
+      }
+    }
+
+    // Fallback to original title search
+    return findTaskByTitleOriginal(content, titlePattern)
+  } catch (error) {
+    console.warn('New findTaskByTitle failed, falling back to original:', error)
+    return findTaskByTitleOriginal(content, titlePattern)
+  }
+}
+
+/**
+ * 기존 제목 검색 로직 (fallback용)
+ */
+function findTaskByTitleOriginal(
+  content: string,
+  titlePattern: string
+): Task | null {
+  const parsed = parseTasksFileOriginal('temp', content)
 
   const pattern = titlePattern.toLowerCase()
 
