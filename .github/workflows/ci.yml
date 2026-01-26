@@ -21,7 +21,18 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --prefer-offline
+
+      - name: Cache TypeScript build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .tsbuildinfo
+            node_modules/.cache
+          key: ${{ runner.os }}-ts-${{ hashFiles('**/tsconfig.json') }}-${{ hashFiles('src/**/*.ts', 'server/**/*.ts') }}
+          restore-keys: |
+            ${{ runner.os }}-ts-${{ hashFiles('**/tsconfig.json') }}-
+            ${{ runner.os }}-ts-
 
       - name: Run linter
         run: npm run lint
@@ -55,6 +66,14 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('py-agents/uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
       - name: Install dependencies
         run: uv sync
 
@@ -78,7 +97,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --prefer-offline
 
       - name: Build MCP Server
         run: npm run build:mcp

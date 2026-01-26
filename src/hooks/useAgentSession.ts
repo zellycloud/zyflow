@@ -338,8 +338,8 @@ export function useAgentSession(initialSessionId?: string) {
           // The backend starts a new process with --continue, so we need to listen for its output
           connectStream(sessionId)
         }
-      } catch (e: any) {
-        setError(e.message)
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e))
       }
     }
   }, [sessionId, connectStream])
@@ -398,7 +398,7 @@ export function useAgentSessions() {
       if (!res.ok) throw new Error('Failed to fetch sessions')
       const data = await res.json()
       // Map CLI session format to AgentSessionState format
-      const sessions: AgentSessionState[] = (data.sessions || []).map((s: any) => ({
+      const sessions: AgentSessionState[] = (data.sessions || []).map((s: Record<string, unknown>) => ({
         session_id: s.id,
         change_id: s.changeId,
         status: s.status,
