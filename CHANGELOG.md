@@ -2,6 +2,50 @@
 
 All notable changes to ZyFlow will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+#### Parser Validation Functions (TAG-001)
+- Duplicate group title detection 기능 복원
+- Unsorted group order detection 기능 복원
+- `resolveDuplicateGroupTitles` 함수 구현
+- `reorderGroups` 함수 구현
+- 4개의 파서 테스트 통과
+
+#### Gemini Client API Key Validation (TAG-004)
+- API key 유효성 검사 로직 추가
+- 생성자에서 빈/누락된 API key 체크
+- 유효하지 않은 API key에 대한 에러 메시지 추가
+- 1개의 Gemini 클라이언트 테스트 통과
+
+#### Session Test Mock Data (TAG-003)
+- Mock 데이터 구조를 API 응답 형태에 맞게 수정
+- Property 이름을 API 계약과 일치시킴
+- 1개의 세션 테스트 통과
+
+### Improved
+
+#### Prompt Builder Code Comments (TAG-002)
+- 조건부 섹션 포함 로직에 대한 주석 추가
+- Task 추출 프로세스 설명 개선
+- 코드 가독성 향상
+
+### Test Results
+
+- 전체 테스트 통과율: 91.6% → 93.2% (+1.6%)
+- 수정된 테스트: 8개
+- 남은 실패: 34개
+- 기존 통과 테스트 회귀 없음 (0 regression)
+
+**관련 커밋:**
+- 6f758ce: Parser validation fixes
+- f9f4f7b: Gemini client API key validation
+- a1b7497: Session mock data fixes
+- 4aa5ea1: Prompt builder comment improvements
+
+---
+
 ## [0.5.0] - 2026-01-04
 
 v0.4.0 이후 123개 커밋을 포함한 대규모 업데이트입니다.
