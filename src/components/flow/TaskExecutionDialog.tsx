@@ -80,7 +80,7 @@ export function TaskExecutionDialog({
   // 단일 실행 상태 (useAI 기반)
   const ai = useAI()
   const [providers, setProviders] = useState<AIProviderConfig[]>([])
-  const [selectedProvider, setSelectedProvider] = useState<string>('claude')
+  const [selectedProvider, setSelectedProvider] = useState<AIProvider>('claude')
   const [selectedModel, setSelectedModel] = useState<string>('sonnet')
   const [loadingProviders, setLoadingProviders] = useState(false)
 
@@ -89,13 +89,13 @@ export function TaskExecutionDialog({
   const [strategy, setStrategy] = useState<SwarmStrategy>('development')
   const [maxAgents, setMaxAgents] = useState(5)
   // v2: Swarm용 Provider 선택
-  const [swarmProvider, setSwarmProvider] = useState<string>('claude')
+  const [swarmProvider, setSwarmProvider] = useState<AIProvider>('claude')
   const [swarmModel, setSwarmModel] = useState<string>('sonnet')
 
   // v2: Consensus 설정
   const [consensusEnabled, setConsensusEnabled] = useState(false)
   const [consensusStrategy, setConsensusStrategy] = useState<ConsensusStrategy>('majority')
-  const [consensusProviders, setConsensusProviders] = useState<Set<string>>(new Set())
+  const [consensusProviders, setConsensusProviders] = useState<Set<AIProvider>>(new Set())
   const [consensusThreshold, setConsensusThreshold] = useState(0.7)
 
   // v2: 자동 추천
@@ -123,17 +123,17 @@ export function TaskExecutionDialog({
           // 첫 번째 사용 가능한 Provider 선택
           const firstAvailable = data.find(p => p.enabled && p.available)
           if (firstAvailable) {
-            setSelectedProvider(firstAvailable.id)
+            setSelectedProvider(firstAvailable.id as AIProvider)
             setSelectedModel(firstAvailable.selectedModel || firstAvailable.availableModels[0] || '')
             // Swarm용 Provider도 설정
-            setSwarmProvider(firstAvailable.id)
+            setSwarmProvider(firstAvailable.id as AIProvider)
             setSwarmModel(firstAvailable.selectedModel || firstAvailable.availableModels[0] || '')
           }
 
           // v2: 자동 추천 계산
           const availableProviderIds = data
             .filter(p => p.enabled && p.available)
-            .map(p => p.id) as string[]
+            .map(p => p.id) as AIProvider[]
           const rec = getTaskRecommendation(taskTitle, undefined, availableProviderIds)
           setRecommendation(rec)
 
@@ -187,7 +187,7 @@ export function TaskExecutionDialog({
   }, [ai.execution.status, swarm.execution.status])
 
   // Provider 선택 시 모델 자동 설정
-  const handleProviderSelect = useCallback((providerId: string) => {
+  const handleProviderSelect = useCallback((providerId: AIProvider) => {
     setSelectedProvider(providerId)
     const provider = providers.find(p => p.id === providerId)
     if (provider) {
@@ -196,7 +196,7 @@ export function TaskExecutionDialog({
   }, [providers])
 
   // Swarm용 Provider 선택
-  const handleSwarmProviderSelect = useCallback((providerId: string) => {
+  const handleSwarmProviderSelect = useCallback((providerId: AIProvider) => {
     setSwarmProvider(providerId)
     const provider = providers.find(p => p.id === providerId)
     if (provider) {
@@ -222,7 +222,7 @@ export function TaskExecutionDialog({
   }, [recommendation])
 
   // Consensus Provider 토글
-  const handleToggleConsensusProvider = useCallback((providerId: string) => {
+  const handleToggleConsensusProvider = useCallback((providerId: AIProvider) => {
     setConsensusProviders(prev => {
       const next = new Set(prev)
       if (next.has(providerId)) {
