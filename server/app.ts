@@ -1463,6 +1463,7 @@ ${context || '추가 컨텍스트 없음'}
         if (!line.trim()) continue
 
         // Remove ANSI escape codes that PTY might add
+        // eslint-disable-next-line no-control-regex
         const cleanLine = line.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim()
         if (!cleanLine) continue
 
@@ -2507,7 +2508,7 @@ app.get('/api/flow/tasks', async (req, res) => {
                 updatedAt: new Date().toISOString(),
                 archivedAt: null,
                 groupTitle: group.title,
-                majorTitle: (group as any).majorTitle || group.title,
+                majorTitle: (group as { majorTitle?: string }).majorTitle || group.title,
               })
             }
           }
@@ -3126,7 +3127,7 @@ app.post('/api/flow/changes/:id/archive', async (req, res) => {
     let stdout = ''
     let stderr = ''
     let validationFailed = false
-    let validationErrors: string[] = []
+    const validationErrors: string[] = []
 
     try {
       const result = await execAsync(`openspec ${args.join(' ')}`, {
@@ -3239,7 +3240,7 @@ app.post('/api/flow/changes/:id/fix-validation', async (req, res) => {
     const proposalPath = join(changeDir, 'proposal.md')
     let proposalFixed = false
     try {
-      let content = await fs.readFile(proposalPath, 'utf-8')
+      const content = await fs.readFile(proposalPath, 'utf-8')
       // Find requirement lines without SHALL/MUST and add "SHALL"
       // Pattern: Lines starting with "- " in requirements section that don't have SHALL/MUST
       const lines = content.split('\n')
@@ -3272,11 +3273,11 @@ app.post('/api/flow/changes/:id/fix-validation', async (req, res) => {
         if (!entry.isDirectory()) continue
         const specPath = join(specsDir, entry.name, 'spec.md')
         try {
-          let content = await fs.readFile(specPath, 'utf-8')
+          const content = await fs.readFile(specPath, 'utf-8')
           // Find requirement headings and their content
           // Pattern: ### Requirement: ... followed by content
           const lines = content.split('\n')
-          const fixedLines = lines.map((line, i) => {
+          const fixedLines = lines.map((line, _i) => {
             // If this is a requirement heading
             if (line.match(/^###\s+Requirement:/)) {
               // Check if the requirement text contains SHALL/MUST

@@ -449,7 +449,7 @@ export function getEnhancedRecommendation(
   const baseRec = getTaskRecommendation(title, description, options?.availableProviders)
 
   // 복잡도 기반 조정
-  let adjustedRec = { ...baseRec }
+  const adjustedRec = { ...baseRec }
 
   if (complexity.level === 'very-complex') {
     adjustedRec.mode = 'swarm'

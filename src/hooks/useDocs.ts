@@ -129,7 +129,7 @@ export function useSaveDocContent() {
       content: string
       remote?: { serverId: string }
     }) => {
-      const body: any = { projectPath, docPath, content }
+      const body: { projectPath: string; docPath: string; content: string; serverId?: string } = { projectPath, docPath, content }
       if (remote) {
         body.serverId = remote.serverId
       }

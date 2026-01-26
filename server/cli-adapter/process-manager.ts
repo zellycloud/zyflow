@@ -580,7 +580,7 @@ export class CLIProcessManager extends EventEmitter {
 // Singleton instance
 // Use global to ensure singleton persists across module reloads or dual-package hazards
 const GLOBAL_KEY = '__ZYFLOW_CLI_PROCESS_MANAGER__'
-const globalScope = global as any
+const globalScope = global as typeof globalThis & Record<string, unknown>
 
 if (!globalScope[GLOBAL_KEY]) {
   globalScope[GLOBAL_KEY] = null

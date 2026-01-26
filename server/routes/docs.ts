@@ -7,11 +7,16 @@ import { loadConfig } from '../config'
 const router = Router()
 
 // Remote Plugin Type Definition (Simulated)
+interface RemoteServer {
+  id: string
+  [key: string]: unknown
+}
+
 interface RemotePlugin {
-  getRemoteServerById: (id: string) => Promise<any>
-  listDirectory: (server: any, path: string) => Promise<{ entries: Array<{ type: string; name: string; modifiedAt?: string }> }>
-  readRemoteFile: (server: any, path: string) => Promise<string>
-  writeRemoteFile: (server: any, path: string, content: string) => Promise<void>
+  getRemoteServerById: (id: string) => Promise<RemoteServer | null>
+  listDirectory: (server: RemoteServer, path: string) => Promise<{ entries: Array<{ type: string; name: string; modifiedAt?: string }> }>
+  readRemoteFile: (server: RemoteServer, path: string) => Promise<string>
+  writeRemoteFile: (server: RemoteServer, path: string, content: string) => Promise<void>
   // executeCommand is not needed for docs yet, maybe for search
 }
 
@@ -110,7 +115,7 @@ async function scanDocsDirectory(
  */
 async function scanRemoteDocsDirectory(
   plugin: RemotePlugin,
-  server: any,
+  server: RemoteServer,
   basePath: string,
   currentPath: string,
   projectPath: string
@@ -190,7 +195,7 @@ router.get('/', async (req, res) => {
       'CLAUDE.md',
     ]
 
-    let rootDocs: DocItem[] = []
+    const rootDocs: DocItem[] = []
     let docsFolderItems: DocItem[] = []
     let openspecFolderItems: DocItem[] = []
 
@@ -245,7 +250,7 @@ router.get('/', async (req, res) => {
             path: fileName,
             type: 'file',
           })
-        } catch {}
+        } catch { /* File not accessible, skip */ }
       }
 
       // 2. Docs & OpenSpec
@@ -255,12 +260,12 @@ router.get('/', async (req, res) => {
       try {
         await access(docsPath, constants.R_OK)
         docsFolderItems = await scanDocsDirectory(docsPath, docsPath, projectPath)
-      } catch {}
+      } catch { /* Docs folder not accessible */ }
 
       try {
         await access(openspecPath, constants.R_OK)
         openspecFolderItems = await scanDocsDirectory(openspecPath, openspecPath, projectPath)
-      } catch {}
+      } catch { /* OpenSpec folder not accessible */ }
     }
 
     const result: DocItem[] = []
@@ -463,10 +468,10 @@ router.get('/search', async (req, res) => {
                    matches,
                  })
                }
-             } catch {}
+             } catch { /* Search file error, skip */ }
            }
         }
-      } catch {}
+      } catch { /* Directory search error, skip */ }
     }
 
     for (const searchPath of searchPaths) {

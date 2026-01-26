@@ -60,7 +60,7 @@ function parseLeannListOutput(output: string): LeannIndex[] {
     // Detect index name lines:
     // - Current project: "1. 📁 zyflow ✅"
     // - Other projects: "• 📁 zellyy-money ✅"
-    const nameMatch = line.match(/^\s+(?:\d+\.|\•)\s+📁\s+(\S+)/)
+    const nameMatch = line.match(/^\s+(?:\d+\.|•)\s+📁\s+(\S+)/)
     if (nameMatch) {
       currentName = nameMatch[1]
       continue

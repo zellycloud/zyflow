@@ -139,7 +139,7 @@ function parseLeannOutput(output: string): Array<{ score: number; content: strin
     const source = sourceMatch ? sourceMatch[1].trim() : undefined
 
     // 내용 추출 (Score 라인 이후, Source 라인 이전)
-    let content = block
+    const content = block
       .replace(/^\d+\.\s+Score:\s*[\d.]+\n?/, '') // Score 라인 제거
       .replace(/\nSource:\s*.+$/, '') // Source 라인 제거
       .trim()

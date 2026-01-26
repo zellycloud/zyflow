@@ -100,6 +100,7 @@ async function parseGitConfigFile(gitConfigPath: string): Promise<{ remoteUrl?: 
     const content = await readFile(gitConfigPath, 'utf-8');
 
     // [remote "origin"] 섹션에서 url 찾기
+    // eslint-disable-next-line no-useless-escape
     const remoteMatch = content.match(/\[remote\s+"origin"\][^\[]*url\s*=\s*(.+)/m);
     if (remoteMatch) {
       const remoteUrl = remoteMatch[1].trim();
@@ -108,6 +109,7 @@ async function parseGitConfigFile(gitConfigPath: string): Promise<{ remoteUrl?: 
     }
 
     // origin이 없으면 첫 번째 remote 사용
+    // eslint-disable-next-line no-useless-escape
     const anyRemoteMatch = content.match(/\[remote\s+"[^"]+"\][^\[]*url\s*=\s*(.+)/m);
     if (anyRemoteMatch) {
       const remoteUrl = anyRemoteMatch[1].trim();

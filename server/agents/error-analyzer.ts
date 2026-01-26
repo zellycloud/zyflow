@@ -347,6 +347,7 @@ function summarizeErrors(errors: ParsedError[]): AnalysisResult['summary'] {
  */
 export function parseGitHubActionsLog(log: string): AnalysisResult {
   // ANSI 코드 제거
+  // eslint-disable-next-line no-control-regex
   const cleanLog = log.replace(/\x1b\[[0-9;]*m/g, '')
   return parseErrors(cleanLog, 'github')
 }
@@ -355,6 +356,7 @@ export function parseGitHubActionsLog(log: string): AnalysisResult {
  * Vercel 빌드 로그 파싱
  */
 export function parseVercelBuildLog(log: string): AnalysisResult {
+  // eslint-disable-next-line no-control-regex
   const cleanLog = log.replace(/\x1b\[[0-9;]*m/g, '')
   return parseErrors(cleanLog, 'vercel')
 }

@@ -132,7 +132,7 @@ describe('parser-utils', () => {
         tasks: []
       }
       
-      const info = extractGroupInfo(group as any)
+      const info = extractGroupInfo(group as Parameters<typeof extractGroupInfo>[0])
       
       expect(info.majorOrder).toBe(1)
       expect(info.majorTitle).toBe('Main Section')
@@ -148,7 +148,7 @@ describe('parser-utils', () => {
         tasks: []
       }
       
-      const info = extractGroupInfo(group as any)
+      const info = extractGroupInfo(group as Parameters<typeof extractGroupInfo>[0])
       
       expect(info.majorOrder).toBe(1)
       expect(info.majorTitle).toBe('Simple Title')

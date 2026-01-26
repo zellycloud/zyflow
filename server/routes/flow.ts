@@ -1414,7 +1414,7 @@ flowRouter.post('/changes/:id/archive', async (req, res) => {
     let stdout = ''
     let stderr = ''
     let validationFailed = false
-    let validationErrors: string[] = []
+    const validationErrors: string[] = []
     let filesMoved = false
 
     // 원격 프로젝트인 경우 SSH를 통해 아카이브 실행
@@ -1592,7 +1592,7 @@ flowRouter.post('/changes/:id/fix-validation', async (req, res) => {
     const proposalPath = join(changeDir, 'proposal.md')
     let proposalFixed = false
     try {
-      let content = await fs.readFile(proposalPath, 'utf-8')
+      const content = await fs.readFile(proposalPath, 'utf-8')
       const lines = content.split('\n')
       const fixedLines = lines.map((line) => {
         if (line.match(/^[-*]\s+/) && !line.match(/\b(SHALL|MUST)\b/i)) {
@@ -1619,7 +1619,7 @@ flowRouter.post('/changes/:id/fix-validation', async (req, res) => {
         if (!entry.isDirectory()) continue
         const specPath = join(specsDir, entry.name, 'spec.md')
         try {
-          let content = await fs.readFile(specPath, 'utf-8')
+          const content = await fs.readFile(specPath, 'utf-8')
           const lines = content.split('\n')
           const fixedLines = lines.map((line) => {
             if (line.match(/^###\s+Requirement:/)) {

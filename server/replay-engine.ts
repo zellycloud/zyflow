@@ -164,7 +164,7 @@ export class ReplayEngine implements IReplayEngine {
 
     const db = getSqlite();
     let query = 'SELECT * FROM replay_sessions WHERE 1=1';
-    const params: any[] = [];
+    const params: (string | number)[] = [];
 
     if (filter) {
       if (filter.status) {
@@ -179,7 +179,7 @@ export class ReplayEngine implements IReplayEngine {
 
     query += ' ORDER BY createdAt DESC';
 
-    const rows = db.prepare(query).all(...params) as any[];
+    const rows = db.prepare(query).all(...params) as Record<string, unknown>[];
     return rows.map(row => this.deserializeSession(row));
   }
 
@@ -877,7 +877,7 @@ export class ReplayEngine implements IReplayEngine {
     
     const row = db.prepare(`
       SELECT * FROM rollback_points WHERE id = ?
-    `).get(rollbackPointId) as any;
+    `).get(rollbackPointId) as Record<string, unknown> | undefined;
     
     if (!row) {
       return null;

@@ -106,6 +106,7 @@ router.post('/global', async (req, res) => {
         const item = output[i]
         if (item.type === 'stdout') {
           // ANSI escape 코드 제거
+          // eslint-disable-next-line no-control-regex
           const text = item.content.replace(/\x1b\[[0-9;]*m/g, '')
           res.write(text)
         }

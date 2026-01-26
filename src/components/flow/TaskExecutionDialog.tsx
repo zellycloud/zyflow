@@ -133,7 +133,7 @@ export function TaskExecutionDialog({
           // v2: 자동 추천 계산
           const availableProviderIds = data
             .filter(p => p.enabled && p.available)
-            .map(p => p.id) as any[]
+            .map(p => p.id) as string[]
           const rec = getTaskRecommendation(taskTitle, undefined, availableProviderIds)
           setRecommendation(rec)
 
@@ -240,7 +240,7 @@ export function TaskExecutionDialog({
 
     if (executionMode === 'single') {
       await ai.execute({
-        provider: selectedProvider as any,
+        provider: selectedProvider,
         model: selectedModel,
         changeId,
         taskId,
@@ -264,7 +264,7 @@ export function TaskExecutionDialog({
         mode: 'single',
         strategy,
         maxAgents,
-        provider: swarmProvider as any,
+        provider: swarmProvider,
         model: swarmModel,
         consensus: consensusConfig,
       })

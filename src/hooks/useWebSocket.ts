@@ -45,7 +45,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
   // refs로 콜백을 저장하여 useEffect 재실행 방지
   const optionsRef = useRef({ autoReconnect, onEvent, onConnect, onDisconnect })
-  optionsRef.current = { autoReconnect, onEvent, onConnect, onDisconnect }
+  useEffect(() => {
+    optionsRef.current = { autoReconnect, onEvent, onConnect, onDisconnect }
+  })
 
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectAttemptsRef = useRef(0)
