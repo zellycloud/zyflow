@@ -125,6 +125,20 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
     // Column already exists
   }
 
+  // Migration: Add artifact_status column for OpenSpec 1.0 artifact caching (JSON)
+  try {
+    sqlite.exec(`ALTER TABLE changes ADD COLUMN artifact_status TEXT`);
+  } catch {
+    // Column already exists
+  }
+
+  // Migration: Add artifact_status_updated_at for cache invalidation
+  try {
+    sqlite.exec(`ALTER TABLE changes ADD COLUMN artifact_status_updated_at INTEGER`);
+  } catch {
+    // Column already exists
+  }
+
   // Migration: Convert changes table from single id PK to composite (id, project_id) PK
   try {
     // Check if current table has single id primary key

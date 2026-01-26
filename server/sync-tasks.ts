@@ -9,6 +9,7 @@ import { join } from 'path'
 import { parseTasksFile } from './parser.js'
 import { getSqlite } from './tasks/db/client.js'
 import { getActiveProject, getProjectById } from './config.js'
+import { getChangeStatus, isOpenSpecAvailable } from './cli-adapter/index.js'
 
 export interface SyncResult {
   tasksCreated: number
@@ -377,4 +378,115 @@ export async function syncRemoteChangeTasksForProject(
     .run(progress, now, changeId)
 
   return { tasksCreated, tasksUpdated }
+}
+
+/**
+ * OpenSpec 아티팩트 상태를 DB에 캐싱
+ * CLI 호출 비용을 줄이기 위해 상태를 DB에 저장
+ */
+export async function updateArtifactStatusCache(
+  changeId: string,
+  projectPath: string,
+  projectId: string
+): Promise<boolean> {
+  // OpenSpec CLI가 없으면 스킵
+  if (!(await isOpenSpecAvailable())) {
+    return false
+  }
+
+  try {
+    const result = await getChangeStatus({
+      change: changeId,
+      cwd: projectPath,
+    })
+
+    if (!result.success || !result.data) {
+      return false
+    }
+
+    const sqlite = getSqlite()
+    const now = Date.now()
+
+    // JSON으로 저장
+    const artifactStatus = JSON.stringify(result.data)
+
+    sqlite.prepare(`
+      UPDATE changes
+      SET artifact_status = ?, artifact_status_updated_at = ?, updated_at = ?
+      WHERE id = ? AND project_id = ?
+    `).run(artifactStatus, now, now, changeId, projectId)
+
+    return true
+  } catch (error) {
+    console.warn(`Failed to update artifact status cache for ${changeId}:`, error)
+    return false
+  }
+}
+
+/**
+ * 캐싱된 아티팩트 상태 조회
+ * 캐시가 없거나 만료된 경우 null 반환
+ *
+ * @param maxAgeMs - 캐시 최대 유효 시간 (기본값: 5분)
+ */
+export function getCachedArtifactStatus(
+  changeId: string,
+  projectId: string,
+  maxAgeMs: number = 5 * 60 * 1000
+): { artifacts: unknown[]; progress: unknown } | null {
+  const sqlite = getSqlite()
+
+  const row = sqlite.prepare(`
+    SELECT artifact_status, artifact_status_updated_at
+    FROM changes
+    WHERE id = ? AND project_id = ?
+  `).get(changeId, projectId) as {
+    artifact_status: string | null
+    artifact_status_updated_at: number | null
+  } | undefined
+
+  if (!row?.artifact_status || !row.artifact_status_updated_at) {
+    return null
+  }
+
+  // 캐시 만료 체크
+  const age = Date.now() - row.artifact_status_updated_at
+  if (age > maxAgeMs) {
+    return null
+  }
+
+  try {
+    return JSON.parse(row.artifact_status)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 모든 활성 Change의 아티팩트 상태 캐시 갱신
+ */
+export async function refreshAllArtifactStatusCache(
+  projectPath: string,
+  projectId: string
+): Promise<{ updated: number; failed: number }> {
+  const sqlite = getSqlite()
+
+  const activeChanges = sqlite.prepare(`
+    SELECT id FROM changes
+    WHERE project_id = ? AND status = 'active'
+  `).all(projectId) as Array<{ id: string }>
+
+  let updated = 0
+  let failed = 0
+
+  for (const change of activeChanges) {
+    const success = await updateArtifactStatusCache(change.id, projectPath, projectId)
+    if (success) {
+      updated++
+    } else {
+      failed++
+    }
+  }
+
+  return { updated, failed }
 }

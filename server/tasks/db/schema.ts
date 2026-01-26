@@ -76,6 +76,9 @@ export const changes = sqliteTable('changes', {
     enum: ['spec', 'changes', 'task', 'code', 'test', 'commit', 'docs']
   }).notNull().default('spec'),
   progress: integer('progress').notNull().default(0), // 0-100
+  // OpenSpec 1.0 아티팩트 상태 캐시 (JSON 형식)
+  artifactStatus: text('artifact_status'), // { artifacts: [...], progress: {...} }
+  artifactStatusUpdatedAt: integer('artifact_status_updated_at', { mode: 'timestamp' }),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });

@@ -23,6 +23,10 @@ import {
   type OpenSpecValidation,
   type OpenSpecInstructions,
 } from '../cli-adapter/index.js'
+import {
+  getCachedArtifactStatus,
+  updateArtifactStatusCache,
+} from '../sync-tasks.js'
 
 // Remote plugin is optional - only load if installed
 let remotePlugin: {
@@ -619,6 +623,25 @@ changesRouter.get('/:id/status', async (req, res) => {
     }
 
     const changeId = req.params.id
+    const forceRefresh = req.query.refresh === 'true'
+
+    // 캐시 우선 확인 (refresh 파라미터가 없는 경우)
+    if (!forceRefresh) {
+      const cached = getCachedArtifactStatus(changeId, project.id)
+      if (cached) {
+        return res.json({
+          success: true,
+          data: {
+            changeId,
+            artifacts: cached.artifacts || [],
+            progress: cached.progress || { completed: 0, total: 0, percentage: 0 },
+            cached: true,
+          },
+        })
+      }
+    }
+
+    // CLI로 상태 조회
     const result = await getChangeStatus({
       change: changeId,
       cwd: project.path,
@@ -632,12 +655,19 @@ changesRouter.get('/:id/status', async (req, res) => {
     }
 
     const status = result.data as OpenSpecStatus
+
+    // 캐시 업데이트 (비동기로 실행, 응답 지연 방지)
+    updateArtifactStatusCache(changeId, project.path, project.id).catch((err) => {
+      console.warn('Failed to update artifact status cache:', err)
+    })
+
     res.json({
       success: true,
       data: {
         changeId,
         artifacts: status?.artifacts || [],
         progress: status?.progress || { completed: 0, total: 0, percentage: 0 },
+        cached: false,
       },
     })
   } catch (error) {
