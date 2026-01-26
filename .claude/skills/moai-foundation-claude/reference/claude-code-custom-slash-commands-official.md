@@ -11,11 +11,13 @@ Custom slash commands are user-defined commands that extend Claude Code's functi
 ### Command Architecture
 
 Command Execution Flow:
+
 ```
 User Input → Command File → Parameter Parsing → Agent Delegation → Skill Execution
 ```
 
 Command Components:
+
 1. Command File: Markdown file with frontmatter and implementation
 2. Parameter System: Argument parsing and validation
 3. Agent Orchestration: Multi-agent workflow coordination
@@ -27,11 +29,13 @@ Command Components:
 ### Storage Locations
 
 Command Directory Priority:
+
 1. Personal Commands: `~/.claude/commands/` (highest priority)
 2. Project Commands: `.claude/commands/` (team-shared)
 3. Plugin Commands: Bundled with installed packages (lowest priority)
 
 Directory Structure:
+
 ```
 .claude/commands/
  category1/
@@ -42,34 +46,48 @@ Directory Structure:
  README.md # Command index and documentation
 ```
 
+### Command Naming Convention
+
+IMPORTANT: Command name is automatically derived from file path structure:
+
+- `.claude/commands/{namespace}/{command-name}.md` → `/{namespace}:{command-name}`
+- `.claude/commands/my-command.md` → `/my-command`
+- Example: `.claude/commands/moai/fix.md` → `/moai:fix`
+
+DO NOT include a `name` field in frontmatter - it is not officially supported.
+
 ### Command File Format
 
-Complete Command Template:
+Official Frontmatter Fields (per Claude Code documentation):
+
 ```markdown
 ---
-name: my-command
+description: Brief description of what the command does
+argument-hint: [action] [target] [options]
+allowed-tools: Bash, Read, Write
+model: haiku
+---
+```
+
+Supported Frontmatter Fields:
+
+- `description` - Command description shown in /help (recommended)
+- `argument-hint` - Argument syntax hint for autocomplete
+- `allowed-tools` - Tools this command can invoke
+- `model` - Override default model (haiku, sonnet, opus)
+- `hooks` - Hook definitions for command execution
+- `disable-model-invocation` - Prevent Skill tool invocation
+
+All frontmatter options are optional; commands work without frontmatter.
+
+Complete Command Template:
+
+````markdown
+---
 description: Brief description of what the command does and when to use it
-usage: |
- /my-command [argument] [options]
- Examples:
- /my-command create user --name="John Doe"
- /my-command validate @config.yaml
-parameters:
- - name: action
- description: Action to perform (create, update, delete, validate)
- required: true
- type: string
- values: [create, update, delete, validate]
- - name: target
- description: Target entity or file to operate on
- required: false
- type: string
- allowFileReference: true
- - name: options
- description: Additional command options
- required: false
- type: object
- default: {}
+argument-hint: [action] [target] [options]
+allowed-tools: Bash(git add:*), Bash(git status:*), Read, Write
+model: haiku
 ---
 
 # Command Implementation
@@ -83,6 +101,7 @@ Examples: 2-3 common usage patterns
 ## Implementation
 
 ### Phase 1: Input Validation
+
 ```bash
 # Validate required parameters
 if [ -z "$1" ]; then
@@ -91,8 +110,10 @@ if [ -z "$1" ]; then
  exit 1
 fi
 ```
+````
 
 ### Phase 2: Agent Delegation
+
 ```python
 # Delegate to appropriate agents
 action="$1"
@@ -117,6 +138,7 @@ esac
 ```
 
 ### Phase 3: Result Processing
+
 ```python
 # Process agent results and format output
 results = await Promise.all(agent_tasks)
@@ -128,7 +150,8 @@ formatted_output = format_command_output(results, action)
 echo "Command completed successfully"
 echo "Results: $formatted_output"
 ```
-```
+
+````
 
 ## Parameter System
 
@@ -145,9 +168,10 @@ parameters:
  pattern: "^[a-z][a-z0-9-]*$"
  minLength: 3
  maxLength: 50
-```
+````
 
 File Reference Parameters:
+
 ```yaml
 parameters:
  - name: config_file
@@ -161,6 +185,7 @@ parameters:
 ```
 
 Boolean Parameters:
+
 ```yaml
 parameters:
  - name: verbose
@@ -173,6 +198,7 @@ parameters:
 ```
 
 Choice Parameters:
+
 ```yaml
 parameters:
  - name: environment
@@ -184,6 +210,7 @@ parameters:
 ```
 
 Object Parameters:
+
 ```yaml
 parameters:
  - name: options
@@ -203,6 +230,7 @@ parameters:
 ### Parameter Access Patterns
 
 Positional Arguments:
+
 ```bash
 # $1, $2, $3... for positional arguments
 action="$1" # First argument
@@ -214,6 +242,7 @@ all_args="$ARGUMENTS"
 ```
 
 Named Arguments:
+
 ```bash
 # Parse named arguments using getopts
 while getopts ":f:t:v" opt; do
@@ -226,6 +255,7 @@ done
 ```
 
 File References:
+
 ```bash
 # File reference handling with @ prefix
 if [[ "$target" == @* ]]; then
@@ -244,6 +274,7 @@ fi
 ### Sequential Agent Workflow
 
 Linear Execution Pattern:
+
 ```python
 # Phase 1: Analysis
 analysis = Task(
@@ -254,7 +285,7 @@ analysis = Task(
 
 # Phase 2: Implementation (passes analysis results)
 implementation = Task(
- subagent_type="tdd-implementer",
+ subagent_type="ddd-implementer",
  prompt="Implement based on analysis",
  context={"analysis": analysis, "spec_id": analysis.spec_id}
 )
@@ -270,6 +301,7 @@ validation = Task(
 ### Parallel Agent Workflow
 
 Concurrent Execution Pattern:
+
 ```python
 # Independent parallel execution
 results = await Promise.all([
@@ -298,6 +330,7 @@ integration = Task(
 ### Conditional Agent Workflow
 
 Dynamic Agent Selection:
+
 ```python
 # Route based on analysis results
 if analysis.has_database_issues:
@@ -325,7 +358,8 @@ else:
 ### Simple Validation Command
 
 Configuration Validator:
-```markdown
+
+````markdown
 ---
 name: validate-config
 description: Validate configuration files against schema and best practices
@@ -350,11 +384,13 @@ parameters:
 # Configuration Validator
 
 ## Quick Reference
+
 Validates YAML/JSON configuration files against schemas and best practices.
 
 ## Implementation
 
 ### Input Processing
+
 ```bash
 config_file="$1"
 strict_mode="$2"
@@ -370,8 +406,10 @@ if [ ! -f "$config_file" ]; then
  exit 1
 fi
 ```
+````
 
 ### Validation Execution
+
 ```python
 # Determine validation strategy
 if [[ "$config_file" == *.yaml ]] || [[ "$config_file" == *.yml ]]; then
@@ -395,7 +433,8 @@ Task(
  }
 )
 ```
-```
+
+````
 
 ### Complex Multi-Phase Command
 
@@ -430,7 +469,7 @@ parameters:
 # Feature Implementation Workflow
 
 ## Quick Reference
-Complete TDD-based feature implementation from specification to deployment.
+Complete DDD-based feature implementation from specification to deployment.
 
 ## Implementation
 
@@ -448,9 +487,10 @@ spec_result = Task(
 
 spec_id = spec_result.spec_id
 echo "Specification created: $spec_id"
-```
+````
 
 ### Phase 2: Implementation Planning
+
 ```python
 # Plan implementation approach
 plan_result = Task(
@@ -464,6 +504,7 @@ plan_result = Task(
 ```
 
 ### Phase 3: Test Implementation (if not skipped)
+
 ```python
 if [ "$2" != "--skip-tests" ]; then
  # RED phase: Write failing tests
@@ -476,10 +517,11 @@ fi
 ```
 
 ### Phase 4: Feature Implementation
+
 ```python
-# GREEN phase: Implement feature
+# IMPROVE phase: Implement feature
 implementation_result = Task(
- subagent_type="tdd-implementer",
+ subagent_type="ddd-implementer",
  prompt="Implement feature for $spec_id",
  context={
  "spec_id": spec_id,
@@ -489,6 +531,7 @@ implementation_result = Task(
 ```
 
 ### Phase 5: Quality Assurance
+
 ```python
 # REFACTOR and validation
 quality_result = Task(
@@ -502,6 +545,7 @@ quality_result = Task(
 ```
 
 ### Phase 6: Documentation
+
 ```python
 # Generate documentation
 docs_result = Task(
@@ -512,6 +556,7 @@ docs_result = Task(
 ```
 
 ### Results Summary
+
 ```python
 echo "Feature implementation completed!"
 echo "Specification: $spec_id"
@@ -519,7 +564,8 @@ echo "Implementation: $(echo $implementation_result | jq .status)"
 echo "Quality Score: $(echo $quality_result | jq .score)"
 echo "Documentation: $(echo $docs_result | jq .generated_files)"
 ```
-```
+
+````
 
 ### Integration Command
 
@@ -574,9 +620,10 @@ security_result = Task(
  prompt="Perform security pre-deployment check",
  context={"environment": "$1"}
 )
-```
+````
 
 ### Testing Phase
+
 ```python
 if [ "$2" != "--skip-tests" ]; then
  # Run comprehensive test suite
@@ -589,6 +636,7 @@ fi
 ```
 
 ### Deployment Execution
+
 ```python
 if [ "$3" != "--dry-run" ]; then
  # Actual deployment
@@ -607,6 +655,7 @@ fi
 ```
 
 ### Post-Deployment Validation
+
 ```python
 # Health check and validation
 health_result = Task(
@@ -626,7 +675,8 @@ report_result = Task(
  }
 )
 ```
-```
+
+````
 
 ## Command Distribution and Sharing
 
@@ -641,9 +691,10 @@ git commit -m "Add custom commands for team workflow"
 # Team members clone and update
 git pull origin main
 claude commands reload
-```
+````
 
 Package Distribution:
+
 ```bash
 # Create command package
 claude commands package --name "team-workflows" --version "1.0.0"
@@ -655,22 +706,26 @@ claude commands install team-workflows@1.0.0
 ### Command Documentation
 
 Command Index Generation:
+
 ```markdown
 # .claude/commands/README.md
 
 ## Team Command Library
 
 ### Development Commands
+
 - `/implement-feature` - Complete feature implementation workflow
 - `/validate-config` - Configuration file validation
 - `/create-component` - Component scaffolding and setup
 
 ### Deployment Commands
+
 - `/deploy` - Safe deployment with rollback
 - `/rollback` - Emergency rollback procedure
 - `/health-check` - System health validation
 
 ### Analysis Commands
+
 - `/analyze-performance` - Performance bottleneck analysis
 - `/security-audit` - Security vulnerability assessment
 - `/code-review` - Automated code review
@@ -681,18 +736,21 @@ Command Index Generation:
 ### Command Design
 
 Naming Conventions:
+
 - Use kebab-case for command names: `implement-feature`, `validate-config`
 - Keep names descriptive and action-oriented
 - Avoid abbreviations and jargon
 - Use consistent prefixes for related commands
 
 Parameter Design:
+
 - Required parameters come first
 - Use descriptive parameter names
 - Provide clear validation and error messages
 - Support common patterns (file references, boolean flags)
 
 Error Handling:
+
 - Validate all inputs before processing
 - Provide helpful error messages with suggestions
 - Implement graceful degradation
@@ -701,12 +759,14 @@ Error Handling:
 ### Performance Optimization
 
 Efficient Agent Usage:
+
 - Batch related operations in single agent calls
 - Use parallel execution for independent tasks
 - Cache results when appropriate
 - Minimize context passing between agents
 
 User Experience:
+
 - Provide progress feedback for long-running commands
 - Use clear, consistent output formatting
 - Support interactive confirmation for critical operations
@@ -715,12 +775,14 @@ User Experience:
 ### Security Considerations
 
 Security Best Practices:
+
 - Validate all file paths and inputs
 - Implement principle of least privilege
 - Never expose sensitive credentials in command output
 - Use secure parameter handling for passwords and tokens
 
 Audit and Logging:
+
 - Log all command executions with parameters
 - Track success/failure rates
 - Monitor for unusual usage patterns

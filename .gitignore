@@ -241,3 +241,20 @@ Thumbs.db
 # SonarQube
 .scannerwork/
 sonar-project.properties
+# Python Cache & Bytecode
+# Private keys (specific patterns to avoid false positives)
+.turbo/
+# Version: 0.33.0
+# Claude Code Configuration
+# Credential patterns in environment files
+# Secrets and Credentials (CRITICAL)
+.nuxt/
+# Build Tools & Frameworks
+dist-ssr/
+# Updated: 2026-01-10
+# ===========================================
+.claude/plans/
+# Deployment & CI/CD
+# Environment files
+# Skill-specific credentials
+# Build Artifacts & Distribution

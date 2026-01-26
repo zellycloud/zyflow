@@ -1,8 +1,8 @@
 ---
-name: moai:1-plan
 description: "Define specifications and create development branch or worktree"
 argument-hint: Title 1 Title 2 ... | SPEC-ID modifications [--worktree | --branch]
-allowed-tools: Task, AskUserQuestion, TodoWrite, Glob
+type: workflow
+allowed-tools: Task, AskUserQuestion, TodoWrite, Bash, Read, Write, Edit, Glob, Grep
 model: inherit
 ---
 
@@ -28,6 +28,18 @@ model: inherit
 
 User Interaction Architecture: AskUserQuestion must be used at COMMAND level only. Subagents invoked via Task() operate in isolated, stateless contexts and cannot interact with users. Collect all user input BEFORE delegating to agents.
 
+[HARD] AskUserQuestion Mandatory Usage:
+
+Requirement: All user decisions MUST be collected via AskUserQuestion tool before proceeding
+WHY: Ensures explicit user consent and prevents unintended actions
+IMPACT: Skipping AskUserQuestion causes unpredictable behavior and user confusion
+
+Mandatory Decision Points:
+
+1. SPEC Creation Approval: Ask before creating SPEC files (Step 1B.2)
+2. Development Environment Selection: Ask for worktree/branch/current choice (Step 2.2)
+3. Next Action Selection: Ask after SPEC creation completes (Final Step)
+
 Batched Design: All AskUserQuestion calls follow batched design principles (1-4 questions per call, max 4 options per question) to minimize user interaction turns. See CLAUDE.md section "User Interaction Architecture" for details.
 
 4-Step Workflow Integration: This command implements Steps 1-2 of Alfred's workflow (Intent Understanding → Plan Creation). See CLAUDE.md for full workflow details.
@@ -41,40 +53,25 @@ Plan for: $ARGUMENTS
 ### Usage Scenarios (3 Execution Patterns)
 
 Scenario 1: SPEC Only (Default)
+
 - Command: /moai:1-plan "User authentication system"
 - Creates SPEC documents only
 - Follows existing branch creation logic
 
 Scenario 2: SPEC + Branch (Legacy)
+
 - Command: /moai:1-plan "User authentication system" --branch
 - Creates SPEC documents plus Git branch
 - Traditional feature branch workflow
 
 Scenario 3: SPEC + Worktree (NEW)
+
 - Command: /moai:1-plan "User authentication system" --worktree
 - Creates SPEC documents plus Git worktree
 - Isolated development environment for parallel SPEC work
 - Displays guidance messages for worktree navigation
 
 Flag Priority: --worktree takes precedence over --branch, which takes precedence over default (SPEC only)
-
-## CodeRabbit AI Integration (Local Only)
-
-This local environment includes CodeRabbit AI review integration for SPEC documents:
-
-Automatic workflows:
-
-- SPEC review: CodeRabbit analyzes SPEC metadata and EARS structure
-- GitHub Issue sync: SPEC files automatically create and update GitHub Issues
-- Auto-approval: Draft PRs are approved when quality meets standards (80%+)
-- SPEC quality validation: Checklist for metadata, structure, and content
-
-Scope:
-
-- Local environment: Full CodeRabbit integration with auto-approval
-- Published packages: Users get GitHub Issue sync only (no CodeRabbit)
-
-> See `.coderabbit.yaml` for detailed review rules and SPEC validation checklist
 
 ---
 
@@ -112,6 +109,13 @@ Phase 1B: Specialized Analysis
 
 ## Agent Invocation Patterns (CLAUDE.md Compliance)
 
+[HARD] AGENT DELEGATION MANDATE:
+
+- ALL planning tasks MUST be delegated to specialized agents (Explore, manager-spec, manager-git)
+- NEVER execute planning or SPEC creation directly, even after auto compact
+- WHY: Specialized agents have domain expertise for EARS format, Git workflow, and codebase analysis
+- This rule applies regardless of session state or context recovery
+
 This command uses agent execution patterns defined in CLAUDE.md (lines 96-120).
 
 ### Sequential Phase-Based Chaining PASS
@@ -119,6 +123,7 @@ This command uses agent execution patterns defined in CLAUDE.md (lines 96-120).
 Command implements sequential chaining through 4 distinct phases:
 
 Phase Flow:
+
 - Phase 1A (Optional): Project Exploration via Explore subagent
 - Phase 1B (Required): SPEC Planning via manager-spec subagent
 - Phase 2: SPEC Document Creation via manager-spec subagent
@@ -127,6 +132,7 @@ Phase Flow:
 Each phase receives context and outputs from previous phases.
 
 WHY: Sequential execution ensures proper dependency management
+
 - Phase 1B needs exploration results from 1A (if applicable)
 - Phase 2 requires approved plan from Phase 1B
 - Phase 3 depends on created SPEC files from Phase 2
@@ -138,6 +144,7 @@ IMPACT: Skipping phases or parallel execution would violate dependencies and cre
 Not applicable - phases have explicit dependencies
 
 WHY: Each phase depends on outputs from previous phase
+
 - Cannot create SPEC documents before plan approval
 - Cannot create git branch before SPEC files exist
 
@@ -148,6 +155,7 @@ IMPACT: Parallel execution would cause file system inconsistencies and incomplet
 Command supports resume pattern for draft SPECs:
 
 Resume Command:
+
 - `/moai:1-plan resume SPEC-XXX`
 - Continues from last saved draft state
 - Preserves user input and planning context
@@ -166,6 +174,7 @@ Refer to CLAUDE.md "Agent Chaining Patterns" (lines 96-120) for complete pattern
 /moai:1-plan performs SPEC planning through complete agent delegation:
 
 Execution Flow:
+
 - User Command: /moai:1-plan "description"
 - /moai:1-plan Command delegates to Task with subagent_type set to Explore or manager-spec
   - Phase 1A (Optional): Project Exploration
@@ -174,46 +183,15 @@ Execution Flow:
   - Phase 3: Git Branch and PR Setup
 - Output: SPEC documents plus branch (conditional) plus next steps
 
-### Key Principle: Zero Direct Tool Usage
+### Tool Usage Guidelines
 
-[HARD] Complete Delegation Model:
+This command has access to all tools for flexibility:
 
-This command uses ONLY Task() and AskUserQuestion():
-WHY: Specialized agents encapsulate domain logic and ensure quality control
-IMPACT: Direct tool usage bypasses expert review and quality gates
+- Task() for agent orchestration (recommended for complex tasks)
+- AskUserQuestion() for user interaction at command level
+- Read, Write, Edit, Bash, Glob, Grep for direct operations when needed
 
-[HARD] AskUserQuestion at Command Level Only:
-WHY: Subagents via Task() are stateless and cannot interact with users
-IMPACT: Expecting agents to use AskUserQuestion causes workflow failures
-Correct Pattern: Command collects user input, passes choices to Task() as parameters
-
-Requirement: All file operations delegated to agents
-- No Read (file operations delegated)
-  WHY: Agents handle context-aware file discovery
-  IMPACT: Direct read loses architectural context
-
-- No Write (file operations delegated)
-  WHY: Agents implement validation before file creation
-  IMPACT: Direct write skips quality checks
-
-- No Edit (file operations delegated)
-  WHY: Agents coordinate multi-file updates atomically
-  IMPACT: Direct edit risks partial updates
-
-- No Bash (all bash commands delegated)
-  WHY: Agents handle error recovery and state consistency
-  IMPACT: Direct bash loses error handling context
-
-Required Tool Usage:
-- Task() for agent orchestration
-  WHY: Task ensures structured agent coordination
-  IMPACT: Uncoordinated agent calls produce inconsistent results
-
-- AskUserQuestion() for user interaction
-  WHY: Structured questions ensure consistent user experience
-  IMPACT: Informal interaction produces ambiguous responses
-
-All complexity is handled by specialized agents, not by direct command execution.
+Agent delegation is recommended for complex tasks that benefit from specialized expertise. Direct tool usage is permitted when appropriate for simpler operations.
 
 ---
 
@@ -223,7 +201,7 @@ This command implements the first 2 steps of Alfred's 4-step workflow:
 
 1. STEP 1: Intent Understanding (Clarify user requirements)
 2. STEP 2: Plan Creation (Create execution strategy with agent delegation)
-3. STEP 3: Task Execution (Execute via manager-tdd - NOT in this command)
+3. STEP 3: Task Execution (Execute via manager-ddd - NOT in this command)
 4. STEP 4: Report & Commit (Documentation and git operations - NOT in this command)
 
 Command Scope: Only executes Steps 1-2. Steps 3-4 are executed by `/moai:2-run` and `/moai:3-sync`.
@@ -249,24 +227,28 @@ PHASE 1 consists of two independent sub-phases to provide flexible workflow base
 PHASE 1 Structure:
 
 Phase A (OPTIONAL) - Explore Agent:
+
 - Find relevant files by keywords
 - Locate existing SPEC documents
 - Identify implementation patterns
 - Output: Exploration results passed to Phase B
 
 Phase B (REQUIRED) - manager-spec Agent:
+
 - Analyze project documents
 - Propose SPEC candidates
 - Design EARS structure
 - Request user approval
 
 After Phase B: Progress Report and User Confirmation
+
 - Display analysis results and plan summary
 - Show next steps and deliverables
 - Request final user approval
 - Proceed to PHASE 2
 
 Key Points:
+
 - Phase A is optional - Skip if user provides clear SPEC title
 - Phase B is required - Always runs to analyze project and create SPEC
 
@@ -337,6 +319,10 @@ Decision Logic: If user provided clear SPEC title (like "Add authentication modu
 
 #### Step 1B.1: Invoke manager-spec for project analysis
 
+[SOFT] Apply --ultrathink keyword for deep architectural analysis
+WHY: SPEC planning requires careful consideration of domain classification, technical constraints, and dependency analysis
+IMPACT: Sequential thinking ensures comprehensive requirement analysis and proper EARS structure design
+
 Use the manager-spec subagent to:
 
 Analyze project and create SPEC plan for: $ARGUMENTS
@@ -363,13 +349,11 @@ Task Instructions:
 PHASE 1B.1: Project Analysis and SPEC Discovery
 
 1. Document Analysis: Scan for existing documentation and patterns
-
    - Product document: Find relevant files
    - Structure document: Identify architectural patterns
    - Tech document: Discover technical constraints
 
 2. SPEC Candidate Generation: Create 1-3 SPEC candidates
-
    - Analyze existing SPECs in `.moai/specs/` for duplicates
    - Check related GitHub issues via appropriate tools
    - Generate unique SPEC candidates with proper naming
@@ -439,23 +423,27 @@ Display detailed progress report to user and get final approval:
 Progress Report for PHASE 1 Completion:
 
 Completed Items:
+
 - Project document analysis completed
 - Existing SPEC scan completed
 - SPEC candidate generation completed
 - Technical constraint analysis completed
 
 Plan Summary:
+
 - Selected SPEC: [SPEC ID] - [SPEC Title]
 - Priority: [Priority value]
 - Main technology stack: [Technology Stack]
 
 Next Phase Plan (PHASE 2):
+
 - spec.md creation: Core specifications with EARS structure
 - plan.md creation: Detailed implementation plan
 - acceptance.md creation: Acceptance criteria and scenarios
 - Directory: .moai/specs/SPEC-[ID]/
 
 Important Notes:
+
 - Existing files may be overwritten
 - Dependencies: [Dependencies list]
 - Resource requirements: [Resource Requirements]
@@ -512,6 +500,199 @@ IF user selected "Cancel":
 
 ---
 
+## PHASE 1.5: Pre-Creation Validation Gate (NEW)
+
+This phase executes BEFORE PHASE 2 to prevent common SPEC creation errors.
+
+### Step 1.5.1: SPEC Type Classification
+
+Before creating any document, classify the requested content type:
+
+[HARD] Document Type Classification Requirement:
+
+Requirement: Determine if the request is for a SPEC, Report, or Documentation
+WHY: Misclassified documents cause organizational chaos and discovery failures
+IMPACT: Reports in SPEC directories break automated SPEC scanning and workflow integration
+
+Classification Algorithm:
+
+Step 1: Detect Keywords in User Request
+
+Report Keywords (route to .moai/reports/):
+
+- "report", "analysis", "assessment", "audit", "review", "evaluation"
+- "retrospective", "post-mortem", "findings", "recommendations"
+- "summary", "overview", "status", "progress"
+- Korean: "보고서", "분석", "평가", "리뷰", "검토", "요약", "현황"
+- Japanese: "レポート", "分析", "評価", "レビュー", "概要"
+
+SPEC Keywords (route to .moai/specs/):
+
+- "feature", "requirement", "implementation", "functionality"
+- "user story", "acceptance criteria", "EARS", "specification"
+- "add", "create", "implement", "build", "develop"
+- Korean: "기능", "요구사항", "구현", "스펙", "개발"
+- Japanese: "機能", "要件", "実装", "スペック", "開発"
+
+Documentation Keywords (route to .moai/docs/):
+
+- "documentation", "guide", "manual", "reference", "tutorial"
+- "README", "API docs", "changelog"
+- Korean: "문서", "가이드", "매뉴얼", "참조"
+- Japanese: "ドキュメント", "ガイド", "マニュアル"
+
+Step 2: Apply Classification Rules
+
+IF report_keywords detected AND NOT spec_keywords:
+
+- Route to: `.moai/reports/{REPORT-TYPE}/`
+- Example: `.moai/reports/security-audit-2025-01/`
+- DO NOT create in .moai/specs/
+
+ELSE IF documentation_keywords detected AND NOT spec_keywords:
+
+- Route to: `.moai/docs/`
+- Example: `.moai/docs/api-reference.md`
+- DO NOT create in .moai/specs/
+
+ELSE:
+
+- Route to: `.moai/specs/SPEC-{DOMAIN}-{NUMBER}/`
+- Continue to Step 1.5.2
+
+### Step 1.5.2: Pre-Creation Validation Checklist
+
+[HARD] Pre-Creation Validation Requirement:
+
+Before creating ANY SPEC directory or file, complete ALL of these checks:
+
+Check 1: ID Format Validation
+
+- Pattern: `SPEC-{DOMAIN}-{NUMBER}`
+- DOMAIN: Uppercase letters only (AUTH, API, UI, DB, etc.)
+- NUMBER: 3-digit zero-padded number (001, 002, etc.)
+- Valid: `SPEC-AUTH-001`, `SPEC-API-002`, `SPEC-UI-003`
+- Invalid: `SPEC-001`, `AUTH-001`, `SPEC-auth-001`, `SPEC-AUTH-1`
+- WHY: Consistent format enables automated scanning and sorting
+- IMPACT: Invalid format breaks tooling and discovery
+
+Check 2: Domain Name Validation
+
+- Use ONLY domains from the Allowed Domain Names list (Step 1.5.3)
+- Maximum 2 domains in composite names (e.g., `UPDATE-REFACTOR`)
+- WHY: Standardized domains enable cross-project consistency
+- IMPACT: Random domains cause categorization failures
+
+Check 3: ID Uniqueness Verification
+
+- Execute: `find .moai/specs -name "SPEC-{DOMAIN}-{NUMBER}" -type d`
+- If found: Increment number (001 → 002) or modify domain
+- WHY: Duplicate IDs cause version conflicts
+- IMPACT: Duplicate SPECs create implementation ambiguity
+
+Check 4: Directory Structure Enforcement
+
+- MUST create directory: `.moai/specs/SPEC-{DOMAIN}-{NUMBER}/`
+- MUST create all 3 files: `spec.md`, `plan.md`, `acceptance.md`
+- NEVER create flat files like `.moai/specs/SPEC-AUTH-001.md`
+- WHY: Directory structure enables multi-file organization
+- IMPACT: Flat files break SPEC discovery and metadata storage
+
+Validation Output:
+
+- all_checks_passed: Boolean (true only if ALL 4 checks pass)
+- failed_checks: Array of check numbers that failed
+- recommendation: Action to resolve failures
+
+### Step 1.5.3: Allowed Domain Names
+
+[HARD] Domain Name Restriction:
+
+SPEC domains MUST be selected from this approved list. Custom domains require justification.
+
+Authentication & Authorization:
+
+- AUTH: User authentication (login, logout, session)
+- AUTHZ: Authorization and permissions
+- SSO: Single sign-on integration
+- MFA: Multi-factor authentication
+
+API & Backend:
+
+- API: REST/GraphQL endpoints
+- BACKEND: Server-side logic
+- SERVICE: Microservice implementation
+- WEBHOOK: Webhook handlers
+
+Frontend & UI:
+
+- UI: User interface components
+- FRONTEND: Client-side logic
+- COMPONENT: Reusable UI components
+- PAGE: Page-level features
+
+Data & Database:
+
+- DB: Database schema changes
+- DATA: Data processing
+- MIGRATION: Schema migrations
+- CACHE: Caching implementation
+
+Infrastructure & DevOps:
+
+- INFRA: Infrastructure changes
+- DEVOPS: CI/CD and deployment
+- MONITOR: Monitoring and logging
+- SECURITY: Security improvements
+
+General Development:
+
+- REFACTOR: Code refactoring
+- FIX: Bug fixes
+- UPDATE: Feature updates
+- PERF: Performance optimization
+- TEST: Test infrastructure
+- DOCS: Documentation improvements
+
+Composite Domain Rules:
+
+- [SOFT] Maximum 2 domains recommended: `UPDATE-REFACTOR-001`
+- [HARD] Maximum 3 domains allowed: `UPDATE-REFACTOR-FIX-001`
+- WHY: Excessive domains indicate scope creep
+- IMPACT: Complex domains signal SPECs that should be split
+
+### Step 1.5.4: Validation Failure Responses
+
+[HARD] Error Response Requirement:
+
+When validation fails, provide specific error messages and remediation:
+
+Error Type 1: Invalid ID Format
+
+- Message: "SPEC ID format invalid: '{provided_id}'"
+- Expected: "SPEC-{DOMAIN}-{NUMBER} (e.g., SPEC-AUTH-001)"
+- Action: "Correct the ID format before proceeding"
+
+Error Type 2: Invalid Domain Name
+
+- Message: "Domain '{domain}' not in allowed list"
+- Suggestion: "Use one of: AUTH, API, UI, DB, REFACTOR, FIX, UPDATE, ..."
+- Action: "Select an approved domain or provide justification for custom domain"
+
+Error Type 3: Duplicate SPEC ID
+
+- Message: "SPEC ID '{id}' already exists at: {path}"
+- Suggestion: "Use '{next_available_id}' instead"
+- Action: "Choose unique ID or update existing SPEC"
+
+Error Type 4: Flat File Attempt
+
+- Message: "Cannot create flat SPEC file: '{path}'"
+- Expected: "Directory structure: .moai/specs/SPEC-{ID}/"
+- Action: "Create directory with spec.md, plan.md, acceptance.md"
+
+---
+
 ## PHASE 2: SPEC Document Creation (STEP 2 - After Approval)
 
 This phase ONLY executes IF the user selected "Proceed" in Step 3.5.
@@ -543,7 +724,8 @@ Examples of Incorrect Formats to Avoid:
 This command has a selective exception allowing direct Glob tool usage for SPEC ID uniqueness verification.
 
 Usage Pattern:
-- Use Glob(".moai/specs/**/SPEC-*.md") to check existing SPEC list directly
+
+- Use Glob(".moai/specs/\*_/SPEC-_.md") to check existing SPEC list directly
 - Verify new SPEC ID does not conflict with existing ones
 - After validation, delegate to manager-spec agent for SPEC creation
 
@@ -624,8 +806,8 @@ SPEC Document Creation (Step-by-Step):
 Step 1: Verify SPEC ID Format
 
 - Format: SPEC-{DOMAIN}-{NUMBER}
-- Examples:  SPEC-AUTH-001, SPEC-REFACTOR-001, SPEC-UPDATE-REFACTOR-001
-- Wrong:  AUTH-001, SPEC-001-auth, SPEC-AUTH-001-jwt
+- Examples: SPEC-AUTH-001, SPEC-REFACTOR-001, SPEC-UPDATE-REFACTOR-001
+- Wrong: AUTH-001, SPEC-001-auth, SPEC-AUTH-001-jwt
 
 Step 2: Verify ID Uniqueness
 
@@ -724,11 +906,13 @@ MANDATORY: Read configuration BEFORE any git operations
 Execute configuration validation following this decision process:
 
 Step 1A - Read Configuration:
+
 - Read the configuration file from .moai/config/config.yaml
 - Extract git_mode value from git_strategy.mode (expected values: "personal" or "team")
 - Extract spec_workflow value from github.spec_git_workflow (this is required)
 
 Step 1B - Validate spec_git_workflow Value:
+
 - Check if spec_workflow is one of the valid values: "develop_direct", "feature_branch", or "per_spec"
 - If spec_workflow is not one of these valid values:
   - Report error indicating the invalid spec_git_workflow value
@@ -737,6 +921,7 @@ Step 1B - Validate spec_git_workflow Value:
   - Abort all git operations
 
 Step 1C - Validate Configuration Consistency:
+
 - If git_mode equals "personal" and spec_workflow equals "develop_direct":
   - Configuration is consistent, proceed normally
 - If git_mode equals "personal" and spec_workflow equals "feature_branch" or "per_spec":
@@ -749,16 +934,19 @@ Step 1C - Validate Configuration Consistency:
   - Abort all git operations
 
 Step 1D - Log Configuration Status:
+
 - Log the final git configuration showing mode and spec_workflow values
 
 Configuration Validation Decision Logic:
 
 If git_mode equals "personal":
+
 - If spec_workflow equals "develop_direct": PHASE 3 SKIPPED (ROUTE A)
 - If spec_workflow equals "feature_branch": PHASE 3 EXECUTES (ROUTE B)
 - If spec_workflow equals "per_spec": PHASE 3 WITH USER ASK (ROUTE C)
 
 If git_mode equals "team":
+
 - spec_workflow value is ignored: PHASE 3 EXECUTES (ROUTE D - Team Mode)
 
 ---
@@ -772,10 +960,12 @@ All modes use common `branch_creation.prompt_always` configuration
 Based on config git_strategy.branch_creation.prompt_always:
 
 Step 2.1: Read branch creation configuration
+
 - Read prompt_always from git_strategy.branch_creation.prompt_always
 - Default value is true if not specified
 
 Decision Logic:
+
 - If prompt_always equals true: ACTION is ASK_USER_FOR_BRANCH_CREATION
 - If prompt_always equals false:
   - If git_mode equals "manual": ACTION is SKIP_BRANCH_CREATION
@@ -792,12 +982,14 @@ ACTION: Ask user for branch/worktree creation preference
 **Step 1: Check auto_branch configuration**
 
 Read configuration value from config.yaml:
+
 - Path: git_strategy.automation.auto_branch
 - Default: true
 
 **Step 2: Early exit if auto_branch is disabled**
 
 If auto_branch equals false:
+
 - Set ROUTE to USE_CURRENT_BRANCH
 - Skip to Step 2.4 immediately
 - Do NOT ask user any questions
@@ -805,6 +997,7 @@ If auto_branch equals false:
 **Step 3: Ask user if auto_branch is enabled**
 
 Use AskUserQuestion tool with the following parameters:
+
 - Question: "Create a development environment for this SPEC?"
 - Header: "Development Environment"
 - MultiSelect: false
@@ -816,6 +1009,7 @@ Use AskUserQuestion tool with the following parameters:
 **Step 4: Determine route based on user choice**
 
 Based on user selection:
+
 - If "Create Worktree" selected: Set ROUTE to CREATE_WORKTREE
 - If "Create Branch" selected: Set ROUTE to CREATE_BRANCH
 - If "Use current branch" selected: Set ROUTE to USE_CURRENT_BRANCH
@@ -827,6 +1021,7 @@ Next Step: Go to Step 2.5 (worktree), 2.3 (branch), or 2.4 (current) based on ro
 #### Step 2.3: Create Feature Branch (After User Choice OR Auto-Creation)
 
 CONDITION:
+
 - User selected "Create Branch"
 - OR (`prompt_always: false` AND git_mode in [personal, team])
 - AND `git_strategy.automation.auto_branch == true`
@@ -874,10 +1069,11 @@ CONDITION: User selected "Use current branch" OR (`prompt_always: false` AND git
 ACTION: Skip branch creation, continue with current branch
 
 Branch creation skipped:
+
 - SPEC files created on current branch
 - NO manager-git agent invoked
 - Ready for /moai:2-run implementation
-- Commits will be made directly to current branch during TDD cycle
+- Commits will be made directly to current branch during DDD cycle
 
 ---
 
@@ -887,47 +1083,75 @@ CONDITION: `--worktree` flag is provided in user command
 
 ACTION: Create Git worktree using WorktreeManager
 
+[HARD] SPEC Commit Before Worktree Creation:
+
+Requirement: When --worktree flag is provided, SPEC files MUST be committed before worktree creation
+WHY: Worktree is created from the current commit; uncommitted SPEC files won't exist in the worktree
+IMPACT: Uncommitted SPECs cause missing files in worktree and inconsistent state
+
 Step 2.5A - Parse Command Arguments:
+
 - Parse the command arguments from ARGUMENTS variable
 - Check if --worktree flag is present in the arguments
 - Check if --branch flag is present in the arguments
 
-Step 2.5B - Worktree Creation (when --worktree flag is present):
+Step 2.5B - MANDATORY SPEC Commit (when --worktree flag is present):
+
+Before worktree creation, commit SPEC files:
+
+1. Stage SPEC files: `git add .moai/specs/SPEC-{SPEC_ID}/`
+2. Create commit with message: `feat(spec): Add SPEC-{SPEC_ID} - {title}`
+3. Verify commit was successful before proceeding
+4. If commit fails, abort worktree creation and report error
+
+Step 2.5C - Worktree Creation (after SPEC commit):
+
 - Determine project root as the current working directory
 - Set worktree root to the user home directory under worktrees/MoAI-ADK
 - Initialize the WorktreeManager with project root and worktree root paths
 - Create worktree for the SPEC with the following parameters:
   - spec_id: The generated SPEC ID (e.g., SPEC-AUTH-001)
   - branch_name: Feature branch name in format feature/SPEC-{ID}
-  - base_branch: main
+  - base_branch: main (or current branch with SPEC commit)
 
-Step 2.5C - Success Output:
-- Display confirmation that SPEC was created with the SPEC ID
+Step 2.5D - Success Output:
+
+- Display confirmation that SPEC was created and committed with the SPEC ID
 - Display the worktree path that was created
 - Provide next steps guidance:
   - Option 1: Switch to worktree using moai-worktree switch command
   - Option 2: Use shell eval with moai-worktree go command
   - Option 3: Run /moai:2-run with the SPEC ID
 
-Step 2.5D - Error Handling:
-- If worktree creation fails:
+Step 2.5E - Error Handling:
+
+- If SPEC commit fails:
   - Display error message with the failure reason
-  - Confirm that the SPEC was still created successfully
+  - Abort worktree creation (do NOT create worktree with uncommitted SPEC)
+  - Suggest manual commit: `git add .moai/specs/SPEC-{ID}/ && git commit -m "feat(spec): Add SPEC-{ID}"`
+  - After manual commit, retry worktree creation
+
+- If worktree creation fails (after successful SPEC commit):
+  - Display error message with the failure reason
+  - Confirm that the SPEC was committed successfully
   - Provide manual worktree creation command as fallback
 
 Expected Success Outcome:
 
 - SPEC created: SPEC-AUTH-001
+- SPEC committed: `feat(spec): Add SPEC-AUTH-001 - {title}`
 - Worktree created: ~/worktrees/MoAI-ADK/SPEC-AUTH-001
 
 Next steps:
+
 1. Switch to worktree: moai-worktree switch SPEC-AUTH-001
 2. Or use shell eval: eval $(moai-worktree go SPEC-AUTH-001)
 3. Then run: /moai:2-run SPEC-AUTH-001
 
 Error Handling:
 
-- If worktree creation fails: SPEC is still created, show manual worktree creation instructions
+- If SPEC commit fails: Abort worktree creation, show manual commit instructions
+- If worktree creation fails: SPEC is committed, show manual worktree creation instructions
 - If worktree already exists: Show switch instructions
 - If WorktreeManager not available: Show installation/dependency instructions
 
@@ -1024,7 +1248,7 @@ Display status based on configuration and execution result:
 1.  Review SPEC in `.moai/specs/SPEC-{SPEC_ID}/`
 2.  Execute `/moai:2-run SPEC-{SPEC_ID}` to begin implementation
 3.  All commits will be made directly to current branch
-4.  Follow TDD: RED → GREEN → REFACTOR cycles
+4.  Follow DDD: ANALYZE → PRESERVE → IMPROVE cycles
 ```
 
 ---
@@ -1047,7 +1271,7 @@ Display status based on configuration and execution result:
 1.  Review SPEC in `.moai/specs/SPEC-{SPEC_ID}/`
 2.  Execute `/moai:2-run SPEC-{SPEC_ID}` to begin implementation
 3.  Make commits directly to current branch
-4.  Follow TDD: RED → GREEN → REFACTOR cycles
+4.  Follow DDD: ANALYZE → PRESERVE → IMPROVE cycles
 ```
 
 ---
@@ -1082,7 +1306,7 @@ Would you like to enable automatic branch creation for future SPEC creations?
 1.  Review SPEC in `.moai/specs/SPEC-{SPEC_ID}/`
 2.  Execute `/moai:2-run SPEC-{SPEC_ID}` to begin implementation
 3.  Make commits directly to current branch
-4.  Follow TDD: RED → GREEN → REFACTOR cycles
+4.  Follow DDD: ANALYZE → PRESERVE → IMPROVE cycles
 5.  Create PR in `/moai:3-sync` when implementation complete
 ```
 
@@ -1130,17 +1354,19 @@ Would you like to enable automatic branch creation for future SPEC creations?
 
  Worktree Creation: --worktree flag provided OR user chose "Create Worktree"
  SPEC Created: SPEC-{SPEC_ID} documents generated successfully
+ SPEC Committed: feat(spec): Add SPEC-{SPEC_ID} - {title}
 
  Isolated Worktree Created:
-- Path: ~/worktrees/MoAI-ADK/SPEC-{SPEC_ID}/
+- Path: .moai/worktrees/MoAI-ADK/SPEC-{SPEC_ID}/
 - Branch: feature/SPEC-{SPEC_ID}
+- Base Commit: Contains committed SPEC files
 - Status: Ready for parallel development
 
  Next Steps:
 1.  Switch to worktree: `moai-worktree switch SPEC-{SPEC_ID}`
 2.  Or use shell eval: `eval $(moai-worktree go SPEC-{SPEC_ID})`
 3.  Review SPEC documents in worktree: `.moai/specs/SPEC-{SPEC_ID}/`
-4.  Execute `/moai:2-run SPEC-{SPEC_ID}` to begin TDD implementation
+4.  Execute `/moai:2-run SPEC-{SPEC_ID}` to begin DDD implementation
 5.  Work on isolated environment without affecting other SPECs
 
  Benefits of Worktree Development:
@@ -1148,37 +1374,57 @@ Would you like to enable automatic branch creation for future SPEC creations?
 - 🔀 Easy switching between multiple SPECs
 - 🧹 Automatic cleanup when SPEC is completed
 -  Lower memory usage than full repository clones
+-  SPEC files guaranteed in worktree (committed before creation)
 ```
 
 ---
 
 ## Output Format
 
-All command execution phases must produce structured output with semantic XML sections:
+### Output Format Rules
 
-Analysis Output Format:
+[HARD] User-Facing Reports: Always use Markdown formatting for user communication. Never display XML tags to users.
+WHY: Users expect readable formatted text, not markup
+IMPACT: XML tags in user output create confusion and reduce comprehension
 
-Project analysis results structured as:
-- Context: Current project state and relevant files discovered
-- Findings: SPEC candidates identified with rationale
-- Assessment: Technical constraints and implementation feasibility
-- Recommendations: Next steps and decision options
+[HARD] Internal Agent Data: XML tags are reserved for agent-to-agent data transfer only.
+WHY: XML structure enables automated parsing for downstream agent coordination
+IMPACT: Using XML for user output degrades user experience
 
-Plan Output Format:
+### User-Facing Output (Markdown)
 
-SPEC planning results structured as:
-- Requirements: Approved SPEC title, ID, priority, and scope
-- Architecture: Technical stack, dependencies, and integration points
-- Decomposition: Task breakdown and implementation sequence
-- Validation: Quality criteria and acceptance conditions
+Progress reports must use Markdown with clear sections:
 
-Implementation Output Format:
+**Analysis Output**:
 
-SPEC creation results structured as:
-- Status: Phase completion status and artifacts created
-- Artifacts: Location and format of created SPEC files
-- Validation: Quality gate results and compliance verification
-- NextSteps: User guidance for proceeding to implementation phase
+- **Context**: Current project state and relevant files discovered
+- **Findings**: SPEC candidates identified with rationale
+- **Assessment**: Technical constraints and implementation feasibility
+- **Recommendations**: Next steps and decision options
+
+**Plan Output**:
+
+- **Requirements**: Approved SPEC title, ID, priority, and scope
+- **Architecture**: Technical stack, dependencies, and integration points
+- **Decomposition**: Task breakdown and implementation sequence
+- **Validation**: Quality criteria and acceptance conditions
+
+**Implementation Output**:
+
+- **Status**: Phase completion status and artifacts created
+- **Artifacts**: Location and format of created SPEC files
+- **Validation**: Quality gate results and compliance verification
+- **NextSteps**: User guidance for proceeding to implementation phase
+
+### Internal Agent Communication (XML)
+
+For agent-to-agent data transfer only (never displayed to users):
+
+```xml
+<analysis>Context, findings, assessment, and recommendations</analysis>
+<plan>Requirements, architecture, decomposition, and validation criteria</plan>
+<implementation>Status, artifacts, validation results, and next steps</implementation>
+```
 
 WHY: Structured output enables parsing for automated workflows and tool integration
 IMPACT: Unstructured output prevents downstream automation and creates manual overhead
@@ -1189,18 +1435,33 @@ IMPACT: Unstructured output prevents downstream automation and creates manual ov
 
 Before you consider this command complete, verify:
 
+### AskUserQuestion Compliance (HARD Rules)
+
+- [ ] SPEC Creation Approval: AskUserQuestion used before creating SPEC files
+- [ ] Development Environment Selection: AskUserQuestion used for worktree/branch/current choice
+- [ ] Next Action Selection: AskUserQuestion used after SPEC creation completes
+
+### PHASE 1 Checklist
+
 - [ ] PHASE 1 executed: manager-spec analyzed project and proposed SPEC candidates
 - [ ] Progress report displayed: User shown detailed progress report with analysis results
-- [ ] User approval obtained: User explicitly approved SPEC creation (via enhanced AskUserQuestion)
+- [ ] User approval obtained: User explicitly approved SPEC creation (via AskUserQuestion)
+
+### PHASE 2 Checklist
+
 - [ ] PHASE 2 executed: manager-spec created all 3 SPEC files (spec.md, plan.md, acceptance.md)
 - [ ] Directory naming correct: `.moai/specs/SPEC-{ID}/` format followed
 - [ ] YAML frontmatter valid: All 7 required fields present
 - [ ] HISTORY section present: Immediately after YAML frontmatter
 - [ ] EARS structure complete: All 5 requirement types included
+
+### PHASE 3 Checklist
+
 - [ ] PHASE 3 executed: Appropriate action taken based on flags/user choice:
+  - [ ] If --worktree: SPEC committed BEFORE worktree creation (HARD rule)
   - [ ] If --worktree: WorktreeManager created isolated worktree environment
   - [ ] If --branch: manager-git created feature branch
-  - [ ] If prompt: User choice implemented (worktree/branch/current)
+  - [ ] If prompt: User choice implemented via AskUserQuestion (worktree/branch/current)
   - [ ] If Team mode: Draft PR created (when branch created, not worktree)
 - [ ] Branch/Worktree naming correct: `feature/SPEC-{ID}` format for branches, `SPEC-{ID}` for worktrees
 - [ ] Next steps presented: User shown appropriate guidance for worktree navigation or branch development
@@ -1215,36 +1476,42 @@ IF any checkbox is unchecked → Identify missing step and complete it before en
 ## Quick Reference
 
 Scenario: Clear feature request
+
 - Mode: Direct to Planning
 - Entry Point: /moai:1-plan "feature description"
 - Key Phases: Phase 1B then Phase 2 then Phase 3
 - Expected Outcome: SPEC created plus branch/worktree (conditional)
 
 Scenario: Vague user request
+
 - Mode: Exploration First
 - Entry Point: /moai:1-plan "vague request"
 - Key Phases: Phase 1A then Phase 1B then Phase 2 then Phase 3
 - Expected Outcome: Exploration then SPEC plus branch/worktree
 
 Scenario: Resume draft SPEC
+
 - Mode: Resume Existing
 - Entry Point: /moai:1-plan resume SPEC-XXX
 - Key Phases: Phase 1B then Phase 2 then Phase 3
 - Expected Outcome: Complete existing SPEC
 
 Scenario: Worktree creation (NEW)
+
 - Mode: NEW
 - Entry Point: /moai:1-plan "feature" --worktree
 - Key Phases: Phase 1B then Phase 2 then Phase 3 (worktree)
 - Expected Outcome: SPEC plus isolated worktree environment
 
 Scenario: Branch creation prompt
+
 - Mode: User Choice
 - Entry Point: /moai:1-plan "feature" (prompt_always: true)
 - Key Phases: Phase 1-2 then User chooses (worktree/branch/current) then Phase 3
 - Expected Outcome: SPEC plus user-selected strategy
 
 Scenario: Auto branch creation
+
 - Mode: Automated
 - Entry Point: /moai:1-plan "feature" (prompt_always: false, auto_enabled: true)
 - Key Phases: Phase 1-2 then Auto branch creation then Phase 3
@@ -1253,6 +1520,7 @@ Scenario: Auto branch creation
 ### New Worktree Workflow Examples
 
 Basic Worktree Creation:
+
 - Command: /moai:1-plan "User authentication system" --worktree
 - Output: SPEC created: SPEC-AUTH-001, Worktree created: ~/worktrees/MoAI-ADK/SPEC-AUTH-001
 - Next steps:
@@ -1260,6 +1528,7 @@ Basic Worktree Creation:
   2. Or use shell eval: eval $(moai-worktree go SPEC-AUTH-001)
 
 Interactive Environment Selection:
+
 - Command: /moai:1-plan "Payment integration"
 - User prompted to choose:
   - Create Worktree (recommended for parallel development)
@@ -1311,10 +1580,12 @@ Status: COMPLETE - Full integration achieved on 2025-11-28
 Command execution: /moai:1-plan "User authentication" --worktree
 
 Expected output:
+
 - SPEC created: SPEC-AUTH-001
 - Worktree created: ~/worktrees/MoAI-ADK/SPEC-AUTH-001
 
 Next steps:
+
 1. Switch to worktree: moai-worktree switch SPEC-AUTH-001
 2. Or use shell eval: eval $(moai-worktree go SPEC-AUTH-001)
 3. Then run: /moai:2-run SPEC-AUTH-001
@@ -1349,11 +1620,13 @@ Question: SPEC document creation is complete. What would you like to do next?
 Header: Next Steps
 MultiSelect: false
 Options:
-- Start Implementation - Execute /moai:2-run to begin TDD development
+
+- Start Implementation - Execute /moai:2-run to begin DDD development
 - Modify Plan - Modify and enhance SPEC content
 - Add New Feature - Create additional SPEC document
 
 Important:
+
 - Use conversation language from config
 - No emojis in any AskUserQuestion fields
 - Always provide clear next step options
