@@ -53,7 +53,7 @@ export class OpenSpecPromptBuilder {
     const changeSection = await this.buildChangeSection()
     if (changeSection) sections.push(changeSection)
 
-    // 3. 설계 문서 (design.md) - 있는 경우
+    // 3. 설계 문서 (design.md) - 옵션에 따라 포함
     if (this.options.includeDesign) {
       const designSection = await this.buildDesignSection()
       if (designSection) sections.push(designSection)
@@ -63,7 +63,7 @@ export class OpenSpecPromptBuilder {
     const tasksSection = await this.buildTasksSection()
     if (tasksSection) sections.push(tasksSection)
 
-    // 5. 관련 스펙 파일 목록
+    // 5. 관련 스펙 파일 목록 - 옵션에 따라 포함
     if (this.options.includeSpecs) {
       const specsSection = await this.buildSpecsSection()
       if (specsSection) sections.push(specsSection)
@@ -310,8 +310,10 @@ export class OpenSpecPromptBuilder {
   private extractSpecificTask(content: string, taskId: string): string | null {
     const lines = content.split('\n')
 
+    // 태스크 라인 찾기
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
+      // 정확한 태스크 ID 일치 또는 태스크 라인 내의 ID 일치
       if (line.includes(taskId) || line.match(new RegExp(`^-\\s*\\[.?\\].*${taskId}`, 'i'))) {
         // 컨텍스트를 위해 이전 헤더도 포함
         let headerIndex = i
@@ -324,6 +326,7 @@ export class OpenSpecPromptBuilder {
       }
     }
 
+    // 태스크를 찾지 못한 경우 null 반환 (호출자가 에러 메시지 처리)
     return null
   }
 
