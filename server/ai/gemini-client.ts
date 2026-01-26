@@ -89,7 +89,13 @@ export class GeminiClient {
     this.rateLimiter = new RateLimiter(60, 1)
     this.maxRetries = config.maxRetries ?? 3
     this.timeout = config.timeout ?? 120000 // 120 seconds
-    this.apiKey = config.apiKey || process.env.GEMINI_API_KEY || ''
+
+    // API key validation
+    const providedApiKey = config.apiKey || process.env.GEMINI_API_KEY || ''
+    if (!providedApiKey || providedApiKey.trim() === '') {
+      throw new Error('GEMINI_API_KEY is required')
+    }
+    this.apiKey = providedApiKey
     this.enableClaudeFallback = config.enableClaudeFallback ?? true
   }
 
