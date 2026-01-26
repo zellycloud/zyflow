@@ -1,15 +1,5 @@
 {
   "mcpServers": {
-    "zyflow": {
-      "type": "stdio",
-      "command": "node",
-      "args": [
-        "${PROJECT_ROOT}/plugin/scripts/mcp-server.cjs"
-      ],
-      "env": {
-        "ZYFLOW_PROJECT": "${PROJECT_ROOT}"
-      }
-    },
     "context7": {
       "command": "npx",
       "args": [

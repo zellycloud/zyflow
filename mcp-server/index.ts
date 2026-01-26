@@ -1528,9 +1528,33 @@ async function handleGetReplayProgress(args: GetReplayProgressArgs) {
 // Start server
 async function main() {
   const transport = new StdioServerTransport()
+
   await server.connect(transport)
   console.error('ZyFlow MCP Server started')
   console.error(`Project path: ${PROJECT_PATH}`)
+
+  // Handle process termination signals
+  process.on('SIGINT', () => {
+    console.error('Received SIGINT, shutting down...')
+    process.exit(0)
+  })
+
+  process.on('SIGTERM', () => {
+    console.error('Received SIGTERM, shutting down...')
+    process.exit(0)
+  })
+
+  // Handle stdin close - MCP client disconnection
+  process.stdin.on('end', () => {
+    console.error('stdin ended, shutting down...')
+    process.exit(0)
+  })
+
+  // Keep the process alive
+  process.stdin.resume()
 }
 
-main().catch(console.error)
+main().catch((error) => {
+  console.error('Failed to start MCP server:', error)
+  process.exit(1)
+})

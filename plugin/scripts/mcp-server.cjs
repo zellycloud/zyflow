@@ -30232,7 +30232,17 @@ var import_os = require("os");
 var db = null;
 var sqlite = null;
 var currentDbPath = null;
+function expandTilde(path) {
+  if (path.startsWith("~")) {
+    return path.replace(/^~/, (0, import_os.homedir)());
+  }
+  return path;
+}
 function getDbPath(_projectRoot) {
+  const dataDir = process.env.DATA_DIR;
+  if (dataDir) {
+    return (0, import_path2.join)(expandTilde(dataDir), "tasks.db");
+  }
   return (0, import_path2.join)((0, import_os.homedir)(), ".zyflow", "tasks.db");
 }
 function initDb(_projectRoot) {
@@ -30255,15 +30265,35 @@ function initDb(_projectRoot) {
     INSERT OR IGNORE INTO sequences (name, value) VALUES ('task_openspec', 0);
   `);
   sqlite.exec(`
-    UPDATE sequences
-    SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0)
-    WHERE name = 'task_inbox' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0);
+    CREATE TABLE IF NOT EXISTS tasks (
+      id INTEGER PRIMARY KEY,
+      change_id TEXT,
+      stage TEXT NOT NULL DEFAULT 'task' CHECK(stage IN ('spec', 'task', 'code', 'test', 'commit', 'docs')),
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL DEFAULT 'todo' CHECK(status IN ('todo', 'in-progress', 'review', 'done', 'archived')),
+      priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('low', 'medium', 'high')),
+      tags TEXT,
+      assignee TEXT,
+      "order" INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      archived_at INTEGER
+    );
   `);
-  sqlite.exec(`
-    UPDATE sequences
-    SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'openspec'), 0)
-    WHERE name = 'task_openspec' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'openspec'), 0);
-  `);
+  try {
+    sqlite.exec(`
+      UPDATE sequences
+      SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0)
+      WHERE name = 'task_inbox' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0);
+    `);
+    sqlite.exec(`
+      UPDATE sequences
+      SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'openspec'), 0)
+      WHERE name = 'task_openspec' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'openspec'), 0);
+    `);
+  } catch {
+  }
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS changes (
       id TEXT NOT NULL,
@@ -30324,23 +30354,6 @@ function initDb(_projectRoot) {
   } catch (err) {
     console.error("[Migration] Error migrating changes table:", err);
   }
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS tasks (
-      id INTEGER PRIMARY KEY,
-      change_id TEXT,
-      stage TEXT NOT NULL DEFAULT 'task' CHECK(stage IN ('spec', 'task', 'code', 'test', 'commit', 'docs')),
-      title TEXT NOT NULL,
-      description TEXT,
-      status TEXT NOT NULL DEFAULT 'todo' CHECK(status IN ('todo', 'in-progress', 'review', 'done', 'archived')),
-      priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('low', 'medium', 'high')),
-      tags TEXT,
-      assignee TEXT,
-      "order" INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      archived_at INTEGER
-    );
-  `);
   try {
     sqlite.exec(`ALTER TABLE tasks ADD COLUMN archived_at INTEGER`);
   } catch {
@@ -30762,11 +30775,10 @@ function initDb(_projectRoot) {
       id TEXT PRIMARY KEY,
       source TEXT NOT NULL CHECK(source IN ('github', 'vercel', 'sentry', 'supabase', 'custom')),
       name TEXT NOT NULL,
-      endpoint TEXT NOT NULL,
+      endpoint_path TEXT NOT NULL,
       secret TEXT,
       enabled INTEGER NOT NULL DEFAULT 1,
-      rules TEXT,
-      project_ids TEXT,
+      project_filter TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -30816,6 +30828,29 @@ function initDb(_projectRoot) {
   }
   try {
     sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_alerts_project_id ON alerts(project_id);`);
+  } catch {
+  }
+  try {
+    const tableInfo = sqlite.prepare(`PRAGMA table_info(webhook_configs)`).all();
+    const hasOldSchema = tableInfo.some((col) => col.name === "endpoint");
+    if (hasOldSchema) {
+      sqlite.exec(`DROP TABLE IF EXISTS webhook_configs`);
+      sqlite.exec(`
+        CREATE TABLE webhook_configs (
+          id TEXT PRIMARY KEY,
+          source TEXT NOT NULL CHECK(source IN ('github', 'vercel', 'sentry', 'supabase', 'custom')),
+          name TEXT NOT NULL,
+          endpoint_path TEXT NOT NULL,
+          secret TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          project_filter TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      `);
+      sqlite.exec(`CREATE INDEX idx_webhook_configs_source ON webhook_configs(source);`);
+      sqlite.exec(`CREATE INDEX idx_webhook_configs_enabled ON webhook_configs(enabled);`);
+    }
   } catch {
   }
   sqlite.exec(`
@@ -33492,6 +33527,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
+        name: "zyflow_global_search",
+        description: "\uBAA8\uB4E0 \uD504\uB85C\uC81D\uD2B8\uC5D0\uC11C Changes\uB97C \uAC80\uC0C9\uD569\uB2C8\uB2E4. \uC81C\uBAA9, ID, \uD504\uB85C\uC81D\uD2B8\uBA85\uC73C\uB85C \uAC80\uC0C9\uD569\uB2C8\uB2E4.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "\uAC80\uC0C9\uC5B4 (\uC81C\uBAA9, ID, \uD504\uB85C\uC81D\uD2B8\uBA85\uC5D0\uC11C \uAC80\uC0C9)"
+            },
+            limit: {
+              type: "number",
+              description: "\uBC18\uD658\uD560 \uCD5C\uB300 \uACB0\uACFC \uC218 (\uAE30\uBCF8: 10)"
+            }
+          },
+          required: ["query"]
+        }
+      },
+      {
         name: "zyflow_list_changes",
         description: "\uD604\uC7AC \uD504\uB85C\uC81D\uD2B8\uC758 OpenSpec \uBCC0\uACBD \uC81C\uC548 \uBAA9\uB85D\uC744 \uC870\uD68C\uD569\uB2C8\uB2E4. \uAC01 \uBCC0\uACBD\uC758 ID, \uC81C\uBAA9, \uC9C4\uD589\uB960, \uC644\uB8CC/\uC804\uCCB4 \uD0DC\uC2A4\uD06C \uC218\uB97C \uBC18\uD658\uD569\uB2C8\uB2E4.",
         inputSchema: {
@@ -33605,6 +33658,32 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             }
           },
           required: ["changeId", "taskId"]
+        }
+      },
+      {
+        name: "zyflow_unified_context",
+        description: "\uD1B5\uD569 \uCEE8\uD14D\uC2A4\uD2B8 \uAC80\uC0C9\uC785\uB2C8\uB2E4. OpenSpec\uC758 Changes/Tasks \uC815\uBCF4\uC640 claude-mem\uC758 Memory(\uC774\uC804 \uC791\uC5C5 \uAE30\uB85D, \uACB0\uC815\uC0AC\uD56D)\uB97C \uD568\uAED8 \uAC80\uC0C9\uD569\uB2C8\uB2E4.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "\uAC80\uC0C9\uC5B4"
+            },
+            includeChanges: {
+              type: "boolean",
+              description: "OpenSpec Changes \uD3EC\uD568 \uC5EC\uBD80 (\uAE30\uBCF8: true)"
+            },
+            includeMemory: {
+              type: "boolean",
+              description: "claude-mem Memory \uD3EC\uD568 \uC5EC\uBD80 (\uAE30\uBCF8: true)"
+            },
+            limit: {
+              type: "number",
+              description: "\uAC01 \uCE74\uD14C\uACE0\uB9AC\uBCC4 \uCD5C\uB300 \uACB0\uACFC \uC218 (\uAE30\uBCF8: 5)"
+            }
+          },
+          required: ["query"]
         }
       },
       // Task management tools (SQLite-based)
@@ -33840,6 +33919,59 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   try {
     switch (name) {
+      case "zyflow_global_search": {
+        const { query, limit = 10 } = args;
+        const API_BASE2 = process.env.ZYFLOW_API_BASE || "http://localhost:3200";
+        let allProjects = [];
+        try {
+          const response = await fetch(`${API_BASE2}/api/projects/all-data`);
+          if (response.ok) {
+            const json2 = await response.json();
+            allProjects = json2.data?.projects || [];
+          }
+        } catch (err) {
+          const localChanges = await listChanges();
+          allProjects = [{
+            id: "local",
+            name: "Current Project",
+            path: PROJECT_PATH,
+            changes: localChanges
+          }];
+        }
+        const allChanges = [];
+        for (const project of allProjects) {
+          if (project.changes) {
+            for (const change of project.changes) {
+              allChanges.push({
+                id: change.id,
+                title: change.title,
+                progress: change.progress || 0,
+                totalTasks: change.totalTasks || 0,
+                completedTasks: change.completedTasks || 0,
+                projectId: project.id,
+                projectName: project.name,
+                projectPath: project.path
+              });
+            }
+          }
+        }
+        const queryLower = query.toLowerCase();
+        const results = allChanges.filter(
+          (c) => c.title.toLowerCase().includes(queryLower) || c.id.toLowerCase().includes(queryLower) || c.projectName.toLowerCase().includes(queryLower)
+        ).slice(0, limit);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                query,
+                totalResults: results.length,
+                results
+              }, null, 2)
+            }
+          ]
+        };
+      }
       case "zyflow_list_changes": {
         const { projectPath } = args;
         const changes2 = await listChanges(projectPath);
@@ -33925,6 +34057,84 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 task,
                 progress: `${completed}/${total}`,
                 message: `\uD0DC\uC2A4\uD06C "${task.title}"\uB97C \uBBF8\uC644\uB8CC\uB85C \uB418\uB3CC\uB838\uC2B5\uB2C8\uB2E4.`
+              }, null, 2)
+            }
+          ]
+        };
+      }
+      case "zyflow_unified_context": {
+        const { query, includeChanges = true, includeMemory = true, limit = 5 } = args;
+        const results = {};
+        if (includeChanges) {
+          const API_BASE2 = process.env.ZYFLOW_API_BASE || "http://localhost:3200";
+          try {
+            const response = await fetch(`${API_BASE2}/api/projects/all-data`);
+            if (response.ok) {
+              const json2 = await response.json();
+              const allProjects = json2.data?.projects || [];
+              const allChanges = [];
+              for (const project of allProjects) {
+                if (project.changes) {
+                  for (const change of project.changes) {
+                    allChanges.push({
+                      id: change.id,
+                      title: change.title,
+                      progress: change.progress || 0,
+                      projectId: project.id,
+                      projectName: project.name
+                    });
+                  }
+                }
+              }
+              const queryLower = query.toLowerCase();
+              results.changes = allChanges.filter(
+                (c) => c.title.toLowerCase().includes(queryLower) || c.id.toLowerCase().includes(queryLower)
+              ).slice(0, limit);
+            }
+          } catch {
+            results.changes = [];
+          }
+        }
+        if (includeMemory) {
+          const homedir3 = process.env.HOME || process.env.USERPROFILE || "";
+          const memDbPath = `${homedir3}/.claude-mem/memory.db`;
+          try {
+            const fs = await import("fs");
+            if (fs.existsSync(memDbPath)) {
+              const Database3 = (await import("better-sqlite3")).default;
+              const db2 = new Database3(memDbPath, { readonly: true });
+              const searchPattern = `%${query}%`;
+              const stmt = db2.prepare(`
+                SELECT id, type, title, subtitle
+                FROM observations
+                WHERE title LIKE ? OR subtitle LIKE ? OR facts LIKE ? OR narrative LIKE ?
+                ORDER BY created_at DESC
+                LIMIT ?
+              `);
+              const rows = stmt.all(searchPattern, searchPattern, searchPattern, searchPattern, limit);
+              results.memory = rows.map((row) => ({
+                id: row.id,
+                type: row.type || "unknown",
+                title: row.title || "Untitled",
+                subtitle: row.subtitle || void 0
+              }));
+              db2.close();
+            } else {
+              results.memory = [];
+            }
+          } catch {
+            results.memory = [];
+          }
+        }
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                query,
+                results,
+                message: `\uD1B5\uD569 \uAC80\uC0C9 \uACB0\uACFC: Changes ${results.changes?.length || 0}\uAC1C, Memory ${results.memory?.length || 0}\uAC1C`
               }, null, 2)
             }
           ]
@@ -34402,8 +34612,24 @@ async function main() {
   await server.connect(transport);
   console.error("ZyFlow MCP Server started");
   console.error(`Project path: ${PROJECT_PATH}`);
+  process.on("SIGINT", () => {
+    console.error("Received SIGINT, shutting down...");
+    process.exit(0);
+  });
+  process.on("SIGTERM", () => {
+    console.error("Received SIGTERM, shutting down...");
+    process.exit(0);
+  });
+  process.stdin.on("end", () => {
+    console.error("stdin ended, shutting down...");
+    process.exit(0);
+  });
+  process.stdin.resume();
 }
-main().catch(console.error);
+main().catch((error2) => {
+  console.error("Failed to start MCP server:", error2);
+  process.exit(1);
+});
 /*! Bundled license information:
 
 is-extendable/index.js:

@@ -1,14 +1,13 @@
 {
   "name": "zyflow",
-  "version": "1.0.0",
+  "version": "0.5.0",
   "description": "ZyFlow - OpenSpec task management and workflow automation",
   "author": "Hansoo",
-  "homepage": "https://github.com/hansoo/zyflow",
   "mcpServers": {
     "zyflow": {
       "type": "stdio",
       "command": "node",
-      "args": ["scripts/mcp-server.cjs"],
+      "args": ["${PLUGIN_DIR}/scripts/mcp-server.cjs"],
       "env": {
         "ZYFLOW_PROJECT": "${PROJECT_ROOT}"
       }
@@ -20,11 +19,6 @@
     "agents/researcher.md",
     "agents/reviewer.md",
     "agents/tester.md"
-  ],
-  "commands": [
-    "commands/openspec/archive.md",
-    "commands/openspec/apply.md",
-    "commands/openspec/proposal.md"
   ],
   "skills": [
     "skills/openspec/SKILL.md"
