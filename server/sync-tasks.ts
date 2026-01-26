@@ -62,11 +62,19 @@ export async function syncChangeTasksForProject(
 
   const parsedDisplayIds = new Set<string>()
 
+  // Track global group index for proper group_order (1-based)
+  // This ensures group_order represents the actual sequential order across all phases
+  let globalGroupIndex = 0
+
   for (const group of parsed.groups as ExtendedGroup[]) {
+    globalGroupIndex++
     const majorOrder = group.majorOrder ?? 1
     const majorTitle = group.majorTitle ?? group.title
     const subOrder = group.subOrder ?? 1
     const groupTitle = group.groupTitle ?? group.title
+    // Use globalGroupIndex for correct group ordering across all phases
+    // Previously majorOrder was used here, which only represents the Phase number
+    const groupOrder = globalGroupIndex
 
     for (let taskIdx = 0; taskIdx < group.tasks.length; taskIdx++) {
       const task = group.tasks[taskIdx]
@@ -112,7 +120,7 @@ export async function syncChangeTasksForProject(
             task.title,
             newStatus,
             groupTitle,
-            majorOrder,
+            groupOrder,
             taskOrder,
             majorTitle,
             subOrder,
@@ -148,7 +156,7 @@ export async function syncChangeTasksForProject(
             task.completed ? 'done' : 'todo',
             task.lineNumber,
             groupTitle,
-            majorOrder,
+            groupOrder,
             taskOrder,
             majorTitle,
             subOrder,
@@ -245,11 +253,19 @@ export async function syncRemoteChangeTasksForProject(
 
   const parsedDisplayIds = new Set<string>()
 
+  // Track global group index for proper group_order (1-based)
+  // This ensures group_order represents the actual sequential order across all phases
+  let globalGroupIndex = 0
+
   for (const group of parsed.groups as ExtendedGroup[]) {
+    globalGroupIndex++
     const majorOrder = group.majorOrder ?? 1
     const majorTitle = group.majorTitle ?? group.title
     const subOrder = group.subOrder ?? 1
     const groupTitle = group.groupTitle ?? group.title
+    // Use globalGroupIndex for correct group ordering across all phases
+    // Previously majorOrder was used here, which only represents the Phase number
+    const groupOrder = globalGroupIndex
 
     for (let taskIdx = 0; taskIdx < group.tasks.length; taskIdx++) {
       const task = group.tasks[taskIdx]
@@ -295,7 +311,7 @@ export async function syncRemoteChangeTasksForProject(
             task.title,
             newStatus,
             groupTitle,
-            majorOrder,
+            groupOrder,
             taskOrder,
             majorTitle,
             subOrder,
@@ -331,7 +347,7 @@ export async function syncRemoteChangeTasksForProject(
             task.completed ? 'done' : 'todo',
             task.lineNumber,
             groupTitle,
-            majorOrder,
+            groupOrder,
             taskOrder,
             majorTitle,
             subOrder,
