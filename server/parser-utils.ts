@@ -32,6 +32,24 @@ export function validateGroupStructure(groups: ExtendedTaskGroup[]): {
     errors.push(`중복된 그룹 ID: ${duplicateIds.join(', ')}`)
   }
 
+  // 중복된 그룹 제목 확인
+  const groupTitles = groups.map(g => g.title)
+  const duplicateTitles = groupTitles.filter((title, index) => groupTitles.indexOf(title) !== index)
+  if (duplicateTitles.length > 0) {
+    const uniqueDuplicates = [...new Set(duplicateTitles)]
+    warnings.push(`중복된 그룹 제목: ${uniqueDuplicates.join(', ')}`)
+  }
+
+  // 정렬되지 않은 그룹 순서 확인
+  for (let i = 1; i < groups.length; i++) {
+    if (groups[i].majorOrder !== undefined && groups[i - 1].majorOrder !== undefined) {
+      if (groups[i].majorOrder! < groups[i - 1].majorOrder!) {
+        warnings.push('그룹 순서가 정렬되어 있지 않습니다')
+        break
+      }
+    }
+  }
+
   return {
     isValid: errors.length === 0,
     errors,
@@ -244,11 +262,55 @@ export function extractGroupInfo(group: ExtendedTaskGroup): {
   }
 }
 
-// 이전 함수들은 호환성을 위해 유지하지만, 새 로직에서는 사용하지 않음
+/**
+ * Resolve duplicate group titles by adding numbers
+ */
 export function resolveDuplicateGroupTitles(groups: ExtendedTaskGroup[]): ExtendedTaskGroup[] {
-  return groups
+  const titleCount = new Map<string, number>()
+  const result: ExtendedTaskGroup[] = []
+
+  for (const group of groups) {
+    const title = group.title
+    const count = titleCount.get(title) || 0
+
+    if (count > 0) {
+      // Add number to duplicate titles (first occurrence keeps original)
+      result.push({
+        ...group,
+        title: `${title} (${count})`
+      })
+    } else {
+      result.push(group)
+    }
+
+    titleCount.set(title, count + 1)
+  }
+
+  return result
 }
 
+/**
+ * Reorder groups by majorOrder and subOrder
+ * Also assigns default majorOrder to groups that don't have one
+ */
 export function reorderGroups(groups: ExtendedTaskGroup[]): ExtendedTaskGroup[] {
-  return groups
+  // Assign default majorOrder to groups without one
+  const groupsWithDefaults = groups.map((group, index) => ({
+    ...group,
+    majorOrder: group.majorOrder ?? 1,
+  }))
+
+  return groupsWithDefaults.sort((a, b) => {
+    // First sort by majorOrder
+    const aMajor = a.majorOrder ?? 999
+    const bMajor = b.majorOrder ?? 999
+    if (aMajor !== bMajor) {
+      return aMajor - bMajor
+    }
+
+    // Then sort by subOrder
+    const aSub = a.subOrder ?? 999
+    const bSub = b.subOrder ?? 999
+    return aSub - bSub
+  })
 }
