@@ -12,6 +12,17 @@ import { promisify } from 'util'
 import { getActiveProject, getProjectById } from '../config.js'
 import { parseTasksFile, toggleTaskInFile } from '../parser.js'
 import { initDb, getSqlite } from '../tasks/db/client.js'
+import {
+  getChangeStatus,
+  validateChange,
+  archiveChange,
+  getInstructions,
+  isOpenSpecAvailable,
+  getOpenSpecVersion,
+  type OpenSpecStatus,
+  type OpenSpecValidation,
+  type OpenSpecInstructions,
+} from '../cli-adapter/index.js'
 
 // Remote plugin is optional - only load if installed
 let remotePlugin: {
@@ -579,6 +590,187 @@ changesRouter.patch('/tasks/:changeId/:taskId', async (req, res) => {
   } catch (error) {
     console.error('Error toggling task:', error)
     res.status(500).json({ success: false, error: 'Failed to toggle task' })
+  }
+})
+
+// ==================== OPENSPEC CLI INTEGRATION ====================
+
+// GET /cli/available - Check if OpenSpec CLI is available
+changesRouter.get('/cli/available', async (_req, res) => {
+  try {
+    const available = await isOpenSpecAvailable()
+    const version = available ? await getOpenSpecVersion() : null
+    res.json({
+      success: true,
+      data: { available, version },
+    })
+  } catch (error) {
+    console.error('Error checking OpenSpec CLI:', error)
+    res.status(500).json({ success: false, error: 'Failed to check OpenSpec CLI' })
+  }
+})
+
+// GET /:id/status - Get artifact completion status for a change
+changesRouter.get('/:id/status', async (req, res) => {
+  try {
+    const project = await getActiveProject()
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const changeId = req.params.id
+    const result = await getChangeStatus({
+      change: changeId,
+      cwd: project.path,
+    })
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || 'Failed to get change status',
+      })
+    }
+
+    const status = result.data as OpenSpecStatus
+    res.json({
+      success: true,
+      data: {
+        changeId,
+        artifacts: status?.artifacts || [],
+        progress: status?.progress || { completed: 0, total: 0, percentage: 0 },
+      },
+    })
+  } catch (error) {
+    console.error('Error getting change status:', error)
+    res.status(500).json({ success: false, error: 'Failed to get change status' })
+  }
+})
+
+// POST /:id/validate - Validate a change
+changesRouter.post('/:id/validate', async (req, res) => {
+  try {
+    const project = await getActiveProject()
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const changeId = req.params.id
+    const strict = req.body?.strict !== false // Default to strict mode
+
+    const result = await validateChange(changeId, {
+      cwd: project.path,
+      strict,
+    })
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || 'Validation failed',
+        data: result.data,
+      })
+    }
+
+    const validation = result.data as OpenSpecValidation
+    res.json({
+      success: true,
+      data: {
+        changeId,
+        valid: validation?.valid ?? true,
+        errors: validation?.errors || [],
+        warnings: validation?.warnings || [],
+      },
+    })
+  } catch (error) {
+    console.error('Error validating change:', error)
+    res.status(500).json({ success: false, error: 'Failed to validate change' })
+  }
+})
+
+// POST /:id/archive - Archive a completed change
+changesRouter.post('/:id/archive', async (req, res) => {
+  try {
+    const project = await getActiveProject()
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const changeId = req.params.id
+    const syncSpecs = req.body?.syncSpecs !== false // Default to sync specs
+
+    const result = await archiveChange(changeId, {
+      cwd: project.path,
+      syncSpecs,
+    })
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || 'Archive failed',
+      })
+    }
+
+    // Update DB status to archived
+    try {
+      initDb()
+      const sqlite = getSqlite()
+      sqlite.prepare(`
+        UPDATE changes
+        SET status = 'archived', archived_at = ?
+        WHERE id = ? AND project_id = ?
+      `).run(Date.now(), changeId, project.id)
+    } catch (dbError) {
+      console.warn('Failed to update DB archive status:', dbError)
+    }
+
+    res.json({
+      success: true,
+      data: {
+        changeId,
+        archived: true,
+        syncSpecs,
+      },
+    })
+  } catch (error) {
+    console.error('Error archiving change:', error)
+    res.status(500).json({ success: false, error: 'Failed to archive change' })
+  }
+})
+
+// GET /:id/instructions/:artifact - Get dynamic instructions for an artifact
+changesRouter.get('/:id/instructions/:artifact', async (req, res) => {
+  try {
+    const project = await getActiveProject()
+    if (!project) {
+      return res.status(400).json({ success: false, error: 'No active project' })
+    }
+
+    const { id: changeId, artifact } = req.params
+
+    const result = await getInstructions(artifact, {
+      change: changeId,
+      cwd: project.path,
+    })
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || 'Failed to get instructions',
+      })
+    }
+
+    const instructions = result.data as OpenSpecInstructions
+    res.json({
+      success: true,
+      data: {
+        changeId,
+        artifact,
+        content: instructions?.content || '',
+        context: instructions?.context || {},
+      },
+    })
+  } catch (error) {
+    console.error('Error getting instructions:', error)
+    res.status(500).json({ success: false, error: 'Failed to get instructions' })
   }
 })
 
