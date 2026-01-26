@@ -235,6 +235,7 @@ async function getNextTask(changeId: string, projectPath?: string): Promise<Next
 
 /**
  * Get detailed context for a specific task
+ * Includes dynamic instructions from OpenSpec CLI when available
  */
 async function getTaskContext(changeId: string, taskId: string, projectPath?: string) {
   const basePath = projectPath || PROJECT_PATH
@@ -260,11 +261,35 @@ async function getTaskContext(changeId: string, taskId: string, projectPath?: st
   const context = await buildTaskContext(basePath, changeId, tasksFile, targetTask)
   const design = await readDesign(basePath, changeId)
 
+  // OpenSpec 1.0: 동적 인스트럭션 조회 (CLI가 있는 경우)
+  let instructions: unknown = null
+  let artifactStatus: unknown = null
+  try {
+    if (await isOpenSpecAvailable()) {
+      // apply 아티팩트의 인스트럭션 조회 (태스크 실행 시 필요)
+      const instructionsResult = await getInstructions('apply', { cwd: basePath, change: changeId })
+      if (instructionsResult.success) {
+        instructions = instructionsResult.data
+      }
+
+      // 아티팩트 상태 조회
+      const statusResult = await getChangeStatus({ cwd: basePath, change: changeId })
+      if (statusResult.success) {
+        artifactStatus = statusResult.data
+      }
+    }
+  } catch (err) {
+    // 인스트럭션 조회 실패는 무시 (선택적 기능)
+    console.warn('Failed to get dynamic instructions:', err)
+  }
+
   return {
     task: targetTask,
     context: {
       ...context,
       design,
+      instructions,
+      artifactStatus,
     },
     group: taskGroup,
   }
