@@ -14,6 +14,13 @@ import matter from 'gray-matter'
 
 import { parseTasksFile, setTaskStatus } from './parser.js'
 import { buildTaskContext, readDesign } from './context.js'
+import {
+  validateChange,
+  archiveChange,
+  getInstructions,
+  getChangeStatus,
+  isOpenSpecAvailable,
+} from '../server/cli-adapter/openspec.js'
 import type { Change, Task, TasksFile, NextTaskResponse } from './types.js'
 import {
   taskToolDefinitions,
@@ -468,6 +475,91 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['query'],
         },
       },
+      // OpenSpec 1.0 CLI Integration Tools
+      {
+        name: 'zyflow_validate_change',
+        description: 'OpenSpec 변경을 검증합니다. 아티팩트의 무결성과 스키마 준수 여부를 확인합니다.',
+        inputSchema: {
+          type: 'object' as const,
+          properties: {
+            changeId: {
+              type: 'string',
+              description: '검증할 변경 제안 ID (선택, 없으면 현재 활성 변경)',
+            },
+            strict: {
+              type: 'boolean',
+              description: '엄격 모드 활성화 (경고도 오류로 처리)',
+            },
+            projectPath: {
+              type: 'string',
+              description: '프로젝트 경로 (선택, 기본값: 현재 디렉토리)',
+            },
+          },
+          required: [],
+        },
+      },
+      {
+        name: 'zyflow_archive_change',
+        description: '완료된 변경을 아카이브합니다. 메인 스펙으로 동기화하고 변경 디렉토리를 archive로 이동합니다.',
+        inputSchema: {
+          type: 'object' as const,
+          properties: {
+            changeId: {
+              type: 'string',
+              description: '아카이브할 변경 제안 ID',
+            },
+            syncSpecs: {
+              type: 'boolean',
+              description: '메인 스펙으로 동기화 여부 (기본: true)',
+            },
+            projectPath: {
+              type: 'string',
+              description: '프로젝트 경로 (선택, 기본값: 현재 디렉토리)',
+            },
+          },
+          required: ['changeId'],
+        },
+      },
+      {
+        name: 'zyflow_get_instructions',
+        description: 'OpenSpec 동적 인스트럭션을 조회합니다. 아티팩트 생성 또는 태스크 적용을 위한 컨텍스트 기반 지침을 제공합니다.',
+        inputSchema: {
+          type: 'object' as const,
+          properties: {
+            artifact: {
+              type: 'string',
+              description: '아티팩트 유형 (proposal, design, tasks, apply 등)',
+            },
+            changeId: {
+              type: 'string',
+              description: '변경 제안 ID (선택)',
+            },
+            projectPath: {
+              type: 'string',
+              description: '프로젝트 경로 (선택, 기본값: 현재 디렉토리)',
+            },
+          },
+          required: ['artifact'],
+        },
+      },
+      {
+        name: 'zyflow_get_status',
+        description: 'OpenSpec 변경의 아티팩트 완료 상태를 조회합니다. 전체 진행률과 각 아티팩트 상태를 반환합니다.',
+        inputSchema: {
+          type: 'object' as const,
+          properties: {
+            changeId: {
+              type: 'string',
+              description: '변경 제안 ID (선택)',
+            },
+            projectPath: {
+              type: 'string',
+              description: '프로젝트 경로 (선택, 기본값: 현재 디렉토리)',
+            },
+          },
+          required: [],
+        },
+      },
       // Task management tools (SQLite-based)
       ...taskToolDefinitions,
 
@@ -714,15 +806,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         // Fetch all projects data from the API
         const API_BASE = process.env.ZYFLOW_API_BASE || 'http://localhost:3200'
-        let allProjects: any[] = []
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let allProjects: Record<string, unknown>[] = []
 
         try {
           const response = await fetch(`${API_BASE}/api/projects/all-data`)
           if (response.ok) {
-            const json = await response.json() as { data?: { projects?: any[] } }
+            const json = await response.json() as { data?: { projects?: Record<string, unknown>[] } }
             allProjects = json.data?.projects || []
           }
-        } catch (err) {
+        } catch (_err) {
           // API not available, fall back to local project only
           const localChanges = await listChanges()
           allProjects = [{
@@ -734,7 +827,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         // Collect all changes with project info
-        const allChanges: any[] = []
+        const allChanges: Record<string, unknown>[] = []
         for (const project of allProjects) {
           if (project.changes) {
             for (const change of project.changes) {
@@ -885,8 +978,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         const results: {
-          changes?: any[]
-          memory?: any[]
+          changes?: Record<string, unknown>[]
+          memory?: Record<string, unknown>[]
         } = {}
 
         // 1. Changes/Tasks 검색
@@ -895,9 +988,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           try {
             const response = await fetch(`${API_BASE}/api/projects/all-data`)
             if (response.ok) {
-              const json = await response.json() as { data?: { projects?: any[] } }
+              const json = await response.json() as { data?: { projects?: Record<string, unknown>[] } }
               const allProjects = json.data?.projects || []
-              const allChanges: any[] = []
+              const allChanges: Record<string, unknown>[] = []
 
               for (const project of allProjects) {
                 if (project.changes) {
@@ -979,6 +1072,163 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               }, null, 2),
             },
           ],
+        }
+      }
+
+      // OpenSpec 1.0 CLI Integration Tools
+      case 'zyflow_validate_change': {
+        const { changeId, strict, projectPath } = args as {
+          changeId?: string
+          strict?: boolean
+          projectPath?: string
+        }
+        const cwd = projectPath || PROJECT_PATH
+
+        // Check if OpenSpec CLI is available
+        const available = await isOpenSpecAvailable()
+        if (!available) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'OpenSpec CLI가 설치되어 있지 않습니다. npm install -g openspec 으로 설치해주세요.',
+              }, null, 2),
+            }],
+            isError: true,
+          }
+        }
+
+        const result = await validateChange(changeId, { cwd, strict })
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: result.success,
+              validation: result.data,
+              error: result.error,
+              message: result.success
+                ? '변경 검증이 완료되었습니다.'
+                : `검증 실패: ${result.error}`,
+            }, null, 2),
+          }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_archive_change': {
+        const { changeId, syncSpecs = true, projectPath } = args as {
+          changeId: string
+          syncSpecs?: boolean
+          projectPath?: string
+        }
+        const cwd = projectPath || PROJECT_PATH
+
+        const available = await isOpenSpecAvailable()
+        if (!available) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'OpenSpec CLI가 설치되어 있지 않습니다.',
+              }, null, 2),
+            }],
+            isError: true,
+          }
+        }
+
+        const result = await archiveChange(changeId, { cwd, syncSpecs })
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: result.success,
+              data: result.data,
+              error: result.error,
+              message: result.success
+                ? `변경 "${changeId}"가 성공적으로 아카이브되었습니다.`
+                : `아카이브 실패: ${result.error}`,
+            }, null, 2),
+          }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_get_instructions': {
+        const { artifact, changeId, projectPath } = args as {
+          artifact: string
+          changeId?: string
+          projectPath?: string
+        }
+        const cwd = projectPath || PROJECT_PATH
+
+        const available = await isOpenSpecAvailable()
+        if (!available) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'OpenSpec CLI가 설치되어 있지 않습니다.',
+              }, null, 2),
+            }],
+            isError: true,
+          }
+        }
+
+        const result = await getInstructions(artifact, { cwd, change: changeId })
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: result.success,
+              instructions: result.data,
+              error: result.error,
+              message: result.success
+                ? `${artifact} 아티팩트 인스트럭션을 조회했습니다.`
+                : `인스트럭션 조회 실패: ${result.error}`,
+            }, null, 2),
+          }],
+          isError: !result.success,
+        }
+      }
+
+      case 'zyflow_get_status': {
+        const { changeId, projectPath } = args as {
+          changeId?: string
+          projectPath?: string
+        }
+        const cwd = projectPath || PROJECT_PATH
+
+        const available = await isOpenSpecAvailable()
+        if (!available) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'OpenSpec CLI가 설치되어 있지 않습니다.',
+              }, null, 2),
+            }],
+            isError: true,
+          }
+        }
+
+        const result = await getChangeStatus({ cwd, change: changeId })
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: result.success,
+              status: result.data,
+              error: result.error,
+              message: result.success
+                ? '변경 상태를 조회했습니다.'
+                : `상태 조회 실패: ${result.error}`,
+            }, null, 2),
+          }],
+          isError: !result.success,
         }
       }
 
