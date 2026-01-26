@@ -1,3 +1,4 @@
+
 # Mr. Alfred Execution Directive
 
 ## Alfred: The Strategic Orchestrator (Claude Code Official Guidelines)
@@ -342,7 +343,6 @@ AST-Grep Technologies:
 - Skill: moai-tool-ast-grep
 
 WHY: Automatic skill loading ensures relevant framework knowledge is available without manual invocation.
-
 
 ---
 
