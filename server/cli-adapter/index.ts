@@ -1,10 +1,6 @@
 /**
  * CLI Adapter Module
- *
- * Multi-CLI support for ZyFlow
+ * Provides programmatic access to CLI tools
  */
 
-export * from './types.js'
-export * from './profile-manager.js'
-export * from './process-manager.js'
-export { default as cliRoutes } from './routes.js'
+export * from './openspec.js'
