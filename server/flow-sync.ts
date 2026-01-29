@@ -366,3 +366,62 @@ export async function scanMoaiSpecs(
 
   return result
 }
+
+/**
+ * Sync all MoAI SPECs from all projects
+ * Wrapper around scanMoaiSpecs that iterates through all configured projects
+ */
+export async function syncAllMoaiSpecs(): Promise<{
+  projectsSynced: number
+  totalCreated: number
+  totalUpdated: number
+  totalArchived: number
+  errors: string[]
+}> {
+  const config = await loadConfig()
+
+  if (!config.projects.length) {
+    return {
+      projectsSynced: 0,
+      totalCreated: 0,
+      totalUpdated: 0,
+      totalArchived: 0,
+      errors: [],
+    }
+  }
+
+  let projectsSynced = 0
+  let totalCreated = 0
+  let totalUpdated = 0
+  let totalArchived = 0
+  const allErrors: string[] = []
+
+  for (const project of config.projects) {
+    try {
+      const result = await scanMoaiSpecs(project.path, project.id)
+
+      if (result.specsProcessed > 0) {
+        projectsSynced++
+      }
+
+      totalCreated += result.totalCreated
+      totalUpdated += result.totalUpdated
+      totalArchived += result.totalArchived
+      allErrors.push(...result.errors)
+    } catch (err) {
+      allErrors.push(
+        `Failed to sync MoAI specs for project ${project.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      )
+    }
+  }
+
+  return {
+    projectsSynced,
+    totalCreated,
+    totalUpdated,
+    totalArchived,
+    errors: allErrors,
+  }
+}
