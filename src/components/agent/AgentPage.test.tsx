@@ -80,6 +80,17 @@ describe('AgentPage', () => {
 describe('AgentPage with changeId', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Mock localStorage
+    const localStorageMock = {
+      getItem: vi.fn(),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+      length: 0,
+      key: vi.fn(),
+    }
+    global.localStorage = localStorageMock as any
+
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       json: async () => ({

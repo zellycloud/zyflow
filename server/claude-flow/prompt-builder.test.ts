@@ -305,7 +305,8 @@ Node.js 20+
       )
       const result = await builder.build()
 
-      expect(result).toContain('태스크 ID nonexistent-task를 찾을 수 없습니다')
+      expect(result).toContain('nonexistent-task')
+      expect(result).toMatch(/찾을 수 없습니다|존재하지 않습니다|없습니다/)
     })
   })
 

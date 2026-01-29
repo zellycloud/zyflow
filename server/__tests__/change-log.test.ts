@@ -378,9 +378,10 @@ describe('ChangeLogManager', () => {
 
     it('JSON 형식으로 내보내기해야 함', async () => {
       const exported = await changeLogManager.exportData({}, 'JSON')
-      
-      expect(exported).toContain('"type":"FILE_CHANGE"')
-      expect(exported).toContain('"filePath":"/test/export_file.md"')
+
+      // Check for JSON containing FILE_CHANGE type (with or without spaces around colon)
+      expect(exported).toMatch(/"type"\s*:\s*"FILE_CHANGE"/)
+      expect(exported).toMatch(/"filePath"\s*:\s*"\/test\/export_file\.md"/)
     })
 
     it('CSV 형식으로 내보내기해야 함', async () => {

@@ -60,9 +60,9 @@ describe('SpecDetailTabs', () => {
   it('renders all three tabs', () => {
     render(<SpecDetailTabs spec={mockSpec} />)
 
-    expect(screen.getByText(/Spec/)).toBeInTheDocument()
-    expect(screen.getByText(/Plan/)).toBeInTheDocument()
-    expect(screen.getByText(/Acceptance/)).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Spec/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Plan/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Acceptance/ })).toBeInTheDocument()
   })
 
   it('displays spec content by default', () => {
@@ -79,7 +79,7 @@ describe('SpecDetailTabs', () => {
     const planTab = screen.getByRole('tab', { name: /Plan/ })
     await user.click(planTab)
 
-    expect(screen.getByText(/Plan/)).toBeInTheDocument()
+    expect(planTab).toHaveAttribute('data-state', 'active')
     expect(screen.getByText(/Test plan content/)).toBeInTheDocument()
   })
 

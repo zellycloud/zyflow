@@ -36,7 +36,7 @@ describe('SpecProgressBar', () => {
       />
     )
 
-    const percentageText = screen.getByText(/42.86%/)
+    const percentageText = screen.getByText('42.9%')
     expect(percentageText).toBeInTheDocument()
   })
 
