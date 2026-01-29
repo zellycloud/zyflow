@@ -28,6 +28,8 @@ export interface FlowChange {
   updatedAt: string
   // UI용 집계 데이터
   stages?: Record<Stage, StageInfo>
+  completedTasks?: number
+  totalTasks?: number
 }
 
 // Task Origin 타입

@@ -141,6 +141,9 @@ export interface FlowChange {
   createdAt: string
   updatedAt: string
   stages?: Record<Stage, StageInfo>
+  // UI 집계 데이터 (Change 상세 조회 시 포함)
+  completedTasks?: number
+  totalTasks?: number
 }
 
 // =============================================

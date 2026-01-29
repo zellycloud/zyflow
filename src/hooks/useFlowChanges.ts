@@ -6,7 +6,8 @@ import type {
   ApiResponse,
   FlowSyncResponse,
   FlowChangeCountsResponse,
-  ProjectChangeCounts
+  ProjectChangeCounts,
+  SelectedItem
 } from '@/types'
 import { API_ENDPOINTS } from '@/config/api'
 
@@ -302,18 +303,6 @@ export function useChangeSpecContent(changeId: string | null, specId: string | n
 // =============================================
 // 선택 상태 관리 훅
 // =============================================
-
-export type SelectedItem =
-  | { type: 'project'; projectId: string }
-  | { type: 'change'; projectId: string; changeId: string }
-  | { type: 'standalone-tasks'; projectId: string }
-  | { type: 'backlog'; projectId: string }
-  | { type: 'project-settings'; projectId: string }
-  | { type: 'agent'; projectId: string; changeId?: string }
-  | { type: 'archived'; projectId: string; archivedChangeId?: string }
-  | { type: 'docs'; projectId: string }
-  | { type: 'alerts'; projectId: string }
-  | { type: 'settings' }
 
 export function useSelectedItem() {
   const queryClient = useQueryClient()
