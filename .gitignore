@@ -84,8 +84,7 @@ hive-mind-prompt-*.txt
 !.moai/scripts/**
 secret-key-*
 *.rdb
-!.moai/specs/
-!.moai/specs/**
+# Moved to after .moai/* pattern (see below)
 # FIXED: Issue #237 - Replaced overly broad *key* and *secret* patterns
 .moai/config/config.json
 .claude/skills/*/secrets/
@@ -132,6 +131,8 @@ coverage.json
 dist/
 !.env.example
 .moai/*
+!.moai/specs/
+!.moai/specs/**
 # uv.lock
 *.sqlite3
 *.egg-info/
