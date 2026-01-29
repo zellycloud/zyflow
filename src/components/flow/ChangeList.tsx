@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Loader2, FolderOpen } from 'lucide-react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ChangeItem } from './ChangeItem'
+// import { SpecItem } from './SpecItem' - For future MoaiSpec API integration
 import { useFlowChanges, useSyncFlowChanges } from '@/hooks/useFlowChanges'
 
 export function ChangeList() {

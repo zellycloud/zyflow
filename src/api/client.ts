@@ -6,6 +6,7 @@
 
 import { API_BASE_URL } from '@/config/api'
 import type { ApiResponse } from '@/types'
+import { ApiError, TimeoutError, NetworkError } from './errors'
 
 // API 요청 옵션 타입
 interface RequestOptions extends Omit<RequestInit, 'body'> {
@@ -13,21 +14,19 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
   timeout?: number
 }
 
-// API 에러 클래스
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public code?: string,
-    public details?: unknown
-  ) {
-    super(message)
-    this.name = 'ApiError'
-  }
-}
-
 // 기본 요청 타임아웃 (30초)
 const DEFAULT_TIMEOUT = 30000
+
+/**
+ * Parse JSON response with fallback
+ */
+async function parseJson<T>(response: Response): Promise<T | null> {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
 
 /**
  * 공통 fetch 래퍼
@@ -57,23 +56,37 @@ async function request<T>(
 
     // HTTP 에러 처리
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
+      const errorData = await parseJson<{ error?: string; code?: string; details?: unknown }>(response)
+      const errorMessage = errorData?.error || `HTTP ${response.status}: ${response.statusText}`
+
       throw new ApiError(
-        errorData.error || `HTTP ${response.status}: ${response.statusText}`,
+        errorMessage,
         response.status,
-        errorData.code,
-        errorData.details
+        errorData?.code,
+        errorData?.details
       )
     }
 
-    const json: ApiResponse<T> = await response.json()
+    const json = await parseJson<ApiResponse<T>>(response)
+
+    if (!json) {
+      throw new ApiError('Failed to parse response', 0)
+    }
 
     // API 응답 에러 처리
     if (!json.success) {
-      throw new ApiError(json.error || 'Unknown error', response.status)
+      throw new ApiError(
+        json.error || 'Unknown error',
+        response.status,
+        (json as any).code
+      )
     }
 
-    return json.data as T
+    if (!json.data) {
+      throw new ApiError('No data in response', response.status)
+    }
+
+    return json.data
   } catch (error) {
     clearTimeout(timeoutId)
 
@@ -83,9 +96,9 @@ async function request<T>(
 
     if (error instanceof Error) {
       if (error.name === 'AbortError') {
-        throw new ApiError('Request timeout', 408)
+        throw new TimeoutError('Request timeout')
       }
-      throw new ApiError(error.message, 0)
+      throw new NetworkError(error.message, error)
     }
 
     throw new ApiError('Unknown error', 0)
@@ -266,5 +279,10 @@ export const tasksApi = {
 export const healthApi = {
   check: () => api.get<{ status: string; timestamp: string; uptime: number }>('/api/health'),
 }
+
+// =============================================
+// Export error classes for use throughout the app
+// =============================================
+export { ApiError, TimeoutError, NetworkError, ValidationError, isApiError, isTimeoutError, isNetworkError, isValidationError, getErrorMessage, getErrorCode } from './errors'
 
 export default api

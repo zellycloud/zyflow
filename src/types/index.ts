@@ -86,6 +86,78 @@ export interface Change {
   updatedAt?: string // ISO 8601 날짜 문자열 - 문서 최종 수정 시간
 }
 
+// =============================================
+// MoAI SPEC 타입 (타입 안전성 강화)
+// =============================================
+export interface MoaiSpecRequirement {
+  id: string
+  title: string
+  description: string
+  type: 'functional' | 'non-functional' | 'constraint'
+  priority: 'critical' | 'high' | 'medium' | 'low'
+}
+
+export interface MoaiSpecAcceptanceCriteria {
+  id: string
+  description: string
+  priority: 'critical' | 'high' | 'medium' | 'low'
+}
+
+export interface MoaiSpecProgress {
+  completed: number
+  total: number
+  percentage: number
+}
+
+// OpenSpec 변경 사항 - discriminator 추가
+export interface OpenSpecChangeWithType extends Change {
+  type: 'openspec'
+}
+
+// MoAI SPEC
+export interface MoaiSpecWithType {
+  type: 'spec'
+  id: string
+  specId?: string
+  title: string
+  status: ChangeStatus
+  progress: MoaiSpecProgress
+  spec: {
+    content: string
+    requirements: MoaiSpecRequirement[]
+  }
+  plan: {
+    content: string
+    tags: Array<{
+      id: string
+      name: string
+      color?: string
+    }>
+    progress: MoaiSpecProgress
+  }
+  acceptance: {
+    content: string
+    criteria: MoaiSpecAcceptanceCriteria[]
+  }
+  createdAt: string
+  updatedAt: string
+  archivedAt?: string
+}
+
+// Discriminated Union Type
+export type FlowItem = OpenSpecChangeWithType | MoaiSpecWithType
+
+// =============================================
+// Type Guards
+// =============================================
+export function isOpenSpecChange(item: FlowItem): item is OpenSpecChangeWithType {
+  return item.type === 'openspec'
+}
+
+export function isMoaiSpec(item: FlowItem): item is MoaiSpecWithType {
+  return item.type === 'spec'
+}
+
 // Task item from tasks.md
 export interface Task {
   id: string

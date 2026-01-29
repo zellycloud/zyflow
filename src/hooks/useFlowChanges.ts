@@ -27,7 +27,7 @@ interface FlowChangeDetailData {
 
 export function useFlowChanges(options?: { enabled?: boolean }) {
   const { enabled = true } = options || {}
-  
+
   return useQuery({
     queryKey: ['flow', 'changes'],
     queryFn: async (): Promise<FlowChange[]> => {
