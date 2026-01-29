@@ -2,12 +2,15 @@
  * Flow Changes 동기화 서비스
  * OpenSpec 파일 시스템에서 DB로 changes와 tasks를 동기화
  */
-import { readdir, readFile } from 'fs/promises'
+import { readdir, readFile, stat } from 'fs/promises'
+import { existsSync } from 'fs'
 import { join } from 'path'
 import { loadConfig } from './config.js'
 import { initDb } from './tasks/index.js'
 import { getSqlite } from './tasks/db/client.js'
 import { parseTasksFile } from './parser.js'
+import { parseSpecFile } from '@zyflow/parser'
+import { syncSpecTagsFromFile, syncSpecAcceptanceFromFile, type MoaiSyncResult } from './sync-tasks.js'
 
 export interface SyncResult {
   synced: number
@@ -243,4 +246,123 @@ export async function syncFlowChanges(): Promise<SyncResult> {
     updated: totalUpdated,
     projects: projectsSynced,
   }
+}
+
+// =============================================
+// MoAI SPEC Scan Functions (TAG-004)
+// =============================================
+
+/**
+ * Result of scanning MoAI SPEC directories
+ */
+export interface MoaiScanResult {
+  specsFound: number
+  specsProcessed: number
+  totalCreated: number
+  totalUpdated: number
+  totalArchived: number
+  errors: string[]
+}
+
+/**
+ * Scan .moai/specs directory and sync all SPECs to DB
+ * Creates/updates changes records and syncs TAGs and acceptance criteria
+ */
+export async function scanMoaiSpecs(
+  projectPath: string,
+  projectId: string
+): Promise<MoaiScanResult> {
+  const result: MoaiScanResult = {
+    specsFound: 0,
+    specsProcessed: 0,
+    totalCreated: 0,
+    totalUpdated: 0,
+    totalArchived: 0,
+    errors: [],
+  }
+
+  const specsDir = join(projectPath, '.moai', 'specs')
+
+  if (!existsSync(specsDir)) {
+    return result
+  }
+
+  try {
+    const entries = await readdir(specsDir)
+    const specDirs = entries.filter((e) => e.startsWith('SPEC-'))
+    result.specsFound = specDirs.length
+
+    const sqlite = getSqlite()
+    const now = Date.now()
+
+    for (const specId of specDirs) {
+      const specDir = join(specsDir, specId)
+
+      try {
+        // Verify it's a directory
+        const specStat = await stat(specDir)
+        if (!specStat.isDirectory()) continue
+
+        // Read spec.md for title
+        let title = specId
+        const specPath = join(specDir, 'spec.md')
+
+        if (existsSync(specPath)) {
+          try {
+            const specContent = await readFile(specPath, 'utf-8')
+            const parsed = parseSpecFile(specContent)
+            if (parsed.frontmatter.title) {
+              title = String(parsed.frontmatter.title)
+            }
+          } catch {
+            // Parse error, use specId as title
+          }
+        }
+
+        // Upsert change record
+        const existing = sqlite
+          .prepare(`SELECT id FROM changes WHERE id = ? AND project_id = ?`)
+          .get(specId, projectId)
+
+        if (!existing) {
+          sqlite
+            .prepare(`
+              INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
+              VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
+            `)
+            .run(specId, projectId, title, `.moai/specs/${specId}/spec.md`, now, now)
+        } else {
+          sqlite
+            .prepare(`UPDATE changes SET title = ?, updated_at = ? WHERE id = ? AND project_id = ?`)
+            .run(title, now, specId, projectId)
+        }
+
+        // Sync TAG chain from plan.md
+        const tagResult = await syncSpecTagsFromFile(specId, projectPath, projectId)
+        result.totalCreated += tagResult.created
+        result.totalUpdated += tagResult.updated
+        result.totalArchived += tagResult.archived
+        result.errors.push(...tagResult.errors)
+
+        // Sync acceptance criteria from acceptance.md
+        const acResult = await syncSpecAcceptanceFromFile(specId, projectPath, projectId)
+        result.totalCreated += acResult.created
+        result.totalUpdated += acResult.updated
+        result.totalArchived += acResult.archived
+        result.errors.push(...acResult.errors)
+
+        result.specsProcessed++
+      } catch (err) {
+        result.errors.push(
+          `Failed to process ${specId}: ${err instanceof Error ? err.message : String(err)}`
+        )
+      }
+    }
+  } catch (err) {
+    result.errors.push(
+      `Failed to scan specs directory: ${err instanceof Error ? err.message : String(err)}`
+    )
+  }
+
+  return result
 }

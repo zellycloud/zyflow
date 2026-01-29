@@ -5,9 +5,11 @@
  */
 
 import { readFile } from 'fs/promises'
+import { existsSync } from 'fs'
 import { join } from 'path'
 import { parseTasksFile } from './parser.js'
-import { getSqlite } from './tasks/db/client.js'
+import { parsePlanFile, parseAcceptanceFile } from '@zyflow/parser'
+import { getSqlite, getNextTaskId } from './tasks/db/client.js'
 import { getActiveProject, getProjectById } from './config.js'
 import { getChangeStatus, isOpenSpecAvailable } from './cli-adapter/index.js'
 
@@ -489,4 +491,275 @@ export async function refreshAllArtifactStatusCache(
   }
 
   return { updated, failed }
+}
+
+// =============================================
+// MoAI SPEC Sync Functions (TAG-004)
+// =============================================
+
+/**
+ * Result of syncing MoAI SPEC files (plan.md, acceptance.md)
+ */
+export interface MoaiSyncResult {
+  created: number
+  updated: number
+  archived: number
+  errors: string[]
+}
+
+/**
+ * Sync TAG chain from plan.md to DB
+ * TAGs are stored as tasks with origin='moai'
+ */
+export async function syncSpecTagsFromFile(
+  specId: string,
+  projectPath: string,
+  projectId: string
+): Promise<MoaiSyncResult> {
+  const result: MoaiSyncResult = { created: 0, updated: 0, archived: 0, errors: [] }
+
+  const planPath = join(projectPath, '.moai', 'specs', specId, 'plan.md')
+
+  // Check if plan.md exists
+  if (!existsSync(planPath)) {
+    return result
+  }
+
+  try {
+    const content = await readFile(planPath, 'utf-8')
+    const parsed = parsePlanFile(content)
+    const sqlite = getSqlite()
+    const now = Date.now()
+
+    // Get existing moai tasks for this spec (by tag_id)
+    const existingTasks = sqlite
+      .prepare(`
+        SELECT id, tag_id FROM tasks
+        WHERE change_id = ? AND project_id = ? AND origin = 'moai' AND tag_id IS NOT NULL
+      `)
+      .all(specId, projectId) as Array<{ id: number; tag_id: string }>
+
+    const existingByTagId = new Map(existingTasks.map((t) => [t.tag_id, t]))
+    const processedTagIds = new Set<string>()
+
+    // Upsert each TAG
+    for (let i = 0; i < parsed.tags.length; i++) {
+      const tag = parsed.tags[i]
+      processedTagIds.add(tag.id)
+
+      const existing = existingByTagId.get(tag.id)
+      const status = tag.completed ? 'done' : 'todo'
+      const dependencies = JSON.stringify(tag.dependencies)
+
+      if (existing) {
+        // Update existing task
+        sqlite
+          .prepare(`
+            UPDATE tasks
+            SET title = ?,
+                description = ?,
+                status = ?,
+                tag_scope = ?,
+                tag_dependencies = ?,
+                task_order = ?,
+                updated_at = ?
+            WHERE id = ?
+          `)
+          .run(
+            tag.title,
+            tag.purpose,
+            status,
+            tag.scope,
+            dependencies,
+            i + 1,
+            now,
+            existing.id
+          )
+        result.updated++
+      } else {
+        // Create new task
+        const newId = getNextTaskId('moai')
+        sqlite
+          .prepare(`
+            INSERT INTO tasks (
+              id, project_id, change_id, origin, title, description, status,
+              priority, stage, tag_id, tag_scope, tag_dependencies,
+              display_id, group_title, group_order, task_order,
+              created_at, updated_at
+            )
+            VALUES (?, ?, ?, 'moai', ?, ?, ?, 'medium', 'task', ?, ?, ?, ?, 'TAG Chain', 1, ?, ?, ?)
+          `)
+          .run(
+            newId,
+            projectId,
+            specId,
+            tag.title,
+            tag.purpose,
+            status,
+            tag.id,
+            tag.scope,
+            dependencies,
+            tag.id,
+            i + 1,
+            now,
+            now
+          )
+        result.created++
+      }
+    }
+
+    // Archive tasks no longer in plan.md
+    for (const existing of existingTasks) {
+      if (existing.tag_id && !processedTagIds.has(existing.tag_id)) {
+        // Check if not already archived
+        const currentStatus = sqlite
+          .prepare(`SELECT status FROM tasks WHERE id = ?`)
+          .get(existing.id) as { status: string } | undefined
+
+        if (currentStatus && currentStatus.status !== 'archived') {
+          sqlite
+            .prepare(`UPDATE tasks SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ?`)
+            .run(now, now, existing.id)
+          result.archived++
+        }
+      }
+    }
+
+    // Update progress in changes table
+    const completedCount = parsed.tags.filter((t) => t.completed).length
+    const progress = parsed.tags.length > 0
+      ? Math.round((completedCount / parsed.tags.length) * 100)
+      : 0
+
+    sqlite
+      .prepare(`UPDATE changes SET progress = ?, updated_at = ? WHERE id = ? AND project_id = ?`)
+      .run(progress, now, specId, projectId)
+  } catch (err) {
+    result.errors.push(`Failed to sync TAG chain: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  return result
+}
+
+/**
+ * Sync acceptance criteria from acceptance.md to DB
+ * Acceptance criteria are stored as tasks with origin='moai'
+ */
+export async function syncSpecAcceptanceFromFile(
+  specId: string,
+  projectPath: string,
+  projectId: string
+): Promise<MoaiSyncResult> {
+  const result: MoaiSyncResult = { created: 0, updated: 0, archived: 0, errors: [] }
+
+  const acceptancePath = join(projectPath, '.moai', 'specs', specId, 'acceptance.md')
+
+  // Check if acceptance.md exists
+  if (!existsSync(acceptancePath)) {
+    return result
+  }
+
+  try {
+    const content = await readFile(acceptancePath, 'utf-8')
+    const parsed = parseAcceptanceFile(content)
+    const sqlite = getSqlite()
+    const now = Date.now()
+
+    // Get existing acceptance tasks for this spec
+    const existingTasks = sqlite
+      .prepare(`
+        SELECT id, tag_id FROM tasks
+        WHERE change_id = ? AND project_id = ? AND origin = 'moai'
+          AND group_title = 'Acceptance Criteria' AND tag_id IS NOT NULL
+      `)
+      .all(specId, projectId) as Array<{ id: number; tag_id: string }>
+
+    const existingByTagId = new Map(existingTasks.map((t) => [t.tag_id, t]))
+    const processedIds = new Set<string>()
+
+    // Upsert each acceptance criteria
+    for (let i = 0; i < parsed.criteria.length; i++) {
+      const ac = parsed.criteria[i]
+      processedIds.add(ac.id)
+
+      const existing = existingByTagId.get(ac.id)
+      const status = ac.verified ? 'done' : 'todo'
+
+      // Format Gherkin text as description
+      const descriptionParts: string[] = []
+      if (ac.given) descriptionParts.push(`**Given** ${ac.given}`)
+      if (ac.when) descriptionParts.push(`**When** ${ac.when}`)
+      if (ac.then) descriptionParts.push(`**Then** ${ac.then}`)
+      const description = descriptionParts.join('\n')
+
+      // Format success metrics as acceptance_criteria
+      const acceptanceCriteria = ac.successMetrics
+        .map((m) => `- [${m.checked ? 'x' : ' '}] ${m.text}`)
+        .join('\n')
+
+      if (existing) {
+        // Update existing task
+        sqlite
+          .prepare(`
+            UPDATE tasks
+            SET title = ?,
+                description = ?,
+                status = ?,
+                acceptance_criteria = ?,
+                task_order = ?,
+                updated_at = ?
+            WHERE id = ?
+          `)
+          .run(ac.title, description, status, acceptanceCriteria, i + 1, now, existing.id)
+        result.updated++
+      } else {
+        // Create new task
+        const newId = getNextTaskId('moai')
+        sqlite
+          .prepare(`
+            INSERT INTO tasks (
+              id, project_id, change_id, origin, title, description, status,
+              priority, stage, tag_id, display_id, acceptance_criteria,
+              group_title, group_order, task_order, created_at, updated_at
+            )
+            VALUES (?, ?, ?, 'moai', ?, ?, ?, 'medium', 'task', ?, ?, ?, 'Acceptance Criteria', 2, ?, ?, ?)
+          `)
+          .run(
+            newId,
+            projectId,
+            specId,
+            ac.title,
+            description,
+            status,
+            ac.id,
+            ac.id,
+            acceptanceCriteria,
+            i + 1,
+            now,
+            now
+          )
+        result.created++
+      }
+    }
+
+    // Archive removed criteria
+    for (const existing of existingTasks) {
+      if (existing.tag_id && !processedIds.has(existing.tag_id)) {
+        const currentStatus = sqlite
+          .prepare(`SELECT status FROM tasks WHERE id = ?`)
+          .get(existing.id) as { status: string } | undefined
+
+        if (currentStatus && currentStatus.status !== 'archived') {
+          sqlite
+            .prepare(`UPDATE tasks SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ?`)
+            .run(now, now, existing.id)
+          result.archived++
+        }
+      }
+    }
+  } catch (err) {
+    result.errors.push(`Failed to sync acceptance criteria: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  return result
 }
