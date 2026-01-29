@@ -96,7 +96,20 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
 
   const handleSelectChange = (projectId: string, changeId: string) => {
     const selectedItem: SelectedItem = { type: 'change', projectId, changeId }
-    
+
+    // 먼저 UI 업데이트 (즉시 반응)
+    onSelect(selectedItem)
+    selectItem(selectedItem)
+
+    // 프로젝트 활성화는 비동기로
+    if (projectId !== projectsData?.activeProjectId) {
+      activateProject.mutate(projectId)
+    }
+  }
+
+  const handleSelectSpec = (projectId: string, specId: string) => {
+    const selectedItem: SelectedItem = { type: 'spec', projectId, specId }
+
     // 먼저 UI 업데이트 (즉시 반응)
     onSelect(selectedItem)
     selectItem(selectedItem)
@@ -258,11 +271,13 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                       </SidebarMenuButton>
                       <CollapsibleContent>
                         <SidebarMenuSub>
-                          {/* Changes */}
+                          {/* Changes and SPECs */}
                           {project.changes?.map((change) => {
-                            const isChangeSelected =
-                              selectedItem?.type === 'change' &&
-                              selectedItem.changeId === change.id
+                            // Check if this is a MoAI SPEC
+                            const isSpec = (change as { type?: string }).type === 'spec'
+                            const isSelected = isSpec
+                              ? selectedItem?.type === 'spec' && selectedItem.specId === change.id
+                              : selectedItem?.type === 'change' && selectedItem.changeId === change.id
 
                             return (
                               <SidebarMenuSubItem key={change.id}>
@@ -271,11 +286,17 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                                     <TooltipTrigger asChild>
                                       <SidebarMenuSubButton
                                         onClick={() =>
-                                          handleSelectChange(project.id, change.id)
+                                          isSpec
+                                            ? handleSelectSpec(project.id, change.id)
+                                            : handleSelectChange(project.id, change.id)
                                         }
-                                        isActive={isChangeSelected}
+                                        isActive={isSelected}
                                       >
-                                        <GitBranch className="size-3" />
+                                        {isSpec ? (
+                                          <span className="text-purple-600 dark:text-purple-400 text-[10px] font-semibold shrink-0">SPEC</span>
+                                        ) : (
+                                          <GitBranch className="size-3" />
+                                        )}
                                         <span className="truncate flex-1">{change.title}</span>
                                         <span className="text-[10px] text-muted-foreground shrink-0">
                                           {formatRelativeDate((change as { updatedAt?: string }).updatedAt)}

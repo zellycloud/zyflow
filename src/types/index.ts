@@ -598,6 +598,7 @@ export type ClaudeFlowHistoryResponse = SwarmHistoryResponse
 export type SelectedItem =
   | { type: 'project'; projectId: string }
   | { type: 'change'; projectId: string; changeId: string }
+  | { type: 'spec'; projectId: string; specId: string }
   | { type: 'standalone-tasks'; projectId: string }
   | { type: 'backlog'; projectId: string }
   | { type: 'project-settings'; projectId: string }

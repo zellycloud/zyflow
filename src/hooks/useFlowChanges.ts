@@ -352,6 +352,13 @@ export function useSelectedItem() {
         })
         break
 
+      case 'spec':
+        queryClient.invalidateQueries({
+          queryKey: ['flow', 'changes', item.specId],
+          refetchType: 'active'
+        })
+        break
+
       case 'standalone-tasks':
         queryClient.invalidateQueries({
           queryKey: ['flow', 'tasks', { standalone: true }],
@@ -400,10 +407,14 @@ export function useSelectedData(selectedItem: SelectedItem | null) {
     standalone: selectedItem?.type === 'standalone-tasks' ? true : undefined,
     projectId
   })
-  const { data: changeDetail } = useFlowChangeDetail(
-    selectedItem?.type === 'change' ? (selectedItem.changeId ?? null) : null
-  )
-  
+  // Support both 'change' and 'spec' types
+  const detailId = selectedItem?.type === 'change'
+    ? (selectedItem.changeId ?? null)
+    : selectedItem?.type === 'spec'
+      ? (selectedItem.specId ?? null)
+      : null
+  const { data: changeDetail } = useFlowChangeDetail(detailId)
+
   return {
     changes,
     tasks,

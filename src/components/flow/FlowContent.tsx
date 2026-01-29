@@ -3,6 +3,7 @@ import { FolderOpen, Loader2 } from 'lucide-react'
 import type { SelectedItem } from '@/types'
 import { ProjectDashboard } from './ProjectDashboard'
 import { ChangeDetail } from './ChangeDetail'
+import { SpecDetail } from './SpecDetail'
 import { StandaloneTasks } from './StandaloneTasks'
 import { SettingsPage } from '@/components/settings'
 import { ProjectSettings } from '@/components/settings/ProjectSettings'
@@ -91,6 +92,13 @@ export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
             // 아카이브 후 프로젝트 대시보드로 이동
             onSelectItem?.({ type: 'project', projectId: selectedItem.projectId })
           }}
+        />
+      )
+    case 'spec':
+      return (
+        <SpecDetail
+          projectId={selectedItem.projectId}
+          specId={selectedItem.specId}
         />
       )
     case 'standalone-tasks':
