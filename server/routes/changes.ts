@@ -27,6 +27,7 @@ import {
   getCachedArtifactStatus,
   updateArtifactStatusCache,
 } from '../sync-tasks.js'
+import { scanMoaiSpecs, isValidSpecId } from '../moai-specs.js'
 
 // Remote plugin is optional - only load if installed
 let remotePlugin: {
@@ -148,10 +149,11 @@ changesRouter.get('/', async (_req, res) => {
             updatedAt = entry.modifiedAt || new Date().toISOString()
           }
 
-          return { id: changeId, title, progress, totalTasks, completedTasks, updatedAt }
+          return { id: changeId, title, progress, totalTasks, completedTasks, updatedAt, type: 'openspec' as const }
         })
       )
 
+      // TODO: Add MoAI SPEC support for remote projects
       return res.json({ success: true, data: { changes } })
     }
 
@@ -226,11 +228,35 @@ changesRouter.get('/', async (_req, res) => {
           }
         }
 
-        return { id: changeId, title, progress, totalTasks, completedTasks, updatedAt }
+        return { id: changeId, title, progress, totalTasks, completedTasks, updatedAt, type: 'openspec' as const }
       })
     )
 
-    res.json({ success: true, data: { changes } })
+    // Also scan for MoAI SPECs
+    let moaiSpecs: Array<{ id: string; title: string; progress: number; totalTasks: number; completedTasks: number; updatedAt: string; type: 'moai-spec' }> = []
+    try {
+      const moaiSpecList = await scanMoaiSpecs(paths.projectPath)
+      moaiSpecs = moaiSpecList.map((spec) => ({
+        id: spec.id,
+        title: spec.title,
+        progress: spec.tagCount > 0 ? Math.round((spec.completedTags / spec.tagCount) * 100) : 0,
+        totalTasks: spec.tagCount,
+        completedTasks: spec.completedTags,
+        updatedAt: spec.updatedAt || new Date().toISOString(),
+        type: 'moai-spec' as const,
+      }))
+    } catch (err) {
+      console.warn('Failed to scan MoAI SPECs:', err)
+    }
+
+    // Merge OpenSpec changes and MoAI SPECs, sorted by updatedAt
+    const allChanges = [...changes, ...moaiSpecs].sort((a, b) => {
+      const aTime = new Date(a.updatedAt).getTime()
+      const bTime = new Date(b.updatedAt).getTime()
+      return bTime - aTime // Most recent first
+    })
+
+    res.json({ success: true, data: { changes: allChanges } })
   } catch (error) {
     console.error('Error listing changes:', error)
     res.status(500).json({ success: false, error: 'Failed to list changes' })
@@ -641,33 +667,17 @@ changesRouter.get('/:id/status', async (req, res) => {
       }
     }
 
-    // CLI로 상태 조회
-    const result = await getChangeStatus({
-      change: changeId,
-      cwd: project.path,
-    })
-
-    if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        error: result.error || 'Failed to get change status',
-      })
-    }
-
-    const status = result.data as OpenSpecStatus
-
-    // 캐시 업데이트 (비동기로 실행, 응답 지연 방지)
-    updateArtifactStatusCache(changeId, project.path, project.id).catch((err) => {
-      console.warn('Failed to update artifact status cache:', err)
-    })
-
+    // TAG-006: OpenSpec CLI is deprecated, return empty status
+    // Graceful degradation: return empty artifacts and zero progress
+    // Clients should use MoAI SPEC system for actual status
     res.json({
       success: true,
       data: {
         changeId,
-        artifacts: status?.artifacts || [],
-        progress: status?.progress || { completed: 0, total: 0, percentage: 0 },
+        artifacts: [],
+        progress: { completed: 0, total: 0, percentage: 0 },
         cached: false,
+        note: 'OpenSpec CLI support deprecated. Use MoAI SPEC system for current status tracking.',
       },
     })
   } catch (error) {
@@ -685,29 +695,16 @@ changesRouter.post('/:id/validate', async (req, res) => {
     }
 
     const changeId = req.params.id
-    const strict = req.body?.strict !== false // Default to strict mode
-
-    const result = await validateChange(changeId, {
-      cwd: project.path,
-      strict,
-    })
-
-    if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        error: result.error || 'Validation failed',
-        data: result.data,
-      })
-    }
-
-    const validation = result.data as OpenSpecValidation
+    // TAG-006: OpenSpec CLI validation is deprecated
+    // Return graceful empty validation response
     res.json({
       success: true,
       data: {
         changeId,
-        valid: validation?.valid ?? true,
-        errors: validation?.errors || [],
-        warnings: validation?.warnings || [],
+        valid: true,
+        errors: [],
+        warnings: [],
+        note: 'OpenSpec CLI validation deprecated. Use MoAI SPEC system validation.',
       },
     })
   } catch (error) {
@@ -727,19 +724,8 @@ changesRouter.post('/:id/archive', async (req, res) => {
     const changeId = req.params.id
     const syncSpecs = req.body?.syncSpecs !== false // Default to sync specs
 
-    const result = await archiveChange(changeId, {
-      cwd: project.path,
-      syncSpecs,
-    })
-
-    if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        error: result.error || 'Archive failed',
-      })
-    }
-
-    // Update DB status to archived
+    // TAG-006: OpenSpec CLI archiving is deprecated
+    // Only update DB status to archived (CLI operation skipped)
     try {
       initDb()
       const sqlite = getSqlite()
@@ -749,7 +735,11 @@ changesRouter.post('/:id/archive', async (req, res) => {
         WHERE id = ? AND project_id = ?
       `).run(Date.now(), changeId, project.id)
     } catch (dbError) {
-      console.warn('Failed to update DB archive status:', dbError)
+      console.error('Failed to update DB archive status:', dbError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to archive change in database',
+      })
     }
 
     res.json({
@@ -758,6 +748,7 @@ changesRouter.post('/:id/archive', async (req, res) => {
         changeId,
         archived: true,
         syncSpecs,
+        note: 'OpenSpec CLI archiving deprecated. Archived in database only.',
       },
     })
   } catch (error) {
@@ -776,26 +767,16 @@ changesRouter.get('/:id/instructions/:artifact', async (req, res) => {
 
     const { id: changeId, artifact } = req.params
 
-    const result = await getInstructions(artifact, {
-      change: changeId,
-      cwd: project.path,
-    })
-
-    if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        error: result.error || 'Failed to get instructions',
-      })
-    }
-
-    const instructions = result.data as OpenSpecInstructions
+    // TAG-006: OpenSpec CLI instructions are deprecated
+    // Return empty instructions response
     res.json({
       success: true,
       data: {
         changeId,
         artifact,
-        content: instructions?.content || '',
-        context: instructions?.context || {},
+        content: '',
+        context: {},
+        note: 'OpenSpec CLI instructions deprecated. Use MoAI SPEC system for artifact instructions.',
       },
     })
   } catch (error) {

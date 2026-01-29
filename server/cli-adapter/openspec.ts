@@ -1,20 +1,21 @@
 /**
- * OpenSpec CLI Adapter
- * Wraps OpenSpec CLI commands for programmatic use in zyflow server
+ * OpenSpec CLI Adapter (DEPRECATED - TAG-006)
  *
- * OpenSpec 1.0 commands:
+ * IMPORTANT: This module is deprecated and maintained for backward compatibility only.
+ * External openspec CLI dependency has been removed. All functions gracefully degrade.
+ * Use MoAI SPEC system for SPEC management instead.
+ *
+ * Deprecated OpenSpec 1.0 commands:
  * - list: List changes or specs
  * - show: Show change or spec details
  * - status: Display artifact completion status
  * - instructions: Output enriched instructions
  * - validate: Validate changes and specs
  * - archive: Archive completed changes
+ *
+ * TAG-006: External openspec CLI dependency removed.
+ * All functions now return failure/empty responses for graceful degradation.
  */
-
-import { exec, ExecException } from 'child_process'
-import { promisify } from 'util'
-
-const execAsync = promisify(exec)
 
 /**
  * OpenSpec command result interface
@@ -94,54 +95,37 @@ export interface OpenSpecOptions {
 
 /**
  * Run an OpenSpec CLI command
+ *
+ * DEPRECATED (TAG-006): External openspec CLI dependency removed.
+ * This function no longer executes the external openspec binary.
+ * Returns failure for graceful degradation.
  */
 export async function runOpenSpecCommand(
   command: string,
   args: string[] = [],
   options: OpenSpecOptions = {}
 ): Promise<OpenSpecResult> {
-  const { cwd, json = true, timeout = 30000 } = options
+  // External openspec CLI is no longer available.
+  // TAG-006: MoAI system handles SPEC management directly through file reading.
+  const deprecationMessage =
+    `OpenSpec CLI command '${command}' is deprecated. ` +
+    `External openspec binary is no longer available. ` +
+    `Use MoAI SPEC system for SPEC management.`
 
-  // Build command
-  const fullArgs = [...args]
-  if (json) {
-    fullArgs.push('--json')
-  }
+  console.warn(deprecationMessage)
 
-  const fullCommand = `openspec ${command} ${fullArgs.join(' ')}`.trim()
-
-  try {
-    const { stdout, stderr } = await execAsync(fullCommand, {
-      cwd,
-      timeout,
-      maxBuffer: 1024 * 1024 * 10, // 10MB buffer
-    })
-
-    // Parse JSON output if json mode
-    if (json && stdout) {
-      try {
-        const data = JSON.parse(stdout)
-        return { success: true, data }
-      } catch {
-        // If JSON parsing fails, return raw output
-        return { success: true, data: stdout }
-      }
-    }
-
-    return { success: true, data: stdout }
-  } catch (error) {
-    const execError = error as ExecException & { stdout?: string; stderr?: string }
-    return {
-      success: false,
-      error: execError.stderr || execError.message,
-      exitCode: execError.code ?? 1,
-      data: execError.stdout,
-    }
+  return {
+    success: false,
+    error: deprecationMessage,
+    exitCode: 127, // Command not found
   }
 }
 
 /**
  * List OpenSpec changes
+ *
+ * DEPRECATED (TAG-006): External openspec CLI no longer available.
+ * Returns empty array for graceful degradation.
  */
 export async function listChanges(
   options: OpenSpecOptions = {}
@@ -168,6 +152,9 @@ export async function listChanges(
 
 /**
  * List OpenSpec specs
+ *
+ * DEPRECATED (TAG-006): External openspec CLI no longer available.
+ * Returns empty array for graceful degradation.
  */
 export async function listSpecs(
   options: OpenSpecOptions = {}
@@ -192,6 +179,9 @@ export async function listSpecs(
 
 /**
  * Show change details
+ *
+ * DEPRECATED (TAG-006): External openspec CLI no longer available.
+ * Returns failure for graceful degradation.
  */
 export async function showChange(
   changeName: string,
@@ -202,6 +192,9 @@ export async function showChange(
 
 /**
  * Get change status (artifact completion)
+ *
+ * DEPRECATED (TAG-006): External openspec CLI no longer available.
+ * Returns failure for graceful degradation.
  */
 export async function getChangeStatus(
   options: OpenSpecOptions = {}
@@ -216,6 +209,9 @@ export async function getChangeStatus(
 
 /**
  * Get instructions for an artifact
+ *
+ * DEPRECATED (TAG-006): External openspec CLI no longer available.
+ * Returns empty content for graceful degradation.
  */
 export async function getInstructions(
   artifact: string,
@@ -231,6 +227,9 @@ export async function getInstructions(
 
 /**
  * Validate a change or spec
+ *
+ * DEPRECATED (TAG-006): External openspec CLI no longer available.
+ * Returns failure for graceful degradation.
  */
 export async function validateChange(
   itemName?: string,
@@ -249,6 +248,9 @@ export async function validateChange(
 
 /**
  * Archive a completed change
+ *
+ * DEPRECATED (TAG-006): External openspec CLI no longer available.
+ * Returns failure for graceful degradation.
  */
 export async function archiveChange(
   changeName: string,
@@ -264,6 +266,9 @@ export async function archiveChange(
 
 /**
  * Get available workflow schemas
+ *
+ * DEPRECATED (TAG-006): External openspec CLI no longer available.
+ * Returns empty array for graceful degradation.
  */
 export async function listSchemas(
   options: OpenSpecOptions = {}
@@ -284,24 +289,24 @@ export async function listSchemas(
 
 /**
  * Check if OpenSpec CLI is available
+ *
+ * DEPRECATED (TAG-006): External openspec CLI dependency removed.
+ * MoAI system now handles SPEC management directly.
+ * Returns false for graceful degradation.
  */
 export async function isOpenSpecAvailable(): Promise<boolean> {
-  try {
-    const { stdout } = await execAsync('openspec --version', { timeout: 5000 })
-    return stdout.trim().length > 0
-  } catch {
-    return false
-  }
+  // External openspec CLI is no longer available.
+  // TAG-006: Direct file reading from .moai/specs/ handles SPEC data.
+  return false
 }
 
 /**
  * Get OpenSpec CLI version
+ *
+ * DEPRECATED (TAG-006): External openspec CLI dependency removed.
+ * Returns null for graceful degradation.
  */
 export async function getOpenSpecVersion(): Promise<string | null> {
-  try {
-    const { stdout } = await execAsync('openspec --version', { timeout: 5000 })
-    return stdout.trim()
-  } catch {
-    return null
-  }
+  // External openspec CLI is no longer available
+  return null
 }
