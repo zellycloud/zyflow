@@ -5,12 +5,14 @@
  */
 
 import { Router } from 'express'
-import { readdir, readFile, writeFile, access, unlink, rename } from 'fs/promises'
+import { readdir, readFile, writeFile, access, unlink, rename, stat } from 'fs/promises'
+import { existsSync } from 'fs'
 import { join, basename } from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { loadConfig, getActiveProject, getProjectById } from '../config.js'
 import { parseTasksFile } from '../parser.js'
+import { parsePlanFile, parseAcceptanceFile } from '@zyflow/parser'
 import { initDb } from '../tasks/index.js'
 import { getSqlite } from '../tasks/db/client.js'
 import type { Stage, ChangeStatus, TaskOrigin } from '../tasks/db/schema.js'
@@ -302,6 +304,166 @@ async function getRemoteChangeStages(
   return stages
 }
 
+// =============================================
+// MoAI SPEC Support Functions (TAG-005)
+// =============================================
+
+// Helper: Check if ID is MoAI SPEC format (SPEC-XXX)
+function isMoaiSpecId(id: string): boolean {
+  return id.startsWith('SPEC-')
+}
+
+// Helper: Calculate TAG progress from plan.md
+async function calculateTagProgress(
+  specId: string,
+  projectPath: string
+): Promise<{ completed: number; total: number; percentage: number } | null> {
+  try {
+    const planPath = join(projectPath, '.moai', 'specs', specId, 'plan.md')
+    if (!existsSync(planPath)) {
+      return null
+    }
+
+    const content = await readFile(planPath, 'utf-8')
+    const parsed = parsePlanFile(content)
+
+    const completed = parsed.tags.filter((t) => t.completed).length
+    const total = parsed.tags.length
+    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0
+
+    return { completed, total, percentage }
+  } catch {
+    return null
+  }
+}
+
+// Helper: Get MoAI SPEC detail with spec.md, plan.md, acceptance.md content
+async function getMoaiSpecDetail(
+  specId: string,
+  projectId?: string
+): Promise<{
+  id: string
+  title: string
+  type: 'spec'
+  status: string
+  currentStage: Stage
+  progress: number
+  createdAt: string
+  updatedAt: string
+  spec: { content: string | null; title?: string } | null
+  plan: { content: string | null; tags: unknown[] | null; progress: { completed: number; total: number; percentage: number } | null } | null
+  acceptance: { content: string | null; criteria: unknown[] | null } | null
+  stages: Record<Stage, { total: number; completed: number; tasks: unknown[] }>
+} | null> {
+  try {
+    const sqlite = getSqlite()
+
+    // Get change record from DB
+    let change
+    if (projectId) {
+      change = sqlite
+        .prepare(`SELECT * FROM changes WHERE id = ? AND project_id = ?`)
+        .get(specId, projectId) as {
+        id: string
+        project_id: string
+        title: string
+        spec_path: string | null
+        status: ChangeStatus
+        current_stage: Stage
+        progress: number
+        created_at: number
+        updated_at: number
+      } | undefined
+    } else {
+      change = sqlite
+        .prepare(`SELECT * FROM changes WHERE id = ?`)
+        .get(specId) as typeof change
+    }
+
+    if (!change) {
+      return null
+    }
+
+    // Get project path
+    const config = await loadConfig()
+    const project = config.projects.find((p) => p.id === change.project_id)
+    if (!project) {
+      return null
+    }
+
+    const projectPath = project.path
+    const specsDir = join(projectPath, '.moai', 'specs', specId)
+
+    // Read spec.md
+    let specContent = null
+    let specTitle = change.title
+    const specPath = join(specsDir, 'spec.md')
+    if (existsSync(specPath)) {
+      try {
+        specContent = await readFile(specPath, 'utf-8')
+        // Try to extract title from spec.md frontmatter
+        const titleMatch = specContent.match(/^title:\s+(.+)$/m)
+        if (titleMatch) {
+          specTitle = titleMatch[1].trim().replace(/^["']|["']$/g, '')
+        }
+      } catch {
+        // spec.md not readable
+      }
+    }
+
+    // Read plan.md and parse TAGs
+    let planContent = null
+    let tags = null
+    let tagProgress = null
+    const planPath = join(specsDir, 'plan.md')
+    if (existsSync(planPath)) {
+      try {
+        planContent = await readFile(planPath, 'utf-8')
+        const parsed = parsePlanFile(planContent)
+        tags = parsed.tags
+        tagProgress = await calculateTagProgress(specId, projectPath)
+      } catch {
+        // plan.md not readable or parse error
+      }
+    }
+
+    // Read acceptance.md and parse criteria
+    let acceptanceContent = null
+    let criteria = null
+    const acceptancePath = join(specsDir, 'acceptance.md')
+    if (existsSync(acceptancePath)) {
+      try {
+        acceptanceContent = await readFile(acceptancePath, 'utf-8')
+        const parsed = parseAcceptanceFile(acceptanceContent)
+        criteria = parsed.criteria
+      } catch {
+        // acceptance.md not readable or parse error
+      }
+    }
+
+    // Get stages for compatibility with OpenSpec format
+    const stages = getChangeStages(specId, change.project_id)
+
+    return {
+      id: change.id,
+      title: specTitle,
+      type: 'spec',
+      status: change.status,
+      currentStage: change.current_stage,
+      progress: change.progress,
+      createdAt: new Date(change.created_at).toISOString(),
+      updatedAt: new Date(change.updated_at).toISOString(),
+      spec: specContent ? { content: specContent, title: specTitle } : null,
+      plan: planContent ? { content: planContent, tags, progress: tagProgress } : null,
+      acceptance: acceptanceContent ? { content: acceptanceContent, criteria } : null,
+      stages,
+    }
+  } catch (error) {
+    console.error('Error getting MoAI SPEC detail:', error)
+    return null
+  }
+}
+
 // GET /changes/counts - 프로젝트별 Change 수 (상태별 집계)
 flowRouter.get('/changes/counts', async (req, res) => {
   try {
@@ -425,15 +587,28 @@ flowRouter.get('/changes', async (_req, res) => {
   }
 })
 
-// GET /changes/:id - Flow Change 상세 (stages 포함)
+// GET /changes/:id - Flow Change 상세 (stages 포함, MoAI SPEC 지원)
 flowRouter.get('/changes/:id', async (req, res) => {
   try {
     await initTaskDb()
     const config = await loadConfig()
     const activeProjectId = config.activeProjectId
 
+    // Check if this is a MoAI SPEC ID (SPEC-XXX format)
+    if (isMoaiSpecId(req.params.id)) {
+      const specDetail = await getMoaiSpecDetail(req.params.id, activeProjectId)
+      if (specDetail) {
+        return res.json({
+          success: true,
+          data: {
+            change: specDetail,
+          },
+        })
+      }
+    }
+
     const sqlite = getSqlite()
-    
+
     // 활성 프로젝트에서 우선 조회 (같은 changeId가 여러 프로젝트에 있을 수 있음)
     let change = activeProjectId
       ? (sqlite
@@ -450,7 +625,7 @@ flowRouter.get('/changes/:id', async (req, res) => {
             updated_at: number
           } | undefined)
       : undefined
-    
+
     // 활성 프로젝트에 없으면 전체에서 조회 (fallback)
     if (!change) {
       change = sqlite
