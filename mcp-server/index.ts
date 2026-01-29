@@ -997,7 +997,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         // Fetch all projects data from the API
         const API_BASE = process.env.ZYFLOW_API_BASE || 'http://localhost:3200'
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         let allProjects: Record<string, unknown>[] = []
 
         try {

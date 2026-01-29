@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as schema from '../tasks/db/schema.js';
-import { tasks } from '../tasks/db/schema.js';
+import { tasks, type TaskOrigin } from '../tasks/db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
@@ -403,7 +403,7 @@ describe('TAG-003: Database Schema Dual Origin Support', () => {
           id: 300 + idx,
           projectId: 'multi-origin-test',
           title: `Test ${origin}`,
-          origin: origin as any,
+          origin: origin as TaskOrigin,
           status: 'todo',
           priority: 'medium',
           createdAt: new Date(),
@@ -433,7 +433,7 @@ describe('TAG-003: Database Schema Dual Origin Support', () => {
           id: 400 + idx,
           projectId: 'type-test',
           title: `Type test ${origin}`,
-          origin: origin as any,
+          origin: origin as TaskOrigin,
           status: 'todo',
           priority: 'medium',
           createdAt: new Date(),

@@ -156,9 +156,9 @@ describe('Flow API - Discriminated Union Handling', () => {
     })
 
     it('should return empty array for non-array input', () => {
-      expect(parseFlowItems(null as any)).toEqual([])
-      expect(parseFlowItems('string' as any)).toEqual([])
-      expect(parseFlowItems(123 as any)).toEqual([])
+      expect(parseFlowItems(null as unknown)).toEqual([])
+      expect(parseFlowItems('string' as unknown)).toEqual([])
+      expect(parseFlowItems(123 as unknown)).toEqual([])
     })
   })
 

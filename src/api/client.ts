@@ -78,7 +78,7 @@ async function request<T>(
       throw new ApiError(
         json.error || 'Unknown error',
         response.status,
-        (json as any).code
+        undefined
       )
     }
 

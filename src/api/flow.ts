@@ -74,8 +74,8 @@ export const flowApi = {
   /**
    * Get a single flow change with all details
    */
-  getChange: async (changeId: string): Promise<{ change: FlowChange; stages: Record<string, any> }> => {
-    return api.get<{ change: FlowChange; stages: Record<string, any> }>(
+  getChange: async (changeId: string): Promise<{ change: FlowChange; stages: Record<string, unknown> }> => {
+    return api.get<{ change: FlowChange; stages: Record<string, unknown> }>(
       `/api/flow/changes/${changeId}`
     )
   },

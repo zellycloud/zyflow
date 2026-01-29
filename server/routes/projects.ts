@@ -1069,7 +1069,7 @@ projectsRouter.get('/:id', async (req, res) => {
     }
 
     // Get MoAI SPEC stats
-    let stats = {
+    const stats = {
       openspecChangeCount: 0,
       moaiSpecCount: 0,
       moaiTagsTotal: 0,

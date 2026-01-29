@@ -501,7 +501,7 @@ describe('characterization: POST /sync change discovery', () => {
     // try { ... extract from proposal ... } catch { }
 
     const changeId = 'add-auth-feature'
-    let title = changeId
+    const title = changeId
     try {
       // Simulating proposal not found
       throw new Error('ENOENT')

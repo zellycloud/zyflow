@@ -17,7 +17,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../tasks/db/schema.js'
 import { tasks } from '../tasks/db/schema.js'
 import { eq } from 'drizzle-orm'
-import { existsSync, unlinkSync } from 'fs'
+import { existsSync, unlinkSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -168,10 +168,10 @@ describe('TAG-014: CLI Adapter and Dead Code Removal - Characterization', () => 
     it('characterization: cli-adapter/index.ts no longer exports openspec', async () => {
       try {
         const indexPath = join(process.cwd(), 'server', 'cli-adapter', 'index.ts')
-        const content = require('fs').readFileSync(indexPath, 'utf-8')
+        const content = readFileSync(indexPath, 'utf-8')
         // TAG-014: export * from './openspec.js' was removed
         expect(content).not.toContain("export * from './openspec.js'")
-      } catch (e) {
+      } catch (_e) {
         // File might not exist in test environment, skip
         console.warn('Could not read cli-adapter/index.ts')
       }
@@ -206,7 +206,7 @@ describe('TAG-014: CLI Adapter and Dead Code Removal - Characterization', () => 
       // This documents the current schema state
       // Before TAG-014: origin ENUM('openspec', 'moai', 'inbox', 'imported', 'backlog')
       // After TAG-014: origin ENUM('moai', 'inbox', 'imported', 'backlog')
-      const schemaFile = require('fs').readFileSync(
+      const schemaFile = readFileSync(
         join(process.cwd(), 'server', 'tasks', 'db', 'schema.ts'),
         'utf-8'
       )
