@@ -35,17 +35,18 @@ estimated_tags: 15
   - [x] All existing tests still pass (baseline: 680/716, no regression)
 - **Deliverables**: 74 characterization tests documenting current behavior before migration
 
-### TAG-002: MoAI SPEC Parser Module
+### TAG-002: MoAI SPEC Parser Module (✓ COMPLETE)
 - **Scope**: packages/zyflow-parser/src/
 - **Purpose**: Add MoAI spec.md/plan.md/acceptance.md parsing alongside existing OpenSpec parsing
 - **Dependencies**: TAG-001
 - **Completion Conditions**:
-  - [ ] parsePlanFile() extracts TAG chain with status, scope, dependencies
-  - [ ] parseAcceptanceFile() extracts Gherkin criteria with verification status
-  - [ ] parseSpecFile() extracts EARS requirements and metadata (frontmatter)
-  - [ ] New parser functions exported alongside existing ones (no breaking changes)
-  - [ ] Unit tests for all new parser functions
-  - [ ] TypeScript types for MoAI SPEC structures (ParsedTag, ParsedAcceptance, ParsedSpec)
+  - [x] parsePlanFile() extracts TAG chain with status, scope, dependencies (14 tests)
+  - [x] parseAcceptanceFile() extracts Gherkin criteria with verification status (18 tests)
+  - [x] parseSpecFile() extracts EARS requirements and metadata (frontmatter) (16 tests)
+  - [x] New parser functions exported alongside existing ones (no breaking changes)
+  - [x] Unit tests for all new parser functions (48 tests in moai-parser.test.ts)
+  - [x] TypeScript types for MoAI SPEC structures (8 types in moai-types.ts)
+- **Deliverables**: MoAI SPEC parser module with 48 unit tests, full TypeScript type support, backward-compatible exports
 
 ### TAG-003: Database Schema Dual-Support
 - **Scope**: server/tasks/db/schema.ts, server/tasks/db/client.ts
