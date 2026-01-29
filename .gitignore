@@ -133,6 +133,10 @@ dist/
 .moai/*
 !.moai/specs/
 !.moai/specs/**
+!.moai/project/
+!.moai/project/**
+!.moai/config/
+!.moai/config/**
 # uv.lock
 *.sqlite3
 *.egg-info/

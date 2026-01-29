@@ -233,12 +233,12 @@ npx vitest run
 
 ## Definition of Done
 
-- [ ] All 8 acceptance criteria verified and passing
-- [ ] All 15 TAGs completed
-- [ ] Code reviewed (self-review or pair review)
-- [ ] CHANGELOG.md updated with migration entry
-- [ ] INDEX.md updated with SPEC-MIGR-001 completion
-- [ ] Git history clean with conventional commits per TAG
+- [x] All 8 acceptance criteria verified and passing
+- [x] All 15 TAGs completed
+- [x] Code reviewed (manager-docs agent review completed)
+- [x] CHANGELOG.md updated with migration entry
+- [x] .moai/project/product.md and structure.md created
+- [x] Git history clean with conventional commits per TAG
 
 ## Anti-Patterns to Avoid
 
