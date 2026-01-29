@@ -640,10 +640,18 @@ function parseAffectedSpecs(proposalContent: string): string[] {
   return specs
 }
 
-// Helper to get changes for a specific project path
+// Helper to get changes for a specific project path (includes both OpenSpec and MoAI SPECs)
 async function getChangesForProject(projectPath: string) {
-  const openspecDir = join(projectPath, 'openspec', 'changes')
-  const changes = []
+  const changes: Array<{
+    id: string
+    title: string
+    progress: number
+    totalTasks: number
+    completedTasks: number
+    relatedSpecs?: string[]
+    updatedAt: string | null
+    type?: 'openspec' | 'spec'
+  }> = []
 
   // Get archived change IDs from DB to filter them out
   const archivedChangeIds = new Set<string>()
@@ -664,11 +672,52 @@ async function getChangesForProject(projectPath: string) {
     // DB not initialized yet, proceed without filtering
   }
 
+  // 1. Scan MoAI SPECs from .moai/specs/
+  try {
+    const moaiSpecs = await scanMoaiSpecs(projectPath)
+    for (const spec of moaiSpecs) {
+      // Skip archived SPECs
+      if (archivedChangeIds.has(spec.id) || spec.status === 'archived') continue
+
+      const progress = spec.tagCount > 0 ? Math.round((spec.completedTags / spec.tagCount) * 100) : 0
+
+      // Get updatedAt from git or file system
+      let updatedAt: string | null = null
+      try {
+        const gitResult = await execAsync(`git log -1 --format="%aI" -- ".moai/specs/${spec.id}"`, {
+          cwd: projectPath,
+        })
+        if (gitResult.stdout.trim()) {
+          updatedAt = gitResult.stdout.trim()
+        }
+      } catch {
+        // Fallback to current time
+        updatedAt = new Date().toISOString()
+      }
+
+      changes.push({
+        id: spec.id,
+        title: spec.title,
+        progress,
+        totalTasks: spec.tagCount,
+        completedTasks: spec.completedTags,
+        updatedAt,
+        type: 'spec',
+      })
+    }
+  } catch {
+    // .moai/specs/ scan failed, continue with OpenSpec
+  }
+
+  // 2. Scan OpenSpec changes from openspec/changes/ (for backward compatibility)
+  const openspecDir = join(projectPath, 'openspec', 'changes')
+
   let entries
   try {
     entries = await readdir(openspecDir, { withFileTypes: true })
   } catch {
-    return []
+    // openspec/changes/ does not exist
+    return changes
   }
 
   // Filter valid entries first
@@ -727,7 +776,7 @@ async function getChangesForProject(projectPath: string) {
     }
 
     const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-    return { id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt }
+    return { id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt, type: 'openspec' as const }
   })
 
   const results = await Promise.all(changePromises)

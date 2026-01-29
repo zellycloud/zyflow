@@ -80,13 +80,47 @@ export async function scanMoaiSpecs(projectPath: string): Promise<MoaiSpec[]> {
 
     try {
       const planContent = await readFile(join(specPath, 'plan.md'), 'utf-8')
-      // Match TAG-{ID} items (completed and incomplete)
-      const allTags = planContent.match(/^[-*]\s+\[.*?\]\s+TAG-/gm) || []
-      tagCount = allTags.length
 
-      // Count completed tags (marked with [x])
-      const completedTagMatches = planContent.match(/^[-*]\s+\[x\]\s+TAG-/gim) || []
-      completedTags = completedTagMatches.length
+      // Support multiple TAG formats:
+      // 1. Checklist format: "- [x] TAG-001: Title" or "- [ ] TAG-001: Title"
+      // 2. Heading format: "### TAG-001: Title (✓ COMPLETE)" or "### TAG-001: Title"
+
+      // Match checklist format
+      const checklistTags = planContent.match(/^[-*]\s+\[.*?\]\s+TAG-\d+/gm) || []
+      const completedChecklistTags = planContent.match(/^[-*]\s+\[x\]\s+TAG-\d+/gim) || []
+
+      // Match heading format (### TAG-XXX or ## TAG-XXX)
+      const headingTags = planContent.match(/^#{2,3}\s+TAG-\d+[^#\n]*/gm) || []
+      const completedHeadingTags = headingTags.filter(
+        (tag) => tag.includes('✓') || tag.includes('COMPLETE') || tag.includes('완료')
+      )
+
+      // Combine both formats (avoid double counting if same TAG appears in both)
+      const allTagIds = new Set<string>()
+      const completedTagIds = new Set<string>()
+
+      // Extract IDs from checklist format
+      for (const tag of checklistTags) {
+        const match = tag.match(/TAG-(\d+)/)
+        if (match) allTagIds.add(match[1])
+      }
+      for (const tag of completedChecklistTags) {
+        const match = tag.match(/TAG-(\d+)/)
+        if (match) completedTagIds.add(match[1])
+      }
+
+      // Extract IDs from heading format
+      for (const tag of headingTags) {
+        const match = tag.match(/TAG-(\d+)/)
+        if (match) allTagIds.add(match[1])
+      }
+      for (const tag of completedHeadingTags) {
+        const match = tag.match(/TAG-(\d+)/)
+        if (match) completedTagIds.add(match[1])
+      }
+
+      tagCount = allTagIds.size
+      completedTags = completedTagIds.size
     } catch {
       // plan.md not found or parse error, use defaults
     }
@@ -141,11 +175,37 @@ export async function getMoaiSpec(projectPath: string, specId: string): Promise<
 
   try {
     const planContent = await readFile(join(specPath, 'plan.md'), 'utf-8')
-    const allTags = planContent.match(/^[-*]\s+\[.*?\]\s+TAG-/gm) || []
-    tagCount = allTags.length
 
-    const completedTagMatches = planContent.match(/^[-*]\s+\[x\]\s+TAG-/gim) || []
-    completedTags = completedTagMatches.length
+    // Support multiple TAG formats (same logic as scanMoaiSpecs)
+    const checklistTags = planContent.match(/^[-*]\s+\[.*?\]\s+TAG-\d+/gm) || []
+    const completedChecklistTags = planContent.match(/^[-*]\s+\[x\]\s+TAG-\d+/gim) || []
+    const headingTags = planContent.match(/^#{2,3}\s+TAG-\d+[^#\n]*/gm) || []
+    const completedHeadingTags = headingTags.filter(
+      (tag) => tag.includes('✓') || tag.includes('COMPLETE') || tag.includes('완료')
+    )
+
+    const allTagIds = new Set<string>()
+    const completedTagIds = new Set<string>()
+
+    for (const tag of checklistTags) {
+      const match = tag.match(/TAG-(\d+)/)
+      if (match) allTagIds.add(match[1])
+    }
+    for (const tag of completedChecklistTags) {
+      const match = tag.match(/TAG-(\d+)/)
+      if (match) completedTagIds.add(match[1])
+    }
+    for (const tag of headingTags) {
+      const match = tag.match(/TAG-(\d+)/)
+      if (match) allTagIds.add(match[1])
+    }
+    for (const tag of completedHeadingTags) {
+      const match = tag.match(/TAG-(\d+)/)
+      if (match) completedTagIds.add(match[1])
+    }
+
+    tagCount = allTagIds.size
+    completedTags = completedTagIds.size
   } catch {
     // plan.md not found
   }
