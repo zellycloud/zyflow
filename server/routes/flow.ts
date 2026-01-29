@@ -52,6 +52,7 @@ import {
 } from '../backlog/index.js'
 import { serializeBacklogTask, generateBacklogFilename } from '../backlog/parser.js'
 import { syncChangeTasksFromFile, syncChangeTasksForProject, syncRemoteChangeTasksForProject } from '../sync-tasks.js'
+import { scanMoaiSpecs } from '../flow-sync.js'
 
 const execAsync = promisify(exec)
 
@@ -566,8 +567,12 @@ flowRouter.get('/changes', async (_req, res) => {
       const progress = calculateProgress(stages)
       const currentStage = determineCurrentStage(stages)
 
+      // Determine type based on specPath
+      const type = c.spec_path?.startsWith('.moai/specs/') ? 'spec' : 'openspec'
+
       return {
         id: c.id,
+        type,
         projectId: c.project_id,
         title: c.title,
         specPath: c.spec_path,
@@ -925,6 +930,20 @@ flowRouter.post('/sync', async (_req, res) => {
         } catch {
           // tasks.md not found or parse error
         }
+      }
+    }
+
+    // Sync MoAI SPECs (.moai/specs/)
+    for (const project of config.projects) {
+      try {
+        const moaiResult = await scanMoaiSpecs(project.path, project.id)
+        totalCreated += moaiResult.totalCreated
+        totalUpdated += moaiResult.totalUpdated
+        if (moaiResult.specsProcessed > 0) {
+          console.log(`[Sync] MoAI SPECs synced for ${project.id}: ${moaiResult.specsProcessed} specs processed`)
+        }
+      } catch (error) {
+        console.error(`Error syncing MoAI SPECs for ${project.id}:`, error)
       }
     }
 
