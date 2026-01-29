@@ -41,11 +41,7 @@ export function useFlowItems(options?: UseFlowItemsOptions) {
   return useQuery({
     queryKey: ['flow', 'items'],
     queryFn: async (): Promise<FlowItem[]> => {
-      try {
-        return await flowApi.listChanges()
-      } catch (error) {
-        throw error
-      }
+      return flowApi.listChanges()
     },
     enabled,
     staleTime: 30000,

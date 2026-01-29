@@ -12,17 +12,9 @@ import { promisify } from 'util'
 import { getActiveProject, getProjectById } from '../config.js'
 import { parseTasksFile, toggleTaskInFile } from '../parser.js'
 import { initDb, getSqlite } from '../tasks/db/client.js'
-import {
-  getChangeStatus,
-  validateChange,
-  archiveChange,
-  getInstructions,
-  isOpenSpecAvailable,
-  getOpenSpecVersion,
-  type OpenSpecStatus,
-  type OpenSpecValidation,
-  type OpenSpecInstructions,
-} from '../cli-adapter/index.js'
+// NOTE: TAG-014 - OpenSpec CLI functions removed
+// Import removed: getChangeStatus, validateChange, archiveChange, getInstructions, isOpenSpecAvailable, getOpenSpecVersion
+// These functions are deprecated. Use MoAI SPEC system instead.
 import {
   getCachedArtifactStatus,
   updateArtifactStatusCache,
@@ -626,13 +618,16 @@ changesRouter.patch('/tasks/:changeId/:taskId', async (req, res) => {
 // ==================== OPENSPEC CLI INTEGRATION ====================
 
 // GET /cli/available - Check if OpenSpec CLI is available
+// TAG-014: OpenSpec CLI support removed - returns always false
 changesRouter.get('/cli/available', async (_req, res) => {
   try {
-    const available = await isOpenSpecAvailable()
-    const version = available ? await getOpenSpecVersion() : null
     res.json({
       success: true,
-      data: { available, version },
+      data: {
+        available: false,
+        version: null,
+        note: 'OpenSpec CLI support deprecated. Use MoAI SPEC system instead.',
+      },
     })
   } catch (error) {
     console.error('Error checking OpenSpec CLI:', error)

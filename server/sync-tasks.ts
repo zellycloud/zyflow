@@ -11,7 +11,8 @@ import { parseTasksFile } from './parser.js'
 import { parsePlanFile, parseAcceptanceFile } from '@zyflow/parser'
 import { getSqlite, getNextTaskId } from './tasks/db/client.js'
 import { getActiveProject, getProjectById } from './config.js'
-import { getChangeStatus, isOpenSpecAvailable } from './cli-adapter/index.js'
+
+// NOTE: TAG-014 - OpenSpec CLI functions removed, use MoAI SPEC system instead
 
 export interface SyncResult {
   tasksCreated: number
@@ -134,11 +135,12 @@ export async function syncChangeTasksForProject(
           )
         tasksUpdated++
       } else {
+        // TAG-014: Changed from 'task_openspec' to 'task_moai' sequence
         sqlite
-          .prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_openspec'`)
+          .prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_moai'`)
           .run()
         const seqResult = sqlite
-          .prepare(`SELECT value FROM sequences WHERE name = 'task_openspec'`)
+          .prepare(`SELECT value FROM sequences WHERE name = 'task_moai'`)
           .get() as { value: number }
         const newId = seqResult.value
 
@@ -149,7 +151,7 @@ export async function syncChangeTasksForProject(
               group_title, group_order, task_order, major_title, sub_order,
               display_id, origin, created_at, updated_at
             )
-            VALUES (?, ?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
+            VALUES (?, ?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, 'moai', ?, ?)
           `)
           .run(
             newId,
@@ -325,11 +327,12 @@ export async function syncRemoteChangeTasksForProject(
           )
         tasksUpdated++
       } else {
+        // TAG-014: Changed from 'task_openspec' to 'task_moai' sequence
         sqlite
-          .prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_openspec'`)
+          .prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_moai'`)
           .run()
         const seqResult = sqlite
-          .prepare(`SELECT value FROM sequences WHERE name = 'task_openspec'`)
+          .prepare(`SELECT value FROM sequences WHERE name = 'task_moai'`)
           .get() as { value: number }
         const newId = seqResult.value
 
@@ -340,7 +343,7 @@ export async function syncRemoteChangeTasksForProject(
               group_title, group_order, task_order, major_title, sub_order,
               display_id, origin, created_at, updated_at
             )
-            VALUES (?, ?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
+            VALUES (?, ?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, 'moai', ?, ?)
           `)
           .run(
             newId,
@@ -384,45 +387,18 @@ export async function syncRemoteChangeTasksForProject(
 
 /**
  * OpenSpec 아티팩트 상태를 DB에 캐싱
- * CLI 호출 비용을 줄이기 위해 상태를 DB에 저장
+ * TAG-014: OpenSpec CLI removed - this function now returns false
+ * Use MoAI SPEC system for artifact status tracking
  */
 export async function updateArtifactStatusCache(
   changeId: string,
   projectPath: string,
   projectId: string
 ): Promise<boolean> {
-  // OpenSpec CLI가 없으면 스킵
-  if (!(await isOpenSpecAvailable())) {
-    return false
-  }
-
-  try {
-    const result = await getChangeStatus({
-      change: changeId,
-      cwd: projectPath,
-    })
-
-    if (!result.success || !result.data) {
-      return false
-    }
-
-    const sqlite = getSqlite()
-    const now = Date.now()
-
-    // JSON으로 저장
-    const artifactStatus = JSON.stringify(result.data)
-
-    sqlite.prepare(`
-      UPDATE changes
-      SET artifact_status = ?, artifact_status_updated_at = ?, updated_at = ?
-      WHERE id = ? AND project_id = ?
-    `).run(artifactStatus, now, now, changeId, projectId)
-
-    return true
-  } catch (error) {
-    console.warn(`Failed to update artifact status cache for ${changeId}:`, error)
-    return false
-  }
+  // TAG-014: OpenSpec CLI is no longer available
+  // MoAI SPEC system handles artifact tracking instead
+  console.debug(`[TAG-014] Artifact status cache not available for ${changeId} (OpenSpec CLI removed)`)
+  return false
 }
 
 /**

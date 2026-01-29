@@ -7,11 +7,12 @@ export type Stage = 'spec' | 'changes' | 'task' | 'code' | 'test' | 'commit' | '
 export type ChangeStatus = 'active' | 'completed' | 'archived';
 
 // Task Origin 타입: 태스크 출처 구분
-// - openspec: tasks.md에서 동기화된 태스크
+// TAG-014: Removed 'openspec' - migrated to 'moai' origin
+// - moai: .moai/specs/에서 동기화된 태스크
 // - inbox: 수동으로 생성된 독립 태스크
 // - imported: 외부 시스템에서 가져온 태스크
 // - backlog: backlog/*.md 파일에서 동기화된 태스크
-export type TaskOrigin = 'openspec' | 'moai' | 'inbox' | 'imported' | 'backlog';
+export type TaskOrigin = 'moai' | 'inbox' | 'imported' | 'backlog';
 
 // =============================================
 // Change Log 관련 타입 정의
@@ -99,8 +100,9 @@ export const tasks = sqliteTable('tasks', {
     enum: ['spec', 'changes', 'task', 'code', 'test', 'commit', 'docs']
   }).notNull().default('task'), // 기본값 'task' (기존 칸반 호환)
   // 태스크 출처 구분
+  // TAG-014: Removed 'openspec' from enum
   origin: text('origin', {
-    enum: ['openspec', 'moai', 'inbox', 'imported', 'backlog']
+    enum: ['moai', 'inbox', 'imported', 'backlog']
   }).notNull().default('inbox'),
   // 기존 필드
   title: text('title').notNull(),

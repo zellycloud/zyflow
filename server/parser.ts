@@ -1,8 +1,4 @@
 import type { TaskGroup, Task, TasksFile } from '../src/types/index.js'
-import { parseTasksFile as parseWithNewParser, setTaskStatus as setStatusWithNewParser } from '@zyflow/parser'
-
-// Re-export from new parser package
-export { parseTasksFile as parseTasksFileNew, setTaskStatus } from '@zyflow/parser'
 
 /**
  * Extended TaskGroup with hierarchy info for 3-level structure
@@ -20,7 +16,6 @@ interface ExtendedTaskGroup extends TaskGroup {
 
 /**
  * Parse tasks.md content into structured data
- * Now uses @zyflow/parser package with OpenSpec 1.0 support
  *
  * Supports multiple formats:
  * - 3-level: "## 1. Major" > "### 1.1 Sub" > "- [ ] 1.1.1 Task"
@@ -30,14 +25,7 @@ interface ExtendedTaskGroup extends TaskGroup {
  * - 4-level headers: "#### 1.1 Sub" treated as subsection
  */
 export function parseTasksFile(changeId: string, content: string): TasksFile {
-  try {
-    // Use new @zyflow/parser package
-    return parseWithNewParser(changeId, content)
-  } catch (error) {
-    console.warn('New parser failed, falling back to original:', error)
-    // Fallback to original parser
-    return parseTasksFileOriginal(changeId, content)
-  }
+  return parseTasksFileOriginal(changeId, content)
 }
 
 /**

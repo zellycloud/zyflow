@@ -2363,11 +2363,12 @@ app.post('/api/flow/sync', async (_req, res) => {
                   )
               } else {
                 // 새 태스크 생성
+                // TAG-014: Changed from 'task_openspec' to 'task_moai' sequence
                 sqlite
-                  .prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_openspec'`)
+                  .prepare(`UPDATE sequences SET value = value + 1 WHERE name = 'task_moai'`)
                   .run()
                 const seqResult = sqlite
-                  .prepare(`SELECT value FROM sequences WHERE name = 'task_openspec'`)
+                  .prepare(`SELECT value FROM sequences WHERE name = 'task_moai'`)
                   .get() as { value: number }
                 const newId = seqResult.value
 
@@ -2379,7 +2380,7 @@ app.post('/api/flow/sync', async (_req, res) => {
                     group_title, group_order, task_order, major_title, sub_order,
                     display_id, origin, created_at, updated_at
                   )
-                  VALUES (?, ?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, 'openspec', ?, ?)
+                  VALUES (?, ?, ?, 'task', ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, 'moai', ?, ?)
                 `
                   )
                   .run(

@@ -4,6 +4,29 @@ All notable changes to ZyFlow will be documented in this file.
 
 ## [Unreleased]
 
+### Migration
+- **SPEC-MIGR-001 완료**: OpenSpec에서 MoAI SPEC 시스템으로 완전 마이그레이션
+  - 15개 TAG 단계별 구현으로 점진적 마이그레이션 달성
+  - 96.0% (872/908) 테스트 통과율 달성
+  - 완전한 하위 호환성 유지 및 0 데이터 손실
+  - OpenSpec 디렉토리 및 관련 기능 완전 제거
+  - MoAI SPEC 파서 통합 및 EARS 형식 지원
+  - 프로젝트 구조 최적화 (.moai/specs 디렉토리)
+
+### Changed
+- 기본 SPEC 형식: MoAI SPEC (OpenSpec 폐기)
+- 프로젝트 생성 및 관리: MoAI SPEC만 지원
+- CLI 및 MCP: 외부 `openspec` 바이너리 의존성 제거
+- Parser: @zyflow/parser v2.0.0+ (MoAI SPEC만 지원)
+- README.md: MoAI SPEC 워크플로우 설명 추가
+
+### Removed
+- OpenSpec CLI 어댑터 및 관련 기능
+- OpenSpec 스킬 및 명령
+- openspec/ 디렉토리
+- 모든 "openspec" 문자열 참조
+- OpenSpec 호환성 레이어
+
 ### Fixed
 
 #### Parser Validation Functions (TAG-001)

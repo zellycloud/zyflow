@@ -1,7 +1,7 @@
 {
   "name": "@zyflow/parser",
-  "version": "1.0.0",
-  "description": "OpenSpec 1.0 compliant tasks.md parser for ZyFlow",
+  "version": "2.0.0",
+  "description": "MoAI SPEC parser for ZyFlow",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -25,9 +25,9 @@
     "vitest": "^4.0.18"
   },
   "keywords": [
-    "openspec",
+    "moai",
+    "spec",
     "parser",
-    "tasks",
     "zyflow"
   ],
   "license": "MIT"

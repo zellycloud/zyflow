@@ -1,12 +1,39 @@
-# ZyFlow
+# ZyFlow - MoAI SPEC 기반 개발 플로우 관리 도구
 
-OpenSpec 기반 소프트웨어 개발 플로우 관리 도구 - Claude Code MCP 서버
+MoAI-ADK SPEC 시스템을 기본 워크플로우로 사용하는 소프트웨어 개발 플로우 관리 도구 - Claude Code MCP 서버
+
+이전에 OpenSpec을 사용했던 프로젝트는 완전히 MoAI SPEC으로 마이그레이션되었습니다.
+
+## 새로운 MoAI SPEC 워크플로우
+
+ZyFlow는 MoAI-ADK의 3단계 SPEC 워크플로우를 지원합니다:
+
+### 1. SPEC 계획 (Plan Phase)
+```bash
+/moai plan "새로운 기능 또는 리팩토링 설명"
+```
+EARS 형식 요구사항 명시, 수용 기준 정의, 기술 접근 방식 계획
+
+### 2. SPEC 구현 (Run Phase)
+```bash
+/moai run SPEC-MIGR-001
+```
+DDD 사이클 (ANALYZE-PRESERVE-IMPROVE)을 통한 구현
+- 기존 코드 분석 및 도메인 경계 식별
+- 특성화 테스트 생성으로 현재 동작 보존
+- 구조적 개선사항 점진적 적용
+
+### 3. 문서 동기화 (Sync Phase)
+```bash
+/moai sync SPEC-MIGR-001
+```
+API 문서, README 업데이트, CHANGELOG 항목 추가, PR 생성
 
 ## 주요 기능
 
 ### Flow UI (7단계 파이프라인)
-- **Spec**: 기능 명세서 관리
-- **Changes**: OpenSpec 변경 제안 (proposal.md, design.md)
+- **Spec**: MoAI SPEC 및 기능 명세서 관리
+- **Changes**: SPEC 변경사항 및 진행 상황 추적
 - **Tasks**: 태스크 목록 관리 (칸반/리스트 뷰)
 - **Code**: 코드 구현 추적
 - **Test**: 테스트 실행 관리
@@ -14,12 +41,13 @@ OpenSpec 기반 소프트웨어 개발 플로우 관리 도구 - Claude Code MCP
 - **Docs**: 문서화 작업 추적
 
 ### 핵심 기능
-- **MCP 서버**: Claude Code에서 직접 태스크/변경 관리
-- **웹 대시보드**: 프로젝트별 OpenSpec 변경 제안 및 진행률 시각화
+- **MCP 서버**: Claude Code에서 직접 SPEC 및 태스크 관리
+- **웹 대시보드**: SPEC별 진행률 시각화 및 태스크 추적
 - **칸반 보드**: 독립형 태스크 관리 시스템 (SQLite + FTS5 검색)
-- **Multi-Project Watcher**: 여러 프로젝트의 tasks.md 파일 실시간 감시 및 동기화
+- **Multi-Project Watcher**: 여러 프로젝트의 SPEC 파일 실시간 감시 및 동기화
 - **Git 워크플로우**: 브랜치 관리, 커밋, 푸시, PR 생성
 - **Change Log & Replay**: 이벤트 로깅 및 리플레이 시스템
+- **MoAI SPEC 파서**: EARS 형식 SPEC 파싱 및 검증
 
 ## 설치
 
@@ -69,12 +97,12 @@ npm run build:mcp
 
 ## 사용 가능한 MCP 도구
 
-### OpenSpec 도구
+### SPEC 및 변경사항 도구
 
 | 도구 | 설명 |
 |------|------|
-| `zyflow_list_changes` | 현재 프로젝트의 OpenSpec 변경 제안 목록 조회 |
-| `zyflow_get_tasks` | 특정 변경 제안의 전체 태스크 목록 조회 |
+| `zyflow_list_changes` | 현재 프로젝트의 MoAI SPEC 변경사항 목록 조회 |
+| `zyflow_get_tasks` | 특정 SPEC의 전체 태스크 목록 조회 |
 | `zyflow_get_next_task` | 다음 미완료 태스크와 컨텍스트 조회 |
 | `zyflow_get_task_context` | 특정 태스크의 상세 컨텍스트 조회 |
 | `zyflow_mark_complete` | 태스크를 완료로 표시 |
@@ -111,7 +139,7 @@ npm run build:mcp
 
 | Origin | 설명 |
 |--------|------|
-| `openspec` | OpenSpec tasks.md에서 동기화된 태스크 |
+| `spec` | MoAI SPEC 또는 tasks.md에서 동기화된 태스크 |
 | `inbox` | MCP/CLI를 통해 수동으로 생성된 태스크 |
 | `imported` | 외부 시스템에서 가져온 태스크 (향후 지원) |
 
@@ -188,7 +216,8 @@ zy tasks delete TASK-1
 ## 데이터 저장소
 
 - **태스크 DB**: 각 프로젝트의 `.zyflow/tasks.db` (SQLite)
-- **OpenSpec 태스크**: `openspec/changes/{change-id}/tasks.md`
+- **SPEC 파일**: `.moai/specs/{SPEC-ID}/spec.md` (MoAI SPEC 문서)
+- **SPEC 태스크**: `tasks.md` 또는 SPEC 문서 내 태스크 정의
 
 ## 프로젝트 구조
 
@@ -207,7 +236,11 @@ zyflow/
 │   ├── git/               # Git 워크플로우 API
 │   └── watcher.ts         # Multi-Project Watcher
 ├── mcp-server/            # MCP 서버 (Claude Code 통합)
-└── openspec/              # OpenSpec 변경 제안 및 스펙
+├── packages/              # 공개 npm 패키지
+│   ├── zyflow-parser      # MoAI SPEC 파서 (@zyflow/parser)
+│   └── zyflow-remote-plugin  # 원격 플러그인
+└── .moai/                  # MoAI SPEC 설정
+    └── specs/             # 프로젝트 SPEC 문서
 ```
 
 ## 기술 스택
@@ -219,23 +252,31 @@ zyflow/
 
 ## Claude Code 통합 (Claude-Flow)
 
-ZyFlow는 Claude Code CLI와 통합되어 태스크를 자동으로 실행할 수 있습니다.
+ZyFlow는 Claude Code CLI와 통합되어 MoAI SPEC 기반 태스크를 자동으로 실행할 수 있습니다.
 
 ### 주요 기능
 
-- **OpenSpec 기반 프롬프트 생성**: proposal.md, design.md, tasks.md를 자동으로 분석하여 컨텍스트 생성
+- **MoAI SPEC 기반 프롬프트 생성**: SPEC 문서를 자동으로 분석하여 컨텍스트 생성
+- **DDD 사이클 자동화**: ANALYZE-PRESERVE-IMPROVE 단계 자동 실행
 - **실시간 스트리밍**: SSE를 통해 Claude Code 실행 결과를 실시간으로 확인
-- **태스크 단위 실행**: 개별 태스크 선택하여 실행 가능
+- **태스크 단위 실행**: 개별 SPEC 태스크 선택하여 실행 가능
 - **실행 제어**: 실행 중 중지 및 재시작 지원
 
 ### 사용 방법
 
 1. **웹 대시보드에서**:
-   - Changes 목록에서 특정 Change 선택
+   - Changes 목록에서 특정 SPEC 선택
    - Tasks 탭에서 실행할 태스크의 "실행" 버튼 클릭
    - 실행 모달에서 진행 상황 실시간 확인
 
-2. **실행 모드**:
+2. **Claude Code CLI에서**:
+   ```bash
+   /moai plan "새로운 기능"        # SPEC 작성
+   /moai run SPEC-MIGR-001        # 구현 (DDD 사이클)
+   /moai sync SPEC-MIGR-001       # 문서화
+   ```
+
+3. **실행 모드**:
    - `single`: 선택한 단일 태스크만 실행
    - `full`: 미완료 태스크 전체 실행
    - `analysis`: 코드 변경 없이 분석만 수행
@@ -245,6 +286,7 @@ ZyFlow는 Claude Code CLI와 통합되어 태스크를 자동으로 실행할 �
 - **Backend**: node-pty (TTY 에뮬레이션), stream-json 출력 파싱
 - **Frontend**: SSE (Server-Sent Events), React Query 연동
 - **프로세스 관리**: PM2
+- **SPEC 파싱**: @zyflow/parser (MoAI SPEC 형식)
 
 ### API 엔드포인트
 
@@ -253,17 +295,16 @@ ZyFlow는 Claude Code CLI와 통합되어 태스크를 자동으로 실행할 �
 | `POST /api/claude/execute` | 태스크 실행 시작 (SSE 스트리밍) |
 | `GET /api/claude/status/:runId` | 실행 상태 조회 |
 | `POST /api/claude/stop/:runId` | 실행 중지 |
-| `GET /api/claude/logs/:changeId` | 실행 로그 조회 |
+| `GET /api/claude/logs/:specId` | 실행 로그 조회 |
 
 ### 프롬프트 빌더
 
-OpenSpecPromptBuilder가 다음 문서를 자동으로 로드합니다:
+MoaiSpecPromptBuilder가 다음 문서를 자동으로 로드합니다:
 
 - `CLAUDE.md`: 프로젝트 맥락 (요약 버전)
-- `openspec/changes/{id}/proposal.md`: 변경 제안 내용
-- `openspec/changes/{id}/design.md`: 설계 문서 (있는 경우)
-- `openspec/changes/{id}/tasks.md`: 태스크 목록 (미완료 항목 추출)
-- `openspec/changes/{id}/specs/`: 관련 스펙 파일 목록
+- `.moai/specs/{SPEC-ID}/spec.md`: MoAI SPEC 문서
+- `tasks.md`: 프로젝트 태스크 목록 (미완료 항목 추출)
+- `.moai/config/`: MoAI 설정 파일
 
 ---
 

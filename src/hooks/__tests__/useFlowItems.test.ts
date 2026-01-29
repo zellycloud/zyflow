@@ -151,14 +151,24 @@ describe('useFlowItems Hook', () => {
 
     it('should mock flowApi.getChange', async () => {
       const { flowApi } = await import('@/api/flow')
+      const flowChange = {
+        id: 'spec-001',
+        projectId: 'project-001',
+        title: 'API Authentication',
+        status: 'active' as const,
+        currentStage: 'spec' as const,
+        progress: 60,
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-15T00:00:00Z',
+      }
       vi.mocked(flowApi.getChange).mockResolvedValueOnce({
-        change: mockMoaiSpec,
+        change: flowChange,
         stages: {},
       })
 
       const result = await flowApi.getChange('spec-001')
 
-      expect(result.change.type).toBe('spec')
+      expect(result.change.status).toBe('active')
       expect(flowApi.getChange).toHaveBeenCalledWith('spec-001')
     })
 

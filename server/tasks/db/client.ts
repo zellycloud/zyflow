@@ -60,9 +60,9 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
   `);
 
   // Initialize origin-based task sequences
+  // TAG-014: Removed 'task_openspec' sequence
   sqlite.exec(`
     INSERT OR IGNORE INTO sequences (name, value) VALUES ('task_inbox', 0);
-    INSERT OR IGNORE INTO sequences (name, value) VALUES ('task_openspec', 0);
     INSERT OR IGNORE INTO sequences (name, value) VALUES ('task_moai', 0);
   `);
 
@@ -92,11 +92,7 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
       SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0)
       WHERE name = 'task_inbox' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0);
     `);
-    sqlite.exec(`
-      UPDATE sequences
-      SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'openspec'), 0)
-      WHERE name = 'task_openspec' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'openspec'), 0);
-    `);
+    // TAG-014: Removed 'task_openspec' sync logic
     sqlite.exec(`
       UPDATE sequences
       SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'moai'), 0)
@@ -256,10 +252,11 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
   }
 
   // Migration: Set origin based on existing data (change_id 유무로 판단)
+  // TAG-014: Changed from 'openspec' to 'moai' origin
   try {
     sqlite.exec(`
       UPDATE tasks
-      SET origin = 'openspec'
+      SET origin = 'moai'
       WHERE origin = 'inbox' AND change_id IS NOT NULL AND change_id != ''
     `);
   } catch (e) {
@@ -386,7 +383,7 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
   }
 
   // Migration: Convert to composite primary key (origin, id)
-  // This allows inbox and openspec tasks to have separate ID sequences
+  // TAG-014: Updated to handle 'moai' instead of 'openspec'
   try {
     const tableInfo = sqlite.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='tasks'").get() as { sql: string } | undefined;
     // Check if already migrated (has composite key)
@@ -409,9 +406,9 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
       // Update inbox sequence
       sqlite.prepare(`UPDATE sequences SET value = ? WHERE name = 'task_inbox'`).run(newInboxId - 1);
 
-      // Update openspec sequence
-      const maxOpenspecId = sqlite.prepare(`SELECT MAX(id) as max FROM tasks WHERE origin = 'openspec'`).get() as { max: number } | undefined;
-      sqlite.prepare(`UPDATE sequences SET value = ? WHERE name = 'task_openspec'`).run(maxOpenspecId?.max ?? 0);
+      // TAG-014: Update moai sequence (previously openspec)
+      const maxMoaiId = sqlite.prepare(`SELECT MAX(id) as max FROM tasks WHERE origin = 'moai'`).get() as { max: number } | undefined;
+      sqlite.prepare(`UPDATE sequences SET value = ? WHERE name = 'task_moai'`).run(maxMoaiId?.max ?? 0);
 
       console.log(`Migration completed: ${inboxTasks.length} inbox tasks renumbered (1-${newInboxId - 1})`);
     }
@@ -984,8 +981,9 @@ export function closeDb(): void {
 /**
  * Get next task ID for a specific origin type
  * Uses sequences table to track and increment IDs
+ * TAG-014: Removed 'openspec' from origin options
  */
-export function getNextTaskId(origin: 'inbox' | 'openspec' | 'moai' | 'backlog' = 'backlog'): number {
+export function getNextTaskId(origin: 'inbox' | 'moai' | 'backlog' = 'backlog'): number {
   const db = getSqlite();
   const sequenceName = `task_${origin}`;
 
