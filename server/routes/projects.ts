@@ -26,6 +26,7 @@ import { getSqlite } from '../tasks/db/client.js'
 import { parseTasksFile } from '../parser.js'
 import { startTasksWatcher, stopTasksWatcher } from '../watcher.js'
 import { startRemoteWatcher, stopRemoteWatcher } from '../remote-watcher.js'
+import { scanMoaiSpecs, countMoaiTags } from '../moai-specs.js'
 
 // Remote plugin is optional - only load if installed
 let remotePlugin: {
@@ -267,7 +268,30 @@ async function syncLocalProjectChanges(project: { id: string; name: string; path
       .run(now, now, project.id)
   }
 
-  console.log(`[Project] Activated local "${project.name}" (${activeChangeIds.length} changes)`)
+  // Scan MoAI SPECs and get stats
+  let moaiSpecCount = 0
+  let moaiTagsTotal = 0
+  let moaiTagsCompleted = 0
+
+  try {
+    const moaiSpecs = await scanMoaiSpecs(project.path)
+    moaiSpecCount = moaiSpecs.length
+    const tagStats = await countMoaiTags(project.path)
+    moaiTagsTotal = tagStats.total
+    moaiTagsCompleted = tagStats.completed
+
+    if (moaiSpecCount > 0) {
+      console.log(
+        `[Project] Found ${moaiSpecCount} MoAI SPECs (${moaiTagsCompleted}/${moaiTagsTotal} tags completed)`
+      )
+    }
+  } catch (err) {
+    console.warn('[Project] Failed to scan MoAI SPECs:', err)
+  }
+
+  console.log(
+    `[Project] Activated local "${project.name}" (${activeChangeIds.length} changes, ${moaiSpecCount} SPECs)`
+  )
 
   // Stop any remote watcher and start local watcher
   stopRemoteWatcher(project.id)
@@ -863,6 +887,9 @@ async function getSpecsForRemoteProject(projectPath: string, serverId: string) {
 const remoteDataCache = new Map<string, { data: { changes: unknown[], specs: unknown[] }, timestamp: number }>()
 const CACHE_TTL = 30000 // 30 seconds
 
+// NOTE: /all-data route must be defined BEFORE /:id route for correct Express routing priority
+// More specific routes (static paths) must come before pattern routes (:/id)
+
 // GET /all-data - Get all projects with their changes and specs
 projectsRouter.get('/all-data', async (_req, res) => {
   try {
@@ -929,5 +956,57 @@ projectsRouter.get('/all-data', async (_req, res) => {
   } catch (error) {
     console.error('Error getting all projects data:', error)
     res.status(500).json({ success: false, error: 'Failed to get projects data' })
+  }
+})
+
+// GET /:id - Get project info with MoAI SPEC stats (defined AFTER /all-data for routing priority)
+projectsRouter.get('/:id', async (req, res) => {
+  try {
+    const projectId = req.params.id
+    const config = await loadConfig()
+    const project = config.projects.find((p) => p.id === projectId)
+
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Project not found' })
+    }
+
+    // Get MoAI SPEC stats
+    let stats = {
+      openspecChangeCount: 0,
+      moaiSpecCount: 0,
+      moaiTagsTotal: 0,
+      moaiTagsCompleted: 0,
+    }
+
+    try {
+      // Count OpenSpec changes from DB
+      initDb()
+      const sqlite = getSqlite()
+      const changeCountResult = sqlite
+        .prepare('SELECT COUNT(*) as count FROM changes WHERE project_id = ? AND status = "active"')
+        .get(projectId) as { count: number } | undefined
+      stats.openspecChangeCount = changeCountResult?.count || 0
+
+      // Scan MoAI SPECs
+      const moaiSpecs = await scanMoaiSpecs(project.path)
+      stats.moaiSpecCount = moaiSpecs.length
+
+      const tagStats = await countMoaiTags(project.path)
+      stats.moaiTagsTotal = tagStats.total
+      stats.moaiTagsCompleted = tagStats.completed
+    } catch (err) {
+      console.warn(`Failed to calculate stats for project ${projectId}:`, err)
+    }
+
+    res.json({
+      success: true,
+      data: {
+        project,
+        stats,
+      },
+    })
+  } catch (error) {
+    console.error('Error getting project:', error)
+    res.status(500).json({ success: false, error: 'Failed to get project' })
   }
 })

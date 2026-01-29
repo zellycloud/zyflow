@@ -23,6 +23,17 @@ import {
 } from '../server/cli-adapter/openspec.js'
 import type { Change, Task, TasksFile, NextTaskResponse } from './types.js'
 import {
+  scanMoaiSpecs,
+  getMoaiSpecContext,
+  getNextMoaiTag,
+  getMoaiTag,
+  updateMoaiTagStatus,
+  updateMoaiTagInDatabase,
+  isMoaiSpec,
+  isMoaiTag,
+  type MoaiSpecSummary,
+} from './moai-spec-tools.js'
+import {
   taskToolDefinitions,
   initTaskDb,
   handleTaskList,
@@ -125,13 +136,14 @@ interface GetReplayProgressArgs {
 const PROJECT_PATH = process.env.ZYFLOW_PROJECT || process.cwd()
 
 /**
- * List all changes in the openspec/changes directory
+ * List all changes in both openspec/changes and .moai/specs directories
  */
-async function listChanges(projectPath?: string): Promise<Change[]> {
+async function listChanges(projectPath?: string): Promise<(Change | MoaiSpecSummary)[]> {
   const basePath = projectPath || PROJECT_PATH
-  const changesDir = join(basePath, 'openspec', 'changes')
-  const changes: Change[] = []
+  const changes: (Change | MoaiSpecSummary)[] = []
 
+  // Scan OpenSpec changes (legacy)
+  const changesDir = join(basePath, 'openspec', 'changes')
   try {
     const entries = await readdir(changesDir, { withFileTypes: true })
 
@@ -183,24 +195,94 @@ async function listChanges(projectPath?: string): Promise<Change[]> {
     // openspec/changes directory doesn't exist
   }
 
+  // Scan MoAI SPECs
+  const moaiSpecs = await scanMoaiSpecs(basePath)
+  changes.push(...moaiSpecs)
+
   return changes.sort((a, b) => b.progress - a.progress)
 }
 
 /**
- * Get tasks for a specific change
+ * Get tasks for a specific change (OpenSpec) or TAG chain for MoAI SPEC
  */
 async function getTasks(changeId: string, projectPath?: string): Promise<TasksFile> {
   const basePath = projectPath || PROJECT_PATH
+
+  // Check if this is a MoAI SPEC
+  if (isMoaiSpec(changeId)) {
+    // Get MoAI SPEC TAG chain
+    const context = await getMoaiSpecContext(changeId, basePath)
+    const tags = context.plan.tags || []
+
+    // Convert TAGs to TasksFile format for compatibility
+    // Each TAG becomes a "group" with one task
+    const groups = tags.map((tag, index) => ({
+      id: `moai-group-${index + 1}`,
+      title: tag.id,
+      tasks: [
+        {
+          id: tag.id,
+          title: tag.title,
+          completed: tag.completed,
+          groupId: `moai-group-${index + 1}`,
+          lineNumber: index + 1,
+          displayId: tag.id,
+          indent: 0,
+        },
+      ],
+    }))
+
+    return {
+      changeId,
+      groups,
+    }
+  }
+
+  // OpenSpec format (legacy)
   const tasksPath = join(basePath, 'openspec', 'changes', changeId, 'tasks.md')
   const content = await readFile(tasksPath, 'utf-8')
   return parseTasksFile(changeId, content)
 }
 
 /**
- * Get the next incomplete task with context
+ * Get the next incomplete task (OpenSpec) or TAG (MoAI SPEC) with context
  */
-async function getNextTask(changeId: string, projectPath?: string): Promise<NextTaskResponse> {
+async function getNextTask(changeId: string, projectPath?: string): Promise<NextTaskResponse | Record<string, unknown>> {
   const basePath = projectPath || PROJECT_PATH
+
+  // Check if this is a MoAI SPEC
+  if (isMoaiSpec(changeId)) {
+    // Get next MoAI TAG respecting dependencies
+    const nextTag = await getNextMoaiTag(changeId, basePath)
+
+    // Convert TAG to Task format
+    let nextTask: Task | null = null
+    if (nextTag) {
+      nextTask = {
+        id: nextTag.id,
+        title: nextTag.title,
+        completed: nextTag.completed,
+        groupId: '',
+        lineNumber: 0,
+        displayId: nextTag.id,
+      }
+    }
+
+    // Get full context
+    const moaiContext = await getMoaiSpecContext(changeId, basePath)
+
+    return {
+      task: nextTask,
+      context: {
+        spec: moaiContext.spec,
+        plan: moaiContext.plan,
+        acceptance: moaiContext.acceptance,
+      } as unknown,
+      group: 'MoAI SPEC',
+    }
+  }
+
+  // OpenSpec format (legacy)
   const tasksFile = await getTasks(changeId, basePath)
 
   // Find first incomplete task
@@ -234,11 +316,47 @@ async function getNextTask(changeId: string, projectPath?: string): Promise<Next
 }
 
 /**
- * Get detailed context for a specific task
- * Includes dynamic instructions from OpenSpec CLI when available
+ * Get detailed context for a specific task (OpenSpec) or TAG (MoAI SPEC)
+ * Returns full SPEC context for MoAI SPECs (spec.md + plan.md + acceptance.md)
  */
 async function getTaskContext(changeId: string, taskId: string, projectPath?: string) {
   const basePath = projectPath || PROJECT_PATH
+
+  // Check if this is a MoAI SPEC
+  if (isMoaiSpec(changeId)) {
+    // Get full MoAI SPEC context
+    const moaiContext = await getMoaiSpecContext(changeId, basePath)
+
+    // Find the TAG
+    const tag = moaiContext.plan.tags.find(t => t.id === taskId)
+    if (!tag) {
+      throw new Error(`TAG not found: ${taskId}`)
+    }
+
+    // Convert TAG to Task format for compatibility
+    const task: Task = {
+      id: tag.id,
+      title: tag.title,
+      completed: tag.completed,
+      groupId: '',
+      lineNumber: 0,
+      displayId: tag.id,
+    }
+
+    // Return MoAI SPEC context as unknown (will be JSON stringified)
+    return {
+      task,
+      context: {
+        spec: moaiContext.spec,
+        plan: moaiContext.plan,
+        acceptance: moaiContext.acceptance,
+      } as unknown,
+      group: 'MoAI SPEC',
+      isMoaiSpec: true,
+    }
+  }
+
+  // OpenSpec format (legacy)
   const tasksFile = await getTasks(changeId, basePath)
 
   // Find the task
@@ -296,10 +414,34 @@ async function getTaskContext(changeId: string, taskId: string, projectPath?: st
 }
 
 /**
- * Mark a task as complete
+ * Mark a task as complete (OpenSpec) or TAG as complete (MoAI SPEC)
  */
 async function markComplete(changeId: string, taskId: string, projectPath?: string): Promise<Task> {
   const basePath = projectPath || PROJECT_PATH
+
+  // Check if this is a MoAI SPEC
+  if (isMoaiSpec(changeId)) {
+    // Update plan.md for MoAI SPEC
+    await updateMoaiTagStatus(changeId, taskId, true, basePath)
+
+    // Also update database for dual-origin tracking
+    await updateMoaiTagInDatabase(changeId, taskId, true)
+
+    // Get the updated TAG to return
+    const tag = await getMoaiTag(changeId, taskId, basePath)
+
+    // Return in Task format for compatibility
+    return {
+      id: tag.id,
+      title: tag.title,
+      completed: tag.completed,
+      groupId: '',
+      lineNumber: 0,
+      displayId: tag.id,
+    }
+  }
+
+  // OpenSpec format (legacy)
   const tasksPath = join(basePath, 'openspec', 'changes', changeId, 'tasks.md')
   const content = await readFile(tasksPath, 'utf-8')
 
@@ -310,10 +452,34 @@ async function markComplete(changeId: string, taskId: string, projectPath?: stri
 }
 
 /**
- * Mark a task as incomplete
+ * Mark a task as incomplete (OpenSpec) or TAG as incomplete (MoAI SPEC)
  */
 async function markIncomplete(changeId: string, taskId: string, projectPath?: string): Promise<Task> {
   const basePath = projectPath || PROJECT_PATH
+
+  // Check if this is a MoAI SPEC
+  if (isMoaiSpec(changeId)) {
+    // Update plan.md for MoAI SPEC
+    await updateMoaiTagStatus(changeId, taskId, false, basePath)
+
+    // Also update database for dual-origin tracking
+    await updateMoaiTagInDatabase(changeId, taskId, false)
+
+    // Get the updated TAG to return
+    const tag = await getMoaiTag(changeId, taskId, basePath)
+
+    // Return in Task format for compatibility
+    return {
+      id: tag.id,
+      title: tag.title,
+      completed: tag.completed,
+      groupId: '',
+      lineNumber: 0,
+      displayId: tag.id,
+    }
+  }
+
+  // OpenSpec format (legacy)
   const tasksPath = join(basePath, 'openspec', 'changes', changeId, 'tasks.md')
   const content = await readFile(tasksPath, 'utf-8')
 
@@ -360,7 +526,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'zyflow_list_changes',
-        description: '현재 프로젝트의 OpenSpec 변경 제안 목록을 조회합니다. 각 변경의 ID, 제목, 진행률, 완료/전체 태스크 수를 반환합니다.',
+        description: '현재 프로젝트의 OpenSpec 변경 제안과 MoAI SPEC 목록을 조회합니다. 각 항목의 ID, 제목, 진행률, 완료/전체 태스크 또는 TAG 수를 반환합니다.',
         inputSchema: {
           type: 'object' as const,
           properties: {
@@ -374,13 +540,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'zyflow_get_tasks',
-        description: '특정 변경 제안의 전체 태스크 목록을 그룹별로 조회합니다.',
+        description: '특정 변경 제안의 전체 태스크 목록(OpenSpec) 또는 TAG 체인(MoAI SPEC)을 그룹별로 조회합니다.',
         inputSchema: {
           type: 'object' as const,
           properties: {
             changeId: {
               type: 'string',
-              description: '변경 제안 ID (예: add-payment-method-registry)',
+              description: '변경 제안 ID (예: add-payment-method-registry) 또는 MoAI SPEC ID (예: SPEC-MIGR-001)',
             },
             projectPath: {
               type: 'string',
@@ -392,7 +558,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'zyflow_get_next_task',
-        description: '다음 미완료 태스크와 실행에 필요한 컨텍스트(proposal, spec, 관련 파일)를 조회합니다. 연속 태스크 실행에 최적화되어 있습니다.',
+        description: '다음 미완료 태스크(OpenSpec) 또는 TAG(MoAI SPEC)와 실행에 필요한 컨텍스트를 조회합니다. MoAI SPEC의 경우 TAG 의존성을 고려합니다.',
         inputSchema: {
           type: 'object' as const,
           properties: {
@@ -410,17 +576,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'zyflow_get_task_context',
-        description: '특정 태스크의 상세 컨텍스트를 조회합니다. proposal, spec, design 문서와 관련 파일 목록을 포함합니다.',
+        description: '특정 태스크(OpenSpec) 또는 TAG(MoAI SPEC)의 상세 컨텍스트를 조회합니다. OpenSpec의 경우 proposal/spec/design 문서, MoAI SPEC의 경우 spec.md/plan.md/acceptance.md를 포함합니다.',
         inputSchema: {
           type: 'object' as const,
           properties: {
             changeId: {
               type: 'string',
-              description: '변경 제안 ID',
+              description: '변경 제안 ID 또는 MoAI SPEC ID',
             },
             taskId: {
               type: 'string',
-              description: '태스크 ID (예: task-1-1)',
+              description: '태스크 ID (예: task-1-1) 또는 TAG ID (예: TAG-001)',
             },
             projectPath: {
               type: 'string',
@@ -432,17 +598,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'zyflow_mark_complete',
-        description: '태스크를 완료로 표시합니다. tasks.md 파일이 자동으로 업데이트됩니다.',
+        description: '태스크(OpenSpec) 또는 TAG(MoAI SPEC)를 완료로 표시합니다. tasks.md 또는 plan.md 파일이 자동으로 업데이트됩니다.',
         inputSchema: {
           type: 'object' as const,
           properties: {
             changeId: {
               type: 'string',
-              description: '변경 제안 ID',
+              description: '변경 제안 ID 또는 MoAI SPEC ID',
             },
             taskId: {
               type: 'string',
-              description: '태스크 ID',
+              description: '태스크 ID 또는 TAG ID',
             },
             projectPath: {
               type: 'string',
