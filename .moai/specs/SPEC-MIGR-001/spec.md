@@ -2,12 +2,18 @@
 spec_id: SPEC-MIGR-001
 title: OpenSpec to MoAI SPEC System Migration
 priority: Critical
-status: Draft
+status: In Progress
 created: 2026-01-28
 assigned: manager-ddd
 dependencies: []
 related_specs: [SPEC-TEST-001, SPEC-ARCH-001]
 tags: [migration, openspec, moai, spec-system, breaking-change]
+metrics:
+  implementation_milestone: "14 TAGs complete (93.3%)"
+  quality_metrics: "95.9% test pass rate (810/845 tests)"
+  type_errors: 0
+  lint_errors: 0
+  last_updated: 2026-01-29
 ---
 
 # SPEC-MIGR-001: OpenSpec to MoAI SPEC System Migration

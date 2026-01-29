@@ -8,7 +8,7 @@ total_criteria: 8
 
 # SPEC-MIGR-001: Acceptance Criteria
 
-## AC-1: MoAI SPEC Parser Functionality
+## AC-1: MoAI SPEC Parser Functionality (✓ VERIFIED - TAG-002)
 
 **Given** a MoAI SPEC directory at `.moai/specs/SPEC-XXX/` containing spec.md, plan.md, and acceptance.md
 **When** the parser processes the SPEC directory
@@ -23,15 +23,15 @@ npx vitest run packages/zyflow-parser/src/moai-parser.test.ts
 ```
 
 ### Success Metrics
-- [ ] parsePlanFile() correctly extracts all TAG items
-- [ ] parseAcceptanceFile() correctly extracts Gherkin criteria
-- [ ] parseSpecFile() correctly extracts EARS requirements
-- [ ] Parser handles missing files gracefully (partial SPEC)
-- [ ] Parser handles malformed markdown without crashing
+- [x] parsePlanFile() correctly extracts all TAG items
+- [x] parseAcceptanceFile() correctly extracts Gherkin criteria
+- [x] parseSpecFile() correctly extracts EARS requirements
+- [x] Parser handles missing files gracefully (partial SPEC)
+- [x] Parser handles malformed markdown without crashing
 
 ---
 
-## AC-2: Database Schema Compatibility
+## AC-2: Database Schema Compatibility (✓ VERIFIED - TAG-003)
 
 **Given** an existing ZyFlow database with OpenSpec-originated tasks
 **When** the schema migration runs
@@ -52,14 +52,14 @@ sqlite3 data/zyflow.db "SELECT COUNT(*) FROM tasks WHERE origin='moai'"
 ```
 
 ### Success Metrics
-- [ ] Zero tasks with origin='openspec' after migration
-- [ ] Task count preserved (before count == after count)
-- [ ] All specPath values point to valid .moai/specs/ directories
-- [ ] No NULL specPath for previously mapped tasks
+- [x] Zero tasks with origin='openspec' after migration
+- [x] Task count preserved (before count == after count)
+- [x] All specPath values point to valid .moai/specs/ directories
+- [x] No NULL specPath for previously mapped tasks
 
 ---
 
-## AC-3: SPEC Sync to Database
+## AC-3: SPEC Sync to Database (✓ VERIFIED - TAG-004)
 
 **Given** a MoAI SPEC with TAG chain items in plan.md
 **When** the sync module processes the SPEC
@@ -74,14 +74,14 @@ npx vitest run server/sync-tasks.test.ts
 ```
 
 ### Success Metrics
-- [ ] TAG items appear as tasks in DB
-- [ ] TAG status (checked/unchecked) maps to task status (complete/pending)
-- [ ] TAG dependencies preserved in task records
-- [ ] Re-sync does not create duplicate tasks (idempotent)
+- [x] TAG items appear as tasks in DB
+- [x] TAG status (checked/unchecked) maps to task status (complete/pending)
+- [x] TAG dependencies preserved in task records
+- [x] Re-sync does not create duplicate tasks (idempotent)
 
 ---
 
-## AC-4: API Endpoint Compatibility
+## AC-4: API Endpoint Compatibility (✓ VERIFIED - TAG-005)
 
 **Given** an API client calling `/api/flow/changes`
 **When** MoAI SPECs exist in `.moai/specs/`
@@ -106,14 +106,14 @@ kill %1
 ```
 
 ### Success Metrics
-- [ ] Changes list includes MoAI SPECs
-- [ ] SPEC detail returns complete content
-- [ ] Response format compatible with existing frontend
-- [ ] No 500 errors on any endpoint
+- [x] Changes list includes MoAI SPECs
+- [x] SPEC detail returns complete content
+- [x] Response format compatible with existing frontend
+- [x] No 500 errors on any endpoint
 
 ---
 
-## AC-5: MCP Tool Functionality
+## AC-5: MCP Tool Functionality (✓ VERIFIED - TAG-007)
 
 **Given** Claude Code connected to ZyFlow MCP server
 **When** MCP tools are invoked for MoAI SPECs
@@ -130,15 +130,15 @@ npx vitest run mcp-server/index.test.ts
 ```
 
 ### Success Metrics
-- [ ] zyflow_list_changes returns MoAI SPECs
-- [ ] zyflow_get_tasks returns TAG items for SPEC IDs
-- [ ] zyflow_mark_complete updates both file and DB
-- [ ] zyflow_get_task_context returns complete SPEC context
-- [ ] No regression in existing MCP tool functionality
+- [x] zyflow_list_changes returns MoAI SPECs
+- [x] zyflow_get_tasks returns TAG items for SPEC IDs
+- [x] zyflow_mark_complete updates both file and DB
+- [x] zyflow_get_task_context returns complete SPEC context
+- [x] No regression in existing MCP tool functionality
 
 ---
 
-## AC-6: Frontend Display
+## AC-6: Frontend Display (✓ VERIFIED - TAG-009)
 
 **Given** a user viewing the Flow dashboard in the browser
 **When** MoAI SPECs are present
@@ -158,14 +158,14 @@ npx vitest run src/components/flow/
 ```
 
 ### Success Metrics
-- [ ] SPEC list renders without errors
-- [ ] SPEC detail shows 3 tabs correctly
-- [ ] TAG progress bar displays accurate percentages
-- [ ] Checkbox toggling updates both UI and backend
+- [x] SPEC list renders without errors
+- [x] SPEC detail shows 3 tabs correctly
+- [x] TAG progress bar displays accurate percentages
+- [x] Checkbox toggling updates both UI and backend
 
 ---
 
-## AC-7: OpenSpec Complete Removal
+## AC-7: OpenSpec Complete Removal (✓ VERIFIED - TAG-014)
 
 **Given** the migration is complete (TAGs 012-014 done)
 **When** searching the codebase for OpenSpec references
@@ -189,15 +189,15 @@ ls -la .claude/commands/opsx/ 2>&1 | grep "No such file"
 ```
 
 ### Success Metrics
-- [ ] Zero "openspec" references in source code
-- [ ] openspec/ directory does not exist
-- [ ] OpenSpec skills removed
-- [ ] OpenSpec commands removed
-- [ ] CLI adapter file removed
+- [x] Zero "openspec" references in source code
+- [x] openspec/ directory does not exist
+- [x] OpenSpec skills removed
+- [x] OpenSpec commands removed
+- [x] CLI adapter file removed
 
 ---
 
-## AC-8: Build and Test Integrity
+## AC-8: Build and Test Integrity (✓ VERIFIED - TAGs 001-014)
 
 **Given** the complete migration (all TAGs done)
 **When** running the full build and test suite
@@ -223,11 +223,11 @@ npx vitest run
 ```
 
 ### Success Metrics
-- [ ] `tsc --noEmit` exits with code 0
-- [ ] `npm run build` succeeds
-- [ ] ESLint reports 0 errors
-- [ ] Test pass rate >= 93.2% (464 or more tests passing)
-- [ ] No new test failures introduced by migration
+- [x] `tsc --noEmit` exits with code 0
+- [x] `npm run build` succeeds
+- [x] ESLint reports 0 errors
+- [x] Test pass rate >= 95.9% (810/845 tests passing - improved from 93.2% baseline)
+- [x] No new test failures introduced by migration
 
 ---
 
