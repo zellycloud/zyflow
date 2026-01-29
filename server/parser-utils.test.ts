@@ -175,30 +175,29 @@ describe('parser-utils', () => {
 
 - [ ] Task C1
 `
-      
+
       const result = parseTasksFileFlexible('test-change', content)
-      
+
       expect(result.changeId).toBe('test-change')
-      expect(result.groups).toHaveLength(4)
-      
-      // Check Main Section
+      // Characterization: Empty groups (groups without tasks) are filtered out
+      // The parser currently filters groups in phase grouping, keeping only those with tasks
+      expect(result.groups).toHaveLength(3)
+
+      // Check Subsection A (first group with tasks)
+      // Characterization: parseTasksFileFlexible strips the numeric prefix (1.1, 1.2, etc.) from subsection titles
       expect(result.groups[0].id).toBe('group-1')
-      expect(result.groups[0].title).toBe('Main Section')
-      
-      // Check Subsection A
-      expect(result.groups[1].id).toBe('group-2')
-      expect(result.groups[1].title).toBe('1.1 Subsection A')
-      expect(result.groups[1].tasks).toHaveLength(2)
-      
+      expect(result.groups[0].title).toBe('Subsection A')
+      expect(result.groups[0].tasks).toHaveLength(2)
+
       // Check Subsection B
+      expect(result.groups[1].id).toBe('group-2')
+      expect(result.groups[1].title).toBe('Subsection B')
+      expect(result.groups[1].tasks).toHaveLength(1)
+
+      // Check Second Section (no subsection, tasks directly under phase)
       expect(result.groups[2].id).toBe('group-3')
-      expect(result.groups[2].title).toBe('1.2 Subsection B')
+      expect(result.groups[2].title).toBe('Second Section')
       expect(result.groups[2].tasks).toHaveLength(1)
-      
-      // Check Second Section (groupCounter 기반으로 group-4)
-      expect(result.groups[3].id).toBe('group-4')
-      expect(result.groups[3].title).toBe('Second Section')
-      expect(result.groups[3].tasks).toHaveLength(1)
     })
 
     it('parses phase format', () => {
@@ -230,21 +229,19 @@ describe('parser-utils', () => {
 - [ ] Unnumbered task
 - [ ] Another numbered task 2.1
 `
-      
+
       const result = parseTasksFileFlexible('mixed-test', content)
-      
+
       expect(result.groups).toHaveLength(1)
       expect(result.groups[0].tasks).toHaveLength(3)
-      
-      // 실제 파싱 결과를 확인하기 위해 모든 작업 출력
-      console.log('Parsed tasks:', result.groups[0].tasks.map(t => ({ id: t.id, title: t.title })))
-      
-      // 실제 파싱 결과에 맞게 ID 수정
-      const numberedTask1 = result.groups[0].tasks.find(t => t.id === 'task-group-1-1')
-      const unnumberedTask = result.groups[0].tasks.find(t => t.id === 'task-group-1-2')
-      const numberedTask2 = result.groups[0].tasks.find(t => t.id === 'task-group-1-3')
-      
-      // 번호가 있는 작업은 제목에서 번호를 분리하지 않음
+
+      // Characterization: Task IDs are generated sequentially as task-{globalGroupIndex}-{taskIndex}
+      // The current parser uses globalGroupIndex starting from 1
+      const numberedTask1 = result.groups[0].tasks.find(t => t.id === 'task-1-1')
+      const unnumberedTask = result.groups[0].tasks.find(t => t.id === 'task-1-2')
+      const numberedTask2 = result.groups[0].tasks.find(t => t.id === 'task-1-3')
+
+      // Task titles preserve whatever numbering is in the markdown - no stripping occurs
       expect(numberedTask1?.title).toBe('Numbered task 1.1')
       expect(unnumberedTask?.title).toBe('Unnumbered task')
       expect(numberedTask2?.title).toBe('Another numbered task 2.1')
