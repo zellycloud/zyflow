@@ -1,12 +1,5 @@
-# User Configuration
-# Personal settings for user identification and preferences
+# User Settings (CLAUDE.md Reference)
+# This file is auto-loaded by CLAUDE.md for personalization
 
 user:
-  # User name for personalized greetings and commit attribution
-  name: "Hansoo"
-
-  # User role in the project
-  role: "developer"
-
-  # Preferred notification style
-  notification_style: "detailed"
+  name: "" # User name for greetings (empty = default greeting)
