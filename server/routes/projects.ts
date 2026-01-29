@@ -106,14 +106,24 @@ projectsRouter.post('/', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Path is required' })
     }
 
-    // Check if openspec directory exists
+    // Check for spec directories - at least one must exist
     const openspecPath = join(projectPath, 'openspec')
-    try {
-      await access(openspecPath)
-    } catch {
+    const moaiSpecsPath = join(projectPath, '.moai', 'specs')
+
+    const hasOpenspec = await access(openspecPath).then(
+      () => true,
+      () => false
+    )
+    const hasMoaiSpecs = await access(moaiSpecsPath).then(
+      () => true,
+      () => false
+    )
+
+    // Require at least one spec format to exist
+    if (!hasOpenspec && !hasMoaiSpecs) {
       return res.status(400).json({
         success: false,
-        error: 'No openspec directory found in this project',
+        error: 'Project must contain either MoAI SPEC (.moai/specs/) or OpenSpec (openspec/) directory',
       })
     }
 
@@ -192,80 +202,109 @@ projectsRouter.put('/:id/activate', async (req, res) => {
 
 async function syncLocalProjectChanges(project: { id: string; name: string; path: string }) {
   initDb(project.path)
-  const openspecDir = join(project.path, 'openspec', 'changes')
-  let entries: Dirent[] = []
-  try {
-    entries = await readdir(openspecDir, { withFileTypes: true })
-  } catch {
-    entries = []
-  }
+  const config = await loadConfig()
+  const specConfig = config.specConfig || { defaultSpecFormat: 'moai', enableOpenSpecScanning: false }
 
   const sqlite = getSqlite()
   const now = Date.now()
+  let activeChangeIds: string[] = []
 
-  const changeEntries = entries.filter((entry) => entry.isDirectory() && entry.name !== 'archive')
-  const activeChangeIds = changeEntries.map((e) => e.name)
-
-  const changeDataPromises = changeEntries.map(async (entry) => {
-    const changeId = entry.name
-    const changeDir = join(openspecDir, changeId)
-    const specPath = `openspec/changes/${changeId}/proposal.md`
-    let title = changeId
-
+  // Only scan OpenSpec if enabled in config
+  if (specConfig.enableOpenSpecScanning) {
+    const openspecDir = join(project.path, 'openspec', 'changes')
+    let entries: Dirent[] = []
     try {
-      const proposalPath = join(changeDir, 'proposal.md')
-      const proposalContent = await readFile(proposalPath, 'utf-8')
-      const titleMatch = proposalContent.match(/^#\s+(?:Change:\s+)?(.+)$/m)
-      if (titleMatch) {
-        title = titleMatch[1].trim()
-      }
+      entries = await readdir(openspecDir, { withFileTypes: true })
     } catch {
-      // proposal.md not found
+      entries = []
     }
 
-    return { changeId, title, specPath }
-  })
+    const changeEntries = entries.filter((entry) => entry.isDirectory() && entry.name !== 'archive')
+    activeChangeIds = changeEntries.map((e) => e.name)
 
-  const changeDataList = await Promise.all(changeDataPromises)
+    const changeDataPromises = changeEntries.map(async (entry) => {
+      const changeId = entry.name
+      const changeDir = join(openspecDir, changeId)
+      const specPath = `openspec/changes/${changeId}/proposal.md`
+      let title = changeId
 
-  const upsertStmt = sqlite.prepare(`
-    INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
-    ON CONFLICT(id, project_id) DO UPDATE SET
-      title = excluded.title,
-      spec_path = excluded.spec_path,
-      status = 'active',
-      updated_at = excluded.updated_at
-  `)
+      try {
+        const proposalPath = join(changeDir, 'proposal.md')
+        const proposalContent = await readFile(proposalPath, 'utf-8')
+        const titleMatch = proposalContent.match(/^#\s+(?:Change:\s+)?(.+)$/m)
+        if (titleMatch) {
+          title = titleMatch[1].trim()
+        }
+      } catch {
+        // proposal.md not found
+      }
 
-  for (const { changeId, title, specPath } of changeDataList) {
-    upsertStmt.run(changeId, project.id, title, specPath, now, now)
-  }
+      return { changeId, title, specPath }
+    })
 
-  // Tasks 동기화 (병렬)
-  await Promise.all(changeDataList.map(({ changeId }) => 
-    syncChangeTasksForProject(changeId, project.path, project.id).catch(err => console.error(`Failed to sync task ${changeId}:`, err))
-  ))
+    const changeDataList = await Promise.all(changeDataPromises)
 
-  if (activeChangeIds.length > 0) {
-    const placeholders = activeChangeIds.map(() => '?').join(',')
-    sqlite
-      .prepare(
-        `
-      UPDATE changes SET status = 'archived', archived_at = COALESCE(archived_at, ?), updated_at = ?
-      WHERE project_id = ? AND status = 'active' AND id NOT IN (${placeholders})
-    `
-      )
-      .run(now, now, project.id, ...activeChangeIds)
+    const upsertStmt = sqlite.prepare(`
+      INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
+      ON CONFLICT(id, project_id) DO UPDATE SET
+        title = excluded.title,
+        spec_path = excluded.spec_path,
+        status = 'active',
+        updated_at = excluded.updated_at
+    `)
+
+    for (const { changeId, title, specPath } of changeDataList) {
+      upsertStmt.run(changeId, project.id, title, specPath, now, now)
+    }
+
+    // Tasks 동기화 (병렬)
+    await Promise.all(changeDataList.map(({ changeId }) =>
+      syncChangeTasksForProject(changeId, project.path, project.id).catch(err => console.error(`Failed to sync task ${changeId}:`, err))
+    ))
+
+    if (activeChangeIds.length > 0) {
+      const placeholders = activeChangeIds.map(() => '?').join(',')
+      sqlite
+        .prepare(
+          `
+        UPDATE changes SET status = 'archived', archived_at = COALESCE(archived_at, ?), updated_at = ?
+        WHERE project_id = ? AND status = 'active' AND id NOT IN (${placeholders})
+      `
+        )
+        .run(now, now, project.id, ...activeChangeIds)
+    } else {
+      sqlite
+        .prepare(
+          `
+        UPDATE changes SET status = 'archived', archived_at = COALESCE(archived_at, ?), updated_at = ?
+        WHERE project_id = ? AND status = 'active'
+      `
+        )
+        .run(now, now, project.id)
+    }
   } else {
-    sqlite
-      .prepare(
-        `
-      UPDATE changes SET status = 'archived', archived_at = COALESCE(archived_at, ?), updated_at = ?
-      WHERE project_id = ? AND status = 'active'
-    `
-      )
-      .run(now, now, project.id)
+    // OpenSpec scanning disabled - ensure changes are archived if they exist
+    if (activeChangeIds.length > 0) {
+      const placeholders = activeChangeIds.map(() => '?').join(',')
+      sqlite
+        .prepare(
+          `
+        UPDATE changes SET status = 'archived', archived_at = COALESCE(archived_at, ?), updated_at = ?
+        WHERE project_id = ? AND status = 'active' AND id NOT IN (${placeholders})
+      `
+        )
+        .run(now, now, project.id, ...activeChangeIds)
+    } else {
+      sqlite
+        .prepare(
+          `
+        UPDATE changes SET status = 'archived', archived_at = COALESCE(archived_at, ?), updated_at = ?
+        WHERE project_id = ? AND status = 'active'
+      `
+        )
+        .run(now, now, project.id)
+    }
   }
 
   // Scan MoAI SPECs and get stats
@@ -493,14 +532,24 @@ projectsRouter.put('/:id/path', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Path is required' })
     }
 
-    // Check if openspec directory exists in new path
+    // Check for spec directories in new path - at least one must exist
     const openspecPath = join(newPath, 'openspec')
-    try {
-      await access(openspecPath)
-    } catch {
+    const moaiSpecsPath = join(newPath, '.moai', 'specs')
+
+    const hasOpenspec = await access(openspecPath).then(
+      () => true,
+      () => false
+    )
+    const hasMoaiSpecs = await access(moaiSpecsPath).then(
+      () => true,
+      () => false
+    )
+
+    // Require at least one spec format to exist
+    if (!hasOpenspec && !hasMoaiSpecs) {
       return res.status(400).json({
         success: false,
-        error: 'No openspec directory found in the specified path',
+        error: 'Project must contain either MoAI SPEC (.moai/specs/) or OpenSpec (openspec/) directory',
       })
     }
 

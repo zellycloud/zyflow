@@ -20,6 +20,10 @@ export interface Project {
 export interface Config {
   projects: Project[]
   activeProjectId: string | null
+  specConfig?: {
+    defaultSpecFormat: 'moai' | 'openspec'
+    enableOpenSpecScanning: boolean
+  }
 }
 
 /**
@@ -52,6 +56,10 @@ const CONFIG_FILE = join(CONFIG_DIR, 'config.json')
 const DEFAULT_CONFIG: Config = {
   projects: [],
   activeProjectId: null,
+  specConfig: {
+    defaultSpecFormat: 'moai',
+    enableOpenSpecScanning: false,
+  },
 }
 
 export async function ensureConfigDir(): Promise<void> {
