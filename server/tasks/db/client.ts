@@ -63,6 +63,7 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
   sqlite.exec(`
     INSERT OR IGNORE INTO sequences (name, value) VALUES ('task_inbox', 0);
     INSERT OR IGNORE INTO sequences (name, value) VALUES ('task_openspec', 0);
+    INSERT OR IGNORE INTO sequences (name, value) VALUES ('task_moai', 0);
   `);
 
   // Create tasks table FIRST (before sequences sync that references it)
@@ -95,6 +96,11 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
       UPDATE sequences
       SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'openspec'), 0)
       WHERE name = 'task_openspec' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'openspec'), 0);
+    `);
+    sqlite.exec(`
+      UPDATE sequences
+      SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'moai'), 0)
+      WHERE name = 'task_moai' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'moai'), 0);
     `);
   } catch {
     // origin column may not exist yet, will be added in migrations below
@@ -334,10 +340,38 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
     // Column already exists, ignore
   }
 
+  // =============================================
+  // MoAI SPEC TAG column migrations
+  // =============================================
+
+  // Migration: Add tag_id column for MoAI TAG identifier
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN tag_id TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add tag_scope column for TAG scope (file paths)
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN tag_scope TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
+  // Migration: Add tag_dependencies column for TAG dependencies (JSON array)
+  try {
+    sqlite.exec(`ALTER TABLE tasks ADD COLUMN tag_dependencies TEXT`);
+  } catch {
+    // Column already exists, ignore
+  }
+
   // Backlog indexes for performance
   sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_backlog_file_id ON tasks(backlog_file_id);`);
   sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_parent_task_id ON tasks(parent_task_id);`);
   sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_milestone ON tasks(milestone);`);
+
+  // MoAI TAG index
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_tag_id ON tasks(tag_id);`);
 
   // Migration: Set default project_id for existing tasks
   try {
@@ -951,7 +985,7 @@ export function closeDb(): void {
  * Get next task ID for a specific origin type
  * Uses sequences table to track and increment IDs
  */
-export function getNextTaskId(origin: 'inbox' | 'openspec' | 'backlog' = 'backlog'): number {
+export function getNextTaskId(origin: 'inbox' | 'openspec' | 'moai' | 'backlog' = 'backlog'): number {
   const db = getSqlite();
   const sequenceName = `task_${origin}`;
 
