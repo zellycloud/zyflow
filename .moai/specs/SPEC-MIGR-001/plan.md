@@ -125,6 +125,12 @@ estimated_tags: 15
   - [x] PipelineBar.tsx shows TAG progress for MoAI SPECs
   - [x] StageContent.tsx renders TAG-based tasks
   - [x] TaskCard.tsx displays TAG metadata
+  - [x] SpecDetail 컴포넌트 추가 (spec.md/plan.md/acceptance.md 콘텐츠 표시)
+  - [x] FlowContent에 spec 라우팅 추가
+  - [x] FlowSidebar에 SPEC 선택 로직 통합
+  - [x] useFlowChanges 훅에 spec 타입 지원
+  - [x] TypeScript 타입 정의 업데이트
+- **Related Commit**: 6b91a47 (feat(frontend): complete MoAI SPEC display integration in sidebar)
 
 ### TAG-010: API Client Update (✓ COMPLETE)
 - **Scope**: src/api/flow.ts, src/types/

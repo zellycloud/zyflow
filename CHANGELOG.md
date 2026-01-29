@@ -61,11 +61,19 @@ All notable changes to ZyFlow will be documented in this file.
 - 남은 실패: 34개
 - 기존 통과 테스트 회귀 없음 (0 regression)
 
+#### Frontend Components Update (TAG-009)
+- SpecDetail 컴포넌트 추가로 MoAI SPEC 상세 조회 기능 구현
+- FlowContent에 spec 타입 라우팅 추가
+- FlowSidebar에 SPEC 선택 로직 통합
+- useFlowChanges 훅에 spec 타입 지원
+- TypeScript 타입 정의 업데이트 및 구조 정리
+
 **관련 커밋:**
 - 6f758ce: Parser validation fixes
 - f9f4f7b: Gemini client API key validation
 - a1b7497: Session mock data fixes
 - 4aa5ea1: Prompt builder comment improvements
+- 6b91a47: Complete MoAI SPEC display integration in sidebar
 
 ---
 
