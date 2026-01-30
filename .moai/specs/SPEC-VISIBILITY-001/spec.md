@@ -2,15 +2,24 @@
 spec_id: SPEC-VISIBILITY-001
 title: SPEC Visibility & Unified Management System
 version: 1.0.0
-status: planned
+status: completed
 created: 2026-01-30
 updated: 2026-01-30
+completed: 2026-01-30
 author: manager-spec
 priority: high
 dependencies: []
 related_specs: [SPEC-MIGR-001]
 tags: [visibility, migration, openspec, unification, tooling]
 lifecycle: spec-anchored
+implementation_metrics:
+  phases_completed: 4
+  total_tags: 23
+  new_files: 25
+  new_tests: 175
+  total_tests_passing: 997
+  commits: 5
+  lines_added: 11581
 ---
 
 # SPEC-VISIBILITY-001: SPEC Visibility & Unified Management System

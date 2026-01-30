@@ -4,6 +4,40 @@ All notable changes to ZyFlow will be documented in this file.
 
 ## [Unreleased]
 
+### SPEC-VISIBILITY-001: SPEC Visibility & Unified Management System
+
+SPEC 가시성 및 통합 관리 시스템 구현 (4 Phases, 23 TAGs):
+
+**Phase 1: Status Synchronization Fix**
+- `normalizeStatus()` 함수를 통한 상태 동기화
+- 데이터베이스 쿼리가 SPEC frontmatter에서 상태 읽기
+- 마이그레이션 스크립트: `server/scripts/migrate-spec-status.ts`
+
+**Phase 2: Unified SPEC Scanner**
+- `UnifiedSpec` 타입 및 zod 검증
+- MoAI와 OpenSpec 형식 모두 지원하는 통합 스캐너
+- API 엔드포인트: `/api/specs`, `/api/specs/:id`, `/api/specs/migration-status`
+- 60초 캐시 TTL로 성능 최적화
+
+**Phase 3: OpenSpec Migration Tool**
+- OpenSpec 파서 (`server/migrations/openspec-parser.ts`)
+- EARS 생성기 (spec.md)
+- TAG 체인 생성기 (plan.md)
+- Gherkin 생성기 (acceptance.md)
+- 배치 마이그레이션 CLI: `server/scripts/migrate-all-openspecs.ts`
+
+**Phase 4: Archive Management**
+- 아카이브 관리자 (`server/archive-manager.ts`) - 원자적 작업 지원
+- 아카이브/복원 API 엔드포인트
+- 메타데이터 보존 및 에러 시 롤백
+
+**메트릭**:
+- 신규 파일: 25+
+- 신규 테스트: 175
+- 전체 테스트: 997 통과
+- 커밋: 5
+- 추가된 라인: 11,581
+
 ### Migration
 - **SPEC-MIGR-001 완료**: OpenSpec에서 MoAI SPEC 시스템으로 완전 마이그레이션
   - 15개 TAG 단계별 구현으로 점진적 마이그레이션 달성

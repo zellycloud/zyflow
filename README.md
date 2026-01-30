@@ -121,6 +121,25 @@ npm run build:mcp
 | `task_archive` | 완료된 태스크를 아카이브로 이동 |
 | `task_unarchive` | 아카이브된 태스크 복원 |
 
+### SPEC 관리 API
+
+통합 SPEC 스캐너와 아카이브 관리를 위한 REST API 엔드포인트:
+
+| 엔드포인트 | 설명 |
+|-----------|------|
+| `GET /api/specs` | 통합 SPEC 목록 조회 (MoAI + OpenSpec 형식 지원) |
+| `GET /api/specs/:id` | 특정 SPEC 상세 조회 |
+| `GET /api/specs/migration-status` | 마이그레이션 상태 조회 (MoAI/OpenSpec 개수) |
+| `POST /api/specs/:id/archive` | SPEC 아카이브 (월별 디렉토리로 이동) |
+| `POST /api/specs/:id/restore` | 아카이브된 SPEC 복원 |
+| `GET /api/specs/archived` | 아카이브된 SPEC 목록 조회 |
+
+**필터링 옵션** (`GET /api/specs`):
+- `?format=moai` - MoAI 형식만 조회
+- `?format=openspec` - OpenSpec 형식만 조회
+- `?status=active` - 특정 상태만 조회
+- `?domain=AUTH` - 특정 도메인만 조회
+
 ### Change Log & Replay 도구
 
 | 도구 | 설명 |
