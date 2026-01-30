@@ -52,8 +52,8 @@ import {
 } from '../backlog/index.js'
 import { serializeBacklogTask, generateBacklogFilename } from '../backlog/parser.js'
 import { syncChangeTasksFromFile, syncChangeTasksForProject, syncRemoteChangeTasksForProject } from '../sync-tasks.js'
-import { scanMoaiSpecs } from '../flow-sync.js'
-import { getMoaiSpec } from '../moai-specs.js'
+import { scanMoaiSpecs as syncMoaiSpecsToDb } from '../flow-sync.js'
+import { getMoaiSpec, scanMoaiSpecs } from '../moai-specs.js'
 
 const execAsync = promisify(exec)
 
@@ -565,57 +565,111 @@ flowRouter.get('/changes/counts', async (req, res) => {
   }
 })
 
-// GET /changes - Flow Changes 목록 (DB 기반)
+// GET /changes - Flow Changes 목록 (모든 프로젝트)
 flowRouter.get('/changes', async (_req, res) => {
   try {
     await initTaskDb()
-    const project = await getActiveProject()
-    if (!project) {
+    const config = await loadConfig()
+
+    if (config.projects.length === 0) {
       return res.json({ success: true, data: { changes: [] } })
     }
 
     const sqlite = getSqlite()
-    const dbChanges = sqlite
-      .prepare(
-        `
-      SELECT * FROM changes
-      WHERE project_id = ? AND status != 'archived'
-      ORDER BY updated_at DESC
-    `
-      )
-      .all(project.id) as Array<{
+    const allChanges: Array<{
       id: string
-      project_id: string
+      type: string
+      projectId: string
+      projectName: string
       title: string
-      spec_path: string | null
-      status: ChangeStatus
-      current_stage: Stage
+      specPath: string | null
+      status: string
+      currentStage: string
       progress: number
-      created_at: number
-      updated_at: number
-    }>
+      createdAt: string
+      updatedAt: string
+      stages: ReturnType<typeof getChangeStages>
+    }> = []
 
-    const changes = dbChanges.map((c) => {
-      const stages = getChangeStages(c.id, project.id)
-      const progress = calculateProgress(stages)
-      const currentStage = determineCurrentStage(stages)
+    // Scan all projects
+    for (const project of config.projects) {
+      // Get OpenSpec changes from DB
+      const dbChanges = sqlite
+        .prepare(
+          `
+        SELECT * FROM changes
+        WHERE project_id = ? AND status != 'archived'
+        ORDER BY updated_at DESC
+      `
+        )
+        .all(project.id) as Array<{
+        id: string
+        project_id: string
+        title: string
+        spec_path: string | null
+        status: ChangeStatus
+        current_stage: Stage
+        progress: number
+        created_at: number
+        updated_at: number
+      }>
 
-      // Determine type based on specPath
-      const type = c.spec_path?.startsWith('.moai/specs/') ? 'spec' : 'openspec'
+      for (const c of dbChanges) {
+        const stages = getChangeStages(c.id, project.id)
+        const progress = calculateProgress(stages)
+        const currentStage = determineCurrentStage(stages)
+        const type = c.spec_path?.startsWith('.moai/specs/') ? 'moai-spec' : 'openspec'
 
-      return {
-        id: c.id,
-        type,
-        projectId: c.project_id,
-        title: c.title,
-        specPath: c.spec_path,
-        status: c.status,
-        currentStage,
-        progress,
-        createdAt: new Date(c.created_at).toISOString(),
-        updatedAt: new Date(c.updated_at).toISOString(),
-        stages,
+        allChanges.push({
+          id: c.id,
+          type,
+          projectId: c.project_id,
+          projectName: project.name,
+          title: c.title,
+          specPath: c.spec_path,
+          status: c.status,
+          currentStage,
+          progress,
+          createdAt: new Date(c.created_at).toISOString(),
+          updatedAt: new Date(c.updated_at).toISOString(),
+          stages,
+        })
       }
+
+      // Scan MoAI SPECs from .moai/specs/ directory
+      try {
+        const moaiSpecs = await scanMoaiSpecs(project.path)
+        for (const spec of moaiSpecs) {
+          // Skip if already in DB
+          const existsInDb = allChanges.some((c) => c.id === spec.id && c.projectId === project.id)
+          if (existsInDb) continue
+          if (spec.status === 'archived') continue
+
+          allChanges.push({
+            id: spec.id,
+            type: 'moai-spec',
+            projectId: project.id,
+            projectName: project.name,
+            title: spec.title,
+            specPath: `.moai/specs/${spec.id}`,
+            status: spec.status === 'complete' ? 'done' : spec.status === 'active' ? 'in_progress' : 'pending',
+            currentStage: spec.status === 'complete' ? 'sync' : spec.status === 'active' ? 'run' : 'plan',
+            progress: spec.tagCount > 0 ? Math.round((spec.completedTags / spec.tagCount) * 100) : 0,
+            createdAt: spec.createdAt || new Date().toISOString(),
+            updatedAt: spec.updatedAt || new Date().toISOString(),
+            stages: getChangeStages(spec.id, project.id),
+          })
+        }
+      } catch (err) {
+        console.warn(`Failed to scan MoAI SPECs for ${project.name}:`, err)
+      }
+    }
+
+    // Sort by updatedAt (most recent first)
+    const changes = allChanges.sort((a, b) => {
+      const aTime = new Date(a.updatedAt).getTime()
+      const bTime = new Date(b.updatedAt).getTime()
+      return bTime - aTime
     })
 
     res.json({ success: true, data: { changes } })
