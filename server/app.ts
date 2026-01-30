@@ -48,6 +48,7 @@ import { webhooksRouter, setWebhookBroadcast } from './routes/webhooks.js'
 import { aiRouter } from './ai/index.js'
 import { ragRouter, memoryRouter } from './routes/search.js'
 import { leannRouter } from './routes/leann.js'
+import { scanMoaiSpecs } from './moai-specs.js'
 import { specsRouter } from './routes/specs.js'
 // Remote plugin (optional - only if installed)
 let remoteRouter: import('express').Router | null = null
@@ -1994,7 +1995,7 @@ app.get('/api/flow/changes', async (_req, res) => {
       updated_at: number
     }>
 
-    const changes = dbChanges.map((c) => {
+    const openSpecChanges = dbChanges.map((c) => {
       const stages = getChangeStages(c.id, project.path)
       const progress = calculateProgress(stages)
       const currentStage = determineCurrentStage(stages)
@@ -2010,7 +2011,51 @@ app.get('/api/flow/changes', async (_req, res) => {
         createdAt: new Date(c.created_at).toISOString(),
         updatedAt: new Date(c.updated_at).toISOString(),
         stages,
+        type: 'openspec' as const,
       }
+    })
+
+    // Scan MoAI SPECs from .moai/specs/ directory
+    let moaiSpecChanges: Array<{
+      id: string
+      projectId: string
+      title: string
+      specPath: string
+      status: string
+      currentStage: string
+      progress: number
+      createdAt: string
+      updatedAt: string
+      stages: ReturnType<typeof getChangeStages>
+      type: 'moai-spec'
+    }> = []
+
+    try {
+      const moaiSpecs = await scanMoaiSpecs(project.path)
+      moaiSpecChanges = moaiSpecs
+        .filter((spec) => spec.status !== 'archived')
+        .map((spec) => ({
+          id: spec.id,
+          projectId: project.id,
+          title: spec.title,
+          specPath: `.moai/specs/${spec.id}`,
+          status: spec.status === 'complete' ? 'done' : spec.status === 'active' ? 'in_progress' : 'pending',
+          currentStage: spec.status === 'complete' ? 'sync' : spec.status === 'active' ? 'run' : 'plan',
+          progress: spec.tagCount > 0 ? Math.round((spec.completedTags / spec.tagCount) * 100) : 0,
+          createdAt: spec.createdAt || new Date().toISOString(),
+          updatedAt: spec.updatedAt || new Date().toISOString(),
+          stages: [],
+          type: 'moai-spec' as const,
+        }))
+    } catch (err) {
+      console.warn('Failed to scan MoAI SPECs:', err)
+    }
+
+    // Merge OpenSpec and MoAI SPEC changes, sorted by updatedAt (most recent first)
+    const changes = [...openSpecChanges, ...moaiSpecChanges].sort((a, b) => {
+      const aTime = new Date(a.updatedAt).getTime()
+      const bTime = new Date(b.updatedAt).getTime()
+      return bTime - aTime
     })
 
     res.json({ success: true, data: { changes } })

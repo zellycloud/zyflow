@@ -53,6 +53,7 @@ import {
 import { serializeBacklogTask, generateBacklogFilename } from '../backlog/parser.js'
 import { syncChangeTasksFromFile, syncChangeTasksForProject, syncRemoteChangeTasksForProject } from '../sync-tasks.js'
 import { scanMoaiSpecs } from '../flow-sync.js'
+import { getMoaiSpec } from '../moai-specs.js'
 
 const execAsync = promisify(exec)
 
@@ -381,18 +382,50 @@ async function getMoaiSpecDetail(
         .get(specId) as typeof change
     }
 
-    if (!change) {
-      return null
-    }
-
-    // Get project path
+    // Get project path from config
     const config = await loadConfig()
-    const project = config.projects.find((p) => p.id === change.project_id)
-    if (!project) {
-      return null
+    let project
+    let projectPath: string
+
+    if (change) {
+      // DB record exists - use its project_id
+      project = config.projects.find((p) => p.id === change.project_id)
+      if (!project) {
+        return null
+      }
+      projectPath = project.path
+    } else {
+      // DB record doesn't exist - try to find MoAI SPEC in filesystem
+      // First try with projectId parameter, then fall back to active project
+      project = projectId
+        ? config.projects.find((p) => p.id === projectId)
+        : config.projects.find((p) => p.is_active)
+
+      if (!project) {
+        return null
+      }
+      projectPath = project.path
+
+      // Check if MoAI SPEC exists in filesystem
+      const moaiSpec = await getMoaiSpec(projectPath, specId)
+      if (!moaiSpec) {
+        return null
+      }
+
+      // Create a virtual change record from filesystem data
+      change = {
+        id: specId,
+        project_id: project.id,
+        title: moaiSpec.title,
+        spec_path: moaiSpec.path,
+        status: (moaiSpec.status === 'complete' ? 'done' : moaiSpec.status === 'active' ? 'in_progress' : 'pending') as ChangeStatus,
+        current_stage: (moaiSpec.status === 'complete' ? 'sync' : moaiSpec.status === 'active' ? 'run' : 'plan') as Stage,
+        progress: moaiSpec.tagCount > 0 ? Math.round((moaiSpec.completedTags / moaiSpec.tagCount) * 100) : 0,
+        created_at: Date.now(),
+        updated_at: Date.now(),
+      }
     }
 
-    const projectPath = project.path
     const specsDir = join(projectPath, '.moai', 'specs', specId)
 
     // Read spec.md
