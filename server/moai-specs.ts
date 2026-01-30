@@ -65,10 +65,33 @@ export async function scanMoaiSpecs(projectPath: string): Promise<MoaiSpec[]> {
         title = titleMatch[1].trim()
       }
 
-      // Extract status from frontmatter
-      const statusMatch = specContent.match(/^status:\s*(\w+)/m)
-      if (statusMatch && ['draft', 'active', 'complete', 'archived'].includes(statusMatch[1])) {
-        status = statusMatch[1] as MoaiSpec['status']
+      // Extract status from frontmatter (supports both English and Korean formats)
+      // English: "status: active" or Korean: "- **상태**: In Progress"
+      const englishStatusMatch = specContent.match(/^status:\s*(\w+)/mi)
+      const koreanStatusMatch = specContent.match(/^[-*]\s*\*?\*?(?:상태|Status)\*?\*?:\s*(.+)$/mi)
+
+      if (englishStatusMatch && ['draft', 'active', 'complete', 'archived'].includes(englishStatusMatch[1].toLowerCase())) {
+        status = englishStatusMatch[1].toLowerCase() as MoaiSpec['status']
+      } else if (koreanStatusMatch) {
+        const koreanStatus = koreanStatusMatch[1].trim().toLowerCase()
+        // Map Korean/English status values to standard status
+        const statusMap: Record<string, MoaiSpec['status']> = {
+          'in progress': 'active',
+          '진행 중': 'active',
+          '진행중': 'active',
+          'active': 'active',
+          'draft': 'draft',
+          '초안': 'draft',
+          '계획': 'draft',
+          'planning': 'draft',
+          'complete': 'complete',
+          'completed': 'complete',
+          '완료': 'complete',
+          'done': 'complete',
+          'archived': 'archived',
+          '아카이브': 'archived',
+        }
+        status = statusMap[koreanStatus] || 'draft'
       }
     } catch {
       // spec.md not found or parse error, use defaults

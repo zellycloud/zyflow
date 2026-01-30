@@ -209,7 +209,22 @@ async function syncLocalProjectChanges(project: { id: string; name: string; path
   const now = Date.now()
   let activeChangeIds: string[] = []
 
-  // Only scan OpenSpec if enabled in config
+  // 1. Scan MoAI SPECs FIRST and add to activeChangeIds
+  try {
+    const moaiSpecs = await scanMoaiSpecs(project.path)
+    const moaiSpecIds = moaiSpecs
+      .filter(spec => spec.status !== 'archived')
+      .map(spec => spec.id)
+    activeChangeIds.push(...moaiSpecIds)
+
+    if (moaiSpecIds.length > 0) {
+      console.log(`[Project] Found ${moaiSpecIds.length} MoAI SPECs: ${moaiSpecIds.join(', ')}`)
+    }
+  } catch (err) {
+    console.warn('[Project] Failed to scan MoAI SPECs:', err)
+  }
+
+  // 2. Only scan OpenSpec if enabled in config
   if (specConfig.enableOpenSpecScanning) {
     const openspecDir = join(project.path, 'openspec', 'changes')
     let entries: Dirent[] = []
@@ -220,7 +235,8 @@ async function syncLocalProjectChanges(project: { id: string; name: string; path
     }
 
     const changeEntries = entries.filter((entry) => entry.isDirectory() && entry.name !== 'archive')
-    activeChangeIds = changeEntries.map((e) => e.name)
+    // Append OpenSpec changes to activeChangeIds (don't overwrite MoAI SPECs!)
+    activeChangeIds.push(...changeEntries.map((e) => e.name))
 
     const changeDataPromises = changeEntries.map(async (entry) => {
       const changeId = entry.name
@@ -307,29 +323,20 @@ async function syncLocalProjectChanges(project: { id: string; name: string; path
     }
   }
 
-  // Scan MoAI SPECs and get stats
-  let moaiSpecCount = 0
+  // Get MoAI SPEC tag stats (SPECs already scanned above)
   let moaiTagsTotal = 0
   let moaiTagsCompleted = 0
 
   try {
-    const moaiSpecs = await scanMoaiSpecs(project.path)
-    moaiSpecCount = moaiSpecs.length
     const tagStats = await countMoaiTags(project.path)
     moaiTagsTotal = tagStats.total
     moaiTagsCompleted = tagStats.completed
-
-    if (moaiSpecCount > 0) {
-      console.log(
-        `[Project] Found ${moaiSpecCount} MoAI SPECs (${moaiTagsCompleted}/${moaiTagsTotal} tags completed)`
-      )
-    }
-  } catch (err) {
-    console.warn('[Project] Failed to scan MoAI SPECs:', err)
+  } catch {
+    // Tag counting failed, continue
   }
 
   console.log(
-    `[Project] Activated local "${project.name}" (${activeChangeIds.length} changes, ${moaiSpecCount} SPECs)`
+    `[Project] Activated local "${project.name}" (${activeChangeIds.length} active items, tags: ${moaiTagsCompleted}/${moaiTagsTotal})`
   )
 
   // Stop any remote watcher and start local watcher

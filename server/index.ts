@@ -4,9 +4,10 @@ import { app } from './app.js'
 import { initWebSocket } from './websocket.js'
 import { startTasksWatcher, stopTasksWatcher } from './watcher.js'
 import { startRemoteWatcher, stopAllRemoteWatchers } from './remote-watcher.js'
+import { startMoaiWatcher, stopMoaiWatcher } from './moai-watcher.js'
 // RAG 기능 삭제됨 - LEANN 외부 MCP 서버로 대체
 import { getActiveProject } from './config.js'
-import { syncFlowChanges } from './flow-sync.js'
+import { syncFlowChanges, syncAllMoaiSpecs } from './flow-sync.js'
 import { getProcessManager } from './cli-adapter/process-manager.js'
 import { closeDb } from './tasks/index.js'
 
@@ -49,13 +50,26 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
     console.error('[Warning] Failed to sync flow changes:', error)
   }
 
+  // MoAI SPEC 동기화 (.moai/specs/ → DB)
+  try {
+    const moaiResult = await syncAllMoaiSpecs()
+    if (moaiResult.totalCreated + moaiResult.totalUpdated > 0) {
+      console.log(`[Sync] MoAI SPECs synced: ${moaiResult.totalCreated} created, ${moaiResult.totalUpdated} updated (${moaiResult.projectsSynced} projects)`)
+    } else {
+      console.log('[Sync] MoAI SPECs sync completed (no changes)')
+    }
+  } catch (error) {
+    console.error('[Warning] Failed to sync MoAI SPECs:', error)
+  }
+
   // 활성 프로젝트가 있으면 watcher 시작
   try {
     const project = await getActiveProject()
     if (project && !project.remote?.serverId) {
       // 로컬 프로젝트만 watcher 시작
       startTasksWatcher(project.path, project.id)
-      console.log('[Info] File watcher enabled for active project')
+      startMoaiWatcher(project.path, project.id)
+      console.log('[Info] File watchers enabled for active project')
 
     } else if (project?.remote?.serverId) {
       // 원격 프로젝트는 remote watcher 시작
@@ -75,6 +89,7 @@ async function gracefulShutdown(reason: string) {
 
   // 1. 새 요청 거부 - watcher 중지
   stopTasksWatcher()
+  stopMoaiWatcher()
   stopAllRemoteWatchers()
 
   // 2. 활성 프로세스 정리

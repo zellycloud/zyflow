@@ -575,14 +575,63 @@ async function getChangesForProject(project: {
   }
 
   // 로컬 프로젝트인 경우
-  const openspecDir = join(projectPath, 'openspec', 'changes')
-  const changes = []
+  const changes: Array<{
+    id: string
+    title: string
+    progress: number
+    totalTasks: number
+    completedTasks: number
+    relatedSpecs?: string[]
+    updatedAt: string | null
+    type?: 'openspec' | 'spec'
+  }> = []
 
-  let entries
+  // 1. MoAI SPECs 스캔 (.moai/specs/)
+  try {
+    const moaiSpecs = await scanMoaiSpecs(projectPath)
+    for (const spec of moaiSpecs) {
+      // Skip archived SPECs
+      if (archivedChangeIds.has(spec.id) || spec.status === 'archived') continue
+
+      const progress = spec.tagCount > 0
+        ? Math.round((spec.completedTags / spec.tagCount) * 100)
+        : 0
+
+      // Get updatedAt from git or file system
+      let updatedAt: string | null = null
+      try {
+        const gitResult = await execAsync(
+          `git log -1 --format="%aI" -- ".moai/specs/${spec.id}"`,
+          { cwd: projectPath }
+        )
+        updatedAt = gitResult.stdout.trim() || new Date().toISOString()
+      } catch {
+        updatedAt = new Date().toISOString()
+      }
+
+      changes.push({
+        id: spec.id,
+        title: spec.title,
+        progress,
+        totalTasks: spec.tagCount,
+        completedTasks: spec.completedTags,
+        updatedAt,
+        type: 'spec',
+      })
+    }
+  } catch {
+    // .moai/specs/ scan failed, continue with OpenSpec
+  }
+
+  // 2. OpenSpec changes 스캔 (openspec/changes/)
+  const openspecDir = join(projectPath, 'openspec', 'changes')
+
+  let entries: Dirent[] = []
   try {
     entries = await readdir(openspecDir, { withFileTypes: true })
   } catch {
-    return []
+    // openspec/changes/ does not exist, return MoAI SPECs only
+    return changes
   }
 
   for (const entry of entries) {
@@ -651,6 +700,7 @@ async function getChangesForProject(project: {
       completedTasks,
       relatedSpecs,
       updatedAt,
+      type: 'openspec',
     })
   }
 
