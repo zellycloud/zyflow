@@ -12,6 +12,57 @@ import { parseTasksFile } from './parser.js'
 import { parseSpecFile } from '@zyflow/parser'
 import { syncSpecTagsFromFile, syncSpecAcceptanceFromFile, type MoaiSyncResult } from './sync-tasks.js'
 
+// =============================================
+// Status Normalization (SPEC-VISIBILITY-001)
+// =============================================
+
+/**
+ * Valid status values for SPEC documents
+ */
+const VALID_STATUSES = [
+  'planned',
+  'active',
+  'completed',
+  'blocked',
+  'archived',
+  'draft',
+] as const
+
+type SpecStatus = (typeof VALID_STATUSES)[number]
+
+/**
+ * Normalize status from frontmatter to valid database status
+ * Handles case variations, aliases, and invalid values
+ *
+ * @param rawStatus - Raw status value from frontmatter
+ * @returns Normalized status value, defaults to 'planned'
+ */
+export function normalizeStatus(rawStatus: unknown): SpecStatus {
+  if (typeof rawStatus !== 'string') {
+    return 'planned'
+  }
+
+  const normalized = rawStatus.toLowerCase().trim()
+
+  switch (normalized) {
+    case 'planned':
+      return 'planned'
+    case 'active':
+      return 'active'
+    case 'completed':
+    case 'complete': // Alias used in moai-specs.ts
+      return 'completed'
+    case 'blocked':
+      return 'blocked'
+    case 'archived':
+      return 'archived'
+    case 'draft':
+      return 'draft'
+    default:
+      return 'planned'
+  }
+}
+
 export interface SyncResult {
   synced: number
   created: number
@@ -304,8 +355,9 @@ export async function scanMoaiSpecs(
         const specStat = await stat(specDir)
         if (!specStat.isDirectory()) continue
 
-        // Read spec.md for title
+        // Read spec.md for title and status (SPEC-VISIBILITY-001)
         let title = specId
+        let status = normalizeStatus(undefined) // Default: 'planned'
         const specPath = join(specDir, 'spec.md')
 
         if (existsSync(specPath)) {
@@ -315,8 +367,10 @@ export async function scanMoaiSpecs(
             if (parsed.frontmatter.title) {
               title = String(parsed.frontmatter.title)
             }
+            // Extract and normalize status from frontmatter
+            status = normalizeStatus(parsed.frontmatter.status)
           } catch {
-            // Parse error, use specId as title
+            // Parse error, use specId as title and default status
           }
         }
 
@@ -326,16 +380,18 @@ export async function scanMoaiSpecs(
           .get(specId, projectId)
 
         if (!existing) {
+          // SPEC-VISIBILITY-001: Use parsed status instead of hardcoded 'active'
           sqlite
             .prepare(`
               INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
-              VALUES (?, ?, ?, ?, 'active', 'spec', 0, ?, ?)
+              VALUES (?, ?, ?, ?, ?, 'spec', 0, ?, ?)
             `)
-            .run(specId, projectId, title, `.moai/specs/${specId}/spec.md`, now, now)
+            .run(specId, projectId, title, `.moai/specs/${specId}/spec.md`, status, now, now)
         } else {
+          // SPEC-VISIBILITY-001: Sync status from frontmatter on update
           sqlite
-            .prepare(`UPDATE changes SET title = ?, updated_at = ? WHERE id = ? AND project_id = ?`)
-            .run(title, now, specId, projectId)
+            .prepare(`UPDATE changes SET title = ?, status = ?, updated_at = ? WHERE id = ? AND project_id = ?`)
+            .run(title, status, now, specId, projectId)
         }
 
         // Sync TAG chain from plan.md

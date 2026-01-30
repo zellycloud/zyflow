@@ -171,12 +171,14 @@ describe('scanMoaiSpecs logic', () => {
       expect(specPath).toBe('.moai/specs/SPEC-001/spec.md')
     })
 
-    it('sets initial status to active', () => {
-      const initialStatus = 'active'
+    it('sets initial status from frontmatter or defaults to planned', () => {
+      // SPEC-VISIBILITY-001: Status is now read from frontmatter
+      // Default is 'planned' when no frontmatter status exists
+      const defaultStatus = 'planned'
       const initialStage = 'spec'
       const initialProgress = 0
 
-      expect(initialStatus).toBe('active')
+      expect(defaultStatus).toBe('planned')
       expect(initialStage).toBe('spec')
       expect(initialProgress).toBe(0)
     })
