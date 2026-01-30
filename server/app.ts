@@ -48,6 +48,7 @@ import { webhooksRouter, setWebhookBroadcast } from './routes/webhooks.js'
 import { aiRouter } from './ai/index.js'
 import { ragRouter, memoryRouter } from './routes/search.js'
 import { leannRouter } from './routes/leann.js'
+import { specsRouter } from './routes/specs.js'
 // Remote plugin (optional - only if installed)
 let remoteRouter: import('express').Router | null = null
 let getRemoteServerById: ((id: string) => Promise<import('@zyflow/remote-plugin').RemoteServer | null>) | null = null
@@ -142,6 +143,9 @@ app.use('/api/memory', memoryRouter)
 
 // LEANN 인덱스 관리 API 라우터 등록
 app.use('/api/leann', leannRouter)
+
+// Unified SPEC Scanner API 라우터 등록 (SPEC-VISIBILITY-001)
+app.use('/api/specs', specsRouter)
 
 // Global Chat API 라우터 등록
 app.use('/api/chat', globalChatRouter)
@@ -1176,82 +1180,8 @@ app.get('/api/plans/:changeId/:taskId', async (req, res) => {
 })
 
 // ==================== SPECS ====================
-
-// GET /api/specs - List all specs
-app.get('/api/specs', async (_req, res) => {
-  try {
-    const paths = await getProjectPaths()
-    if (!paths) {
-      return res.json({ success: true, data: { specs: [] } })
-    }
-
-    let entries
-    try {
-      entries = await readdir(paths.specsDir, { withFileTypes: true })
-    } catch {
-      return res.json({ success: true, data: { specs: [] } })
-    }
-
-    const specs = []
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue
-
-      const specId = entry.name
-      const specDir = join(paths.specsDir, specId)
-
-      // Read spec.md for title and requirements count
-      let title = specId
-      let requirementsCount = 0
-      try {
-        const specPath = join(specDir, 'spec.md')
-        const specContent = await readFile(specPath, 'utf-8')
-
-        // Extract title from first # heading
-        const titleMatch = specContent.match(/^#\s+(.+)$/m)
-        if (titleMatch) {
-          title = titleMatch[1].trim()
-        }
-
-        // Count requirements
-        const reqMatches = specContent.match(/^###\s+Requirement:/gm)
-        requirementsCount = reqMatches ? reqMatches.length : 0
-      } catch {
-        // No spec.md
-      }
-
-      specs.push({
-        id: specId,
-        title,
-        requirementsCount,
-      })
-    }
-
-    res.json({ success: true, data: { specs } })
-  } catch (error) {
-    console.error('Error listing specs:', error)
-    res.status(500).json({ success: false, error: 'Failed to list specs' })
-  }
-})
-
-// GET /api/specs/:id - Get spec content
-app.get('/api/specs/:id', async (req, res) => {
-  try {
-    const paths = await getProjectPaths()
-    if (!paths) {
-      return res.status(400).json({ success: false, error: 'No active project' })
-    }
-
-    const specId = req.params.id
-    const specPath = join(paths.specsDir, specId, 'spec.md')
-    const content = await readFile(specPath, 'utf-8')
-
-    res.json({ success: true, data: { id: specId, content } })
-  } catch (error) {
-    console.error('Error reading spec:', error)
-    res.status(500).json({ success: false, error: 'Failed to read spec' })
-  }
-})
+// NOTE: Legacy /api/specs routes replaced by unified specsRouter (SPEC-VISIBILITY-001)
+// See server/routes/specs.ts for new implementation that supports both MoAI and OpenSpec formats
 
 // PATCH /api/tasks/reorder - Reorder tasks within a group
 app.patch('/api/tasks/reorder', async (req, res) => {
