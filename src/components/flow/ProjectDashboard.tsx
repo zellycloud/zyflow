@@ -1,4 +1,4 @@
-import { Loader2, GitBranch, CheckCircle2, Clock, BarChart3, Link2, GitFork } from 'lucide-react'
+import { Loader2, GitBranch, CheckCircle2, BarChart3, Link2, GitFork } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -35,8 +35,17 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
     )
   }
 
-  const activeChanges = changes?.filter((c) => c.status === 'active') ?? []
-  const completedChanges = changes?.filter((c) => c.status === 'completed') ?? []
+  // Use project.changes for better type information (includes type: 'spec' | 'openspec')
+  type ChangeWithType = { id: string; title: string; progress: number; type?: string; updatedAt?: string }
+  const projectChanges = (project?.changes ?? []) as ChangeWithType[]
+
+  // Filter by type
+  const moaiSpecs = projectChanges.filter((c) => c.type === 'spec')
+  const openspecChanges = projectChanges.filter((c) => c.type === 'openspec')
+
+  // Combine for display (fallback to DB changes if project.changes is empty)
+  const activeChanges = changes?.filter((c) => c.status === 'active' && c.projectId === projectId) ?? []
+  const completedChanges = changes?.filter((c) => c.status === 'completed' && c.projectId === projectId) ?? []
   const totalProgress =
     activeChanges.length > 0
       ? Math.round(
@@ -70,16 +79,28 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
 
         <TabsContent value="overview" className="space-y-6">
           {/* Summary Cards */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">진행중</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">MoAI SPEC</CardTitle>
+                <span className="text-purple-600 dark:text-purple-400 text-[10px] font-semibold">SPEC</span>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{activeChanges.length}</div>
+                <div className="text-2xl font-bold">{moaiSpecs.length}</div>
                 <p className="text-xs text-muted-foreground">
-                  활성 Changes
+                  활성 MoAI SPECs
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">OpenSpec</CardTitle>
+                <span className="text-blue-600 dark:text-blue-400 text-[10px] font-semibold">OPEN</span>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{openspecChanges.length}</div>
+                <p className="text-xs text-muted-foreground">
+                  OpenSpec Changes
                 </p>
               </CardContent>
             </Card>
@@ -91,7 +112,7 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
               <CardContent>
                 <div className="text-2xl font-bold">{completedChanges.length}</div>
                 <p className="text-xs text-muted-foreground">
-                  완료된 Changes
+                  완료된 항목
                 </p>
               </CardContent>
             </Card>

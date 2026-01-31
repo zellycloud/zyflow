@@ -64,6 +64,48 @@ export function FlowContent({ selectedItem, onSelectItem }: FlowContentProps) {
     return <SettingsPage />
   }
 
+  // 프로젝트 ID 해결: URL에서 이름으로 접근한 경우 실제 ID로 변환
+  if ('projectId' in selectedItem && projectsData?.projects) {
+    const urlProjectId = selectedItem.projectId
+
+    // 1. ID로 프로젝트 찾기
+    let foundProject = projectsData.projects.find((p) => p.id === urlProjectId)
+
+    // 2. ID로 못 찾으면 이름으로 찾기 (URL에 이름이 들어온 경우)
+    if (!foundProject) {
+      foundProject = projectsData.projects.find((p) => p.name === urlProjectId)
+
+      // 이름으로 찾았으면 올바른 ID로 리다이렉트
+      if (foundProject && onSelectItem) {
+        const correctedItem = { ...selectedItem, projectId: foundProject.id }
+        // 비동기로 실행하여 렌더 중 상태 변경 방지
+        setTimeout(() => onSelectItem(correctedItem as typeof selectedItem), 0)
+        return (
+          <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+            <Loader2 className="h-8 w-8 mb-4 animate-spin opacity-50" />
+            <p>리다이렉트 중...</p>
+          </div>
+        )
+      }
+    }
+
+    // 3. 프로젝트를 전혀 찾지 못한 경우 에러 표시
+    if (!foundProject) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+          <FolderOpen className="h-12 w-12 mb-4 opacity-50" />
+          <p className="text-lg">프로젝트를 찾을 수 없습니다</p>
+          <p className="text-sm mt-1">
+            &apos;{urlProjectId}&apos; 프로젝트가 등록되지 않았습니다
+          </p>
+          <p className="text-xs mt-2 text-muted-foreground/60">
+            사이드바에서 프로젝트를 선택하거나 추가하세요
+          </p>
+        </div>
+      )
+    }
+  }
+
   // 선택된 프로젝트가 활성 프로젝트와 다르면 렌더링하지 않음 (404 방지)
   // 프로젝트 전환 중일 때 이전 프로젝트의 Change를 요청하지 않도록 함
   if ('projectId' in selectedItem && selectedItem.projectId !== projectsData?.activeProjectId) {

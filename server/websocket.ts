@@ -15,6 +15,7 @@ export type WSEventType =
   | 'change:updated'
   | 'change:synced'
   | 'change:archived'
+  | 'spec:updated'
   | 'sync:completed'
   | 'inbox:updated'
   | 'backlog:synced'

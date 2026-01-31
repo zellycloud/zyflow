@@ -271,13 +271,9 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                       </SidebarMenuButton>
                       <CollapsibleContent>
                         <SidebarMenuSub>
-                          {/* Changes and SPECs */}
-                          {project.changes?.map((change) => {
-                            // Check if this is a MoAI SPEC
-                            const isSpec = (change as { type?: string }).type === 'spec'
-                            const isSelected = isSpec
-                              ? selectedItem?.type === 'spec' && selectedItem.specId === change.id
-                              : selectedItem?.type === 'change' && selectedItem.changeId === change.id
+                          {/* MoAI SPECs */}
+                          {project.changes?.filter((c) => (c as { type?: string }).type === 'spec').map((change) => {
+                            const isSelected = selectedItem?.type === 'spec' && selectedItem.specId === change.id
 
                             return (
                               <SidebarMenuSubItem key={change.id}>
@@ -285,18 +281,69 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <SidebarMenuSubButton
-                                        onClick={() =>
-                                          isSpec
-                                            ? handleSelectSpec(project.id, change.id)
-                                            : handleSelectChange(project.id, change.id)
-                                        }
+                                        onClick={() => handleSelectSpec(project.id, change.id)}
                                         isActive={isSelected}
                                       >
-                                        {isSpec ? (
-                                          <span className="text-purple-600 dark:text-purple-400 text-[10px] font-semibold shrink-0">SPEC</span>
-                                        ) : (
-                                          <GitBranch className="size-3" />
-                                        )}
+                                        <span className="text-purple-600 dark:text-purple-400 text-[10px] font-semibold shrink-0">SPEC</span>
+                                        <span className="truncate flex-1">{change.title}</span>
+                                        <span className="text-[10px] text-muted-foreground shrink-0">
+                                          {formatRelativeDate((change as { updatedAt?: string }).updatedAt)}
+                                        </span>
+                                      </SidebarMenuSubButton>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right">
+                                      <p>최근 수정: {(change as { updatedAt?: string }).updatedAt ? new Date((change as { updatedAt?: string }).updatedAt!).toLocaleString('ko-KR') : '-'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </SidebarMenuSubItem>
+                            )
+                          })}
+                          {/* OpenSpec Changes */}
+                          {project.changes?.filter((c) => (c as { type?: string }).type === 'openspec').map((change) => {
+                            const isSelected = selectedItem?.type === 'change' && selectedItem.changeId === change.id
+
+                            return (
+                              <SidebarMenuSubItem key={change.id}>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <SidebarMenuSubButton
+                                        onClick={() => handleSelectChange(project.id, change.id)}
+                                        isActive={isSelected}
+                                      >
+                                        <span className="text-blue-600 dark:text-blue-400 text-[10px] font-semibold shrink-0">OPEN</span>
+                                        <span className="truncate flex-1">{change.title}</span>
+                                        <span className="text-[10px] text-muted-foreground shrink-0">
+                                          {formatRelativeDate((change as { updatedAt?: string }).updatedAt)}
+                                        </span>
+                                      </SidebarMenuSubButton>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right">
+                                      <p>최근 수정: {(change as { updatedAt?: string }).updatedAt ? new Date((change as { updatedAt?: string }).updatedAt!).toLocaleString('ko-KR') : '-'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </SidebarMenuSubItem>
+                            )
+                          })}
+                          {/* Other Changes (Git branches, etc.) */}
+                          {project.changes?.filter((c) => {
+                            const type = (c as { type?: string }).type
+                            return type !== 'spec' && type !== 'openspec'
+                          }).map((change) => {
+                            const isSelected = selectedItem?.type === 'change' && selectedItem.changeId === change.id
+
+                            return (
+                              <SidebarMenuSubItem key={change.id}>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <SidebarMenuSubButton
+                                        onClick={() => handleSelectChange(project.id, change.id)}
+                                        isActive={isSelected}
+                                      >
+                                        <GitBranch className="size-3" />
                                         <span className="truncate flex-1">{change.title}</span>
                                         <span className="text-[10px] text-muted-foreground shrink-0">
                                           {formatRelativeDate((change as { updatedAt?: string }).updatedAt)}

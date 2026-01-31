@@ -85,22 +85,8 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
     );
   `);
 
-  // Sync sequence values with actual max task IDs per origin (tasks table now exists)
-  try {
-    sqlite.exec(`
-      UPDATE sequences
-      SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0)
-      WHERE name = 'task_inbox' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0);
-    `);
-    // TAG-014: Removed 'task_openspec' sync logic
-    sqlite.exec(`
-      UPDATE sequences
-      SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'moai'), 0)
-      WHERE name = 'task_moai' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'moai'), 0);
-    `);
-  } catch {
-    // origin column may not exist yet, will be added in migrations below
-  }
+  // NOTE: Sequence sync with origin column is moved after the origin column migration
+  // See the sync logic after "Migration: Add origin column" section below
 
   // Create changes table (Flow의 최상위 단위)
   // 복합 기본키: (id, project_id) - 같은 change id가 다른 프로젝트에서 사용 가능
@@ -261,6 +247,23 @@ export function initDb(_projectRoot?: string): ReturnType<typeof drizzle<typeof 
     `);
   } catch (e) {
     console.error('Migration warning (origin update):', e);
+  }
+
+  // Sync sequence values with actual max task IDs per origin
+  // This runs AFTER the origin column is added to avoid SQL errors
+  try {
+    sqlite.exec(`
+      UPDATE sequences
+      SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0)
+      WHERE name = 'task_inbox' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'inbox'), 0);
+    `);
+    sqlite.exec(`
+      UPDATE sequences
+      SET value = COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'moai'), 0)
+      WHERE name = 'task_moai' AND value < COALESCE((SELECT MAX(id) FROM tasks WHERE origin = 'moai'), 0);
+    `);
+  } catch (e) {
+    console.error('Migration warning (sequence sync):', e);
   }
 
   // Migration: Add project_id column for project-based task isolation

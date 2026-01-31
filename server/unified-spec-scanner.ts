@@ -480,6 +480,238 @@ export async function scanAllSpecs(
 }
 
 // =============================================
+// Remote SSH Support
+// =============================================
+
+/**
+ * Remote plugin interface for SSH operations
+ */
+export interface RemotePlugin {
+  listDirectory: (server: unknown, path: string) => Promise<{ entries: Array<{ name: string; type: string }> }>
+  readRemoteFile: (server: unknown, path: string) => Promise<string>
+}
+
+/**
+ * Scan MoAI SPECs from a remote server via SSH
+ */
+async function scanRemoteMoaiSpecs(
+  projectPath: string,
+  server: unknown,
+  plugin: RemotePlugin
+): Promise<{ specs: UnifiedSpec[]; errors: string[] }> {
+  const specs: UnifiedSpec[] = []
+  const errors: string[] = []
+  const specsDir = `${projectPath}/.moai/specs`
+
+  let listing: { entries: Array<{ name: string; type: string }> }
+  try {
+    listing = await plugin.listDirectory(server, specsDir)
+  } catch {
+    return { specs, errors }
+  }
+
+  const specDirs = listing.entries.filter(
+    (entry) =>
+      (entry.type === 'directory' || entry.type === 'd' || entry.type === 'Directory') &&
+      entry.name.match(/^SPEC-[A-Z]+-\d+$/)
+  )
+
+  for (const entry of specDirs) {
+    const specId = entry.name
+    const specPath = `${specsDir}/${specId}`
+    const relativePath = `.moai/specs/${specId}/spec.md`
+
+    try {
+      const content = await plugin.readRemoteFile(server, `${specPath}/spec.md`)
+      const { data: frontmatter } = matter(content)
+
+      const spec: UnifiedSpec = {
+        spec_id: specId,
+        title: String(frontmatter.title || specId),
+        status: normalizeStatus(frontmatter.status),
+        priority: normalizePriority(frontmatter.priority),
+        format: 'moai' as SpecFormat,
+        sourcePath: relativePath,
+        created: frontmatter.created ? String(frontmatter.created) : undefined,
+        updated: frontmatter.updated ? String(frontmatter.updated) : undefined,
+        tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined,
+        domain: frontmatter.domain ? String(frontmatter.domain) : undefined,
+      }
+
+      specs.push(spec)
+    } catch (err) {
+      errors.push(`Failed to parse ${specId}/spec.md: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  return { specs, errors }
+}
+
+/**
+ * Scan OpenSpec from a remote server via SSH
+ */
+async function scanRemoteOpenSpecs(
+  projectPath: string,
+  server: unknown,
+  plugin: RemotePlugin
+): Promise<{ specs: UnifiedSpec[]; errors: string[] }> {
+  const specs: UnifiedSpec[] = []
+  const errors: string[] = []
+
+  const specsDir = `${projectPath}/openspec/specs`
+  const changesDir = `${projectPath}/openspec/changes`
+
+  // Scan openspec/specs if exists
+  try {
+    const listing = await plugin.listDirectory(server, specsDir)
+    const result = await scanRemoteOpenSpecDirectory(specsDir, projectPath, 'specs', listing, server, plugin)
+    specs.push(...result.specs)
+    errors.push(...result.errors)
+  } catch {
+    // Directory doesn't exist
+  }
+
+  // Scan openspec/changes if exists
+  try {
+    const listing = await plugin.listDirectory(server, changesDir)
+    const result = await scanRemoteOpenSpecDirectory(changesDir, projectPath, 'changes', listing, server, plugin)
+    specs.push(...result.specs)
+    errors.push(...result.errors)
+  } catch {
+    // Directory doesn't exist
+  }
+
+  return { specs, errors }
+}
+
+/**
+ * Scan a specific OpenSpec directory on remote server
+ */
+async function scanRemoteOpenSpecDirectory(
+  directory: string,
+  projectPath: string,
+  dirType: 'specs' | 'changes',
+  listing: { entries: Array<{ name: string; type: string }> },
+  server: unknown,
+  plugin: RemotePlugin
+): Promise<{ specs: UnifiedSpec[]; errors: string[] }> {
+  const specs: UnifiedSpec[] = []
+  const errors: string[] = []
+
+  for (const entry of listing.entries) {
+    if (entry.type !== 'directory' && entry.type !== 'd' && entry.type !== 'Directory') continue
+    if (entry.name === 'archive') continue
+
+    const changeId = entry.name
+    const changeDir = `${directory}/${changeId}`
+
+    // Try to find proposal.md or spec.md
+    let filePath = ''
+    let fileName = ''
+
+    try {
+      await plugin.readRemoteFile(server, `${changeDir}/proposal.md`)
+      filePath = `${changeDir}/proposal.md`
+      fileName = 'proposal.md'
+    } catch {
+      try {
+        await plugin.readRemoteFile(server, `${changeDir}/spec.md`)
+        filePath = `${changeDir}/spec.md`
+        fileName = 'spec.md'
+      } catch {
+        continue
+      }
+    }
+
+    const relativePath = `openspec/${dirType}/${changeId}/${fileName}`
+
+    try {
+      const content = await plugin.readRemoteFile(server, filePath)
+      const { data: frontmatter, content: bodyContent } = matter(content)
+
+      let title = String(frontmatter.title || changeId)
+      if (!frontmatter.title) {
+        const titleMatch = bodyContent.match(/^#\s+(?:Change:\s+)?(.+)$/m)
+        if (titleMatch) {
+          title = titleMatch[1].trim()
+        }
+      }
+
+      const spec: UnifiedSpec = {
+        spec_id: changeId,
+        title,
+        status: normalizeStatus(frontmatter.status),
+        priority: normalizePriority(frontmatter.priority),
+        format: 'openspec' as SpecFormat,
+        sourcePath: relativePath,
+        created: frontmatter.created ? String(frontmatter.created) : undefined,
+        updated: frontmatter.updated ? String(frontmatter.updated) : undefined,
+        tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : undefined,
+        domain: frontmatter.domain ? String(frontmatter.domain) : undefined,
+      }
+
+      specs.push(spec)
+    } catch (err) {
+      errors.push(`Failed to parse ${changeId}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  return { specs, errors }
+}
+
+/**
+ * Scan all SPEC directories on a remote server via SSH
+ *
+ * @param projectPath - Path to the project root on remote server
+ * @param serverId - Remote server ID
+ * @returns Unified scan results
+ */
+export async function scanAllSpecsRemote(
+  projectPath: string,
+  serverId: string
+): Promise<ScanResult> {
+  const allErrors: string[] = []
+
+  // Load remote plugin
+  let plugin: RemotePlugin & { getRemoteServerById: (id: string) => Promise<unknown> }
+  try {
+    plugin = await import('@zyflow/remote-plugin')
+  } catch {
+    return {
+      specs: [],
+      errors: ['Remote plugin not installed'],
+      scannedAt: Date.now(),
+    }
+  }
+
+  const server = await plugin.getRemoteServerById(serverId)
+  if (!server) {
+    return {
+      specs: [],
+      errors: [`Server not found: ${serverId}`],
+      scannedAt: Date.now(),
+    }
+  }
+
+  // Scan both directories in parallel
+  const [moaiResult, openResult] = await Promise.all([
+    scanRemoteMoaiSpecs(projectPath, server, plugin),
+    scanRemoteOpenSpecs(projectPath, server, plugin),
+  ])
+
+  allErrors.push(...moaiResult.errors, ...openResult.errors)
+
+  // Merge with deduplication
+  const specs = mergeSpecLists(moaiResult.specs, openResult.specs)
+
+  return {
+    specs,
+    errors: allErrors,
+    scannedAt: Date.now(),
+  }
+}
+
+// =============================================
 // Migration Status Helper
 // =============================================
 

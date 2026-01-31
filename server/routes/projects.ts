@@ -26,7 +26,7 @@ import { getSqlite } from '../tasks/db/client.js'
 import { parseTasksFile } from '../parser.js'
 import { startTasksWatcher, stopTasksWatcher } from '../watcher.js'
 import { startRemoteWatcher, stopRemoteWatcher } from '../remote-watcher.js'
-import { scanMoaiSpecs, countMoaiTags } from '../moai-specs.js'
+import { scanMoaiSpecs, countMoaiTags, scanRemoteMoaiSpecs, countRemoteMoaiTags } from '../moai-specs.js'
 
 // Remote plugin is optional - only load if installed
 let remotePlugin: {
@@ -219,6 +219,39 @@ async function syncLocalProjectChanges(project: { id: string; name: string; path
 
     if (moaiSpecIds.length > 0) {
       console.log(`[Project] Found ${moaiSpecIds.length} MoAI SPECs: ${moaiSpecIds.join(', ')}`)
+
+      // Map MoAI SPEC status to changes table status
+      const mapSpecStatus = (specStatus: string): 'active' | 'completed' | 'archived' => {
+        switch (specStatus) {
+          case 'complete':
+          case 'completed':
+            return 'completed'
+          case 'archived':
+            return 'archived'
+          default:
+            return 'active'
+        }
+      }
+
+      // Upsert MoAI SPECs into changes table with actual status
+      const upsertMoaiStmt = sqlite.prepare(`
+        INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'spec', ?, ?, ?)
+        ON CONFLICT(id, project_id) DO UPDATE SET
+          title = excluded.title,
+          spec_path = excluded.spec_path,
+          status = excluded.status,
+          progress = excluded.progress,
+          updated_at = excluded.updated_at
+      `)
+
+      for (const spec of moaiSpecs) {
+        if (spec.status === 'archived') continue
+        const progress = spec.tagCount > 0 ? Math.round((spec.completedTags / spec.tagCount) * 100) : 0
+        const specPath = `.moai/specs/${spec.id}/spec.md`
+        const dbStatus = mapSpecStatus(spec.status)
+        upsertMoaiStmt.run(spec.id, project.id, spec.title, specPath, dbStatus, progress, now, now)
+      }
     }
   } catch (err) {
     console.warn('[Project] Failed to scan MoAI SPECs:', err)
@@ -366,18 +399,70 @@ async function syncRemoteProjectChanges(project: {
 
   initDb(project.path)
 
+  const sqlite = getSqlite()
+  const now = Date.now()
+  const activeChangeIds: string[] = []
+
+  // 1. Scan remote MoAI SPECs FIRST and add to activeChangeIds
+  try {
+    const moaiSpecs = await scanRemoteMoaiSpecs(project.path, server, plugin)
+    const moaiSpecIds = moaiSpecs
+      .filter(spec => spec.status !== 'archived')
+      .map(spec => spec.id)
+    activeChangeIds.push(...moaiSpecIds)
+
+    if (moaiSpecIds.length > 0) {
+      console.log(`[Sync Remote] Found ${moaiSpecIds.length} MoAI SPECs: ${moaiSpecIds.join(', ')}`)
+
+      // Map MoAI SPEC status to changes table status
+      // MoAI: draft, active, complete, archived
+      // Changes: active, completed, archived
+      const mapSpecStatus = (specStatus: string): 'active' | 'completed' | 'archived' => {
+        switch (specStatus) {
+          case 'complete':
+          case 'completed':
+            return 'completed'
+          case 'archived':
+            return 'archived'
+          default:
+            return 'active' // draft, active, and any other status maps to active
+        }
+      }
+
+      // Upsert MoAI SPECs into changes table with actual status
+      const upsertMoaiStmt = sqlite.prepare(`
+        INSERT INTO changes (id, project_id, title, spec_path, status, current_stage, progress, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'spec', ?, ?, ?)
+        ON CONFLICT(id, project_id) DO UPDATE SET
+          title = excluded.title,
+          spec_path = excluded.spec_path,
+          status = excluded.status,
+          progress = excluded.progress,
+          updated_at = excluded.updated_at
+      `)
+
+      for (const spec of moaiSpecs) {
+        if (spec.status === 'archived') continue
+        const progress = spec.tagCount > 0 ? Math.round((spec.completedTags / spec.tagCount) * 100) : 0
+        const specPath = `.moai/specs/${spec.id}/spec.md`
+        const dbStatus = mapSpecStatus(spec.status)
+        upsertMoaiStmt.run(spec.id, project.id, spec.title, specPath, dbStatus, progress, now, now)
+      }
+    }
+  } catch (err) {
+    console.warn('[Sync Remote] Failed to scan remote MoAI SPECs:', err)
+  }
+
+  // 2. Scan OpenSpec changes
   const openspecDir = `${project.path}/openspec/changes`
   let listing
   try {
     listing = await plugin.listDirectory(server, openspecDir)
   } catch (err) {
     console.warn(`[Sync Remote] Cannot list ${openspecDir}:`, err)
-    return
+    // Continue even if openspec/changes doesn't exist - we may have MoAI SPECs
+    listing = { entries: [] }
   }
-
-  const sqlite = getSqlite()
-  const now = Date.now()
-  const activeChangeIds: string[] = []
 
   const { readRemoteFile, executeCommand } = plugin
 
@@ -495,9 +580,9 @@ async function syncRemoteProjectChanges(project: {
      }
   }
   
-  // Re-collect active IDs from successful results ensuring no duplicates or nulls
-  activeChangeIds.length = 0 // Clear
-  results.forEach(r => { if(r) activeChangeIds.push(r.changeId) })
+  // Add OpenSpec change IDs to activeChangeIds (MoAI SPEC IDs are already in the array)
+  // Note: Don't clear the array - MoAI SPEC IDs were added earlier
+  results.forEach(r => { if(r && !activeChangeIds.includes(r.changeId)) activeChangeIds.push(r.changeId) })
 
   if (activeChangeIds.length > 0) {
     const placeholders = activeChangeIds.map(() => '?').join(',')
@@ -716,7 +801,14 @@ async function getChangesForProject(projectPath: string) {
     // .moai/specs/ scan failed, continue with OpenSpec
   }
 
-  // 2. Scan OpenSpec changes from openspec/changes/ (for backward compatibility)
+  // 2. Scan OpenSpec changes from openspec/changes/ (only if enabled)
+  const config = await loadConfig()
+  const enableOpenSpec = config.specConfig?.enableOpenSpecScanning ?? true
+
+  if (!enableOpenSpec) {
+    return changes
+  }
+
   const openspecDir = join(projectPath, 'openspec', 'changes')
 
   let entries
@@ -844,7 +936,17 @@ async function getChangesForRemoteProject(
   if (!server) return []
 
   const { readRemoteFile, listDirectory, executeCommand } = plugin
-  const openspecDir = `${projectPath}/openspec/changes`
+
+  const changes: Array<{
+    id: string
+    title: string
+    progress: number
+    totalTasks: number
+    completedTasks: number
+    relatedSpecs?: string[]
+    updatedAt: string | null
+    type?: 'openspec' | 'spec'
+  }> = []
 
   // Get archived change IDs from DB to filter them out
   const archivedChangeIds = new Set<string>()
@@ -866,11 +968,39 @@ async function getChangesForRemoteProject(
     // DB not initialized yet
   }
 
+  // 1. Scan remote MoAI SPECs from .moai/specs/
+  try {
+    const moaiSpecs = await scanRemoteMoaiSpecs(projectPath, server, plugin)
+    for (const spec of moaiSpecs) {
+      // Skip archived SPECs
+      if (archivedChangeIds.has(spec.id) || spec.status === 'archived') continue
+
+      const progress = spec.tagCount > 0
+        ? Math.round((spec.completedTags / spec.tagCount) * 100)
+        : 0
+
+      changes.push({
+        id: spec.id,
+        title: spec.title,
+        progress,
+        totalTasks: spec.tagCount,
+        completedTasks: spec.completedTags,
+        updatedAt: new Date().toISOString(),
+        type: 'spec',
+      })
+    }
+  } catch {
+    // .moai/specs/ scan failed, continue with OpenSpec
+  }
+
+  // 2. Scan OpenSpec changes from openspec/changes/
+  const openspecDir = `${projectPath}/openspec/changes`
   let listing
   try {
     listing = await listDirectory(server, openspecDir)
   } catch {
-    return []
+    // openspec/changes/ might not exist, return what we have (MoAI SPECs)
+    return changes
   }
 
   // 디버깅 로그 추가
@@ -879,13 +1009,13 @@ async function getChangesForRemoteProject(
   // 디렉토리만 필터링 (archive 제외) - 타입 체크 완화
   const validEntries = listing.entries.filter(
     (entry) =>
-      (entry.type === 'directory' || entry.type === 'd' || entry.type === 'Directory') && 
-      entry.name !== 'archive' && 
+      (entry.type === 'directory' || entry.type === 'd' || entry.type === 'Directory') &&
+      entry.name !== 'archive' &&
       !archivedChangeIds.has(entry.name)
   )
 
-  // 병렬로 각 change 처리
-  const changes = await Promise.all(
+  // 병렬로 각 OpenSpec change 처리
+  const openspecChanges = await Promise.all(
     validEntries.map(async (entry) => {
       const changeId = entry.name
       const changeDir = `${openspecDir}/${changeId}`
@@ -936,9 +1066,17 @@ async function getChangesForRemoteProject(
         updatedAt = entry.modifiedAt || new Date().toISOString()
       }
 
-      return { id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt }
+      return { id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt, type: 'openspec' as const }
     })
   )
+
+  // Combine MoAI SPECs with OpenSpec changes (avoid duplicates)
+  const existingIds = new Set(changes.map(c => c.id))
+  for (const change of openspecChanges) {
+    if (!existingIds.has(change.id)) {
+      changes.push(change)
+    }
+  }
 
   return changes
 }
@@ -1092,11 +1230,27 @@ projectsRouter.get('/:id', async (req, res) => {
         .get(projectId) as { count: number } | undefined
       stats.openspecChangeCount = changeCountResult?.count || 0
 
-      // Scan MoAI SPECs
-      const moaiSpecs = await scanMoaiSpecs(project.path)
-      stats.moaiSpecCount = moaiSpecs.length
+      // Scan MoAI SPECs (local or remote)
+      let moaiSpecs: Awaited<ReturnType<typeof scanMoaiSpecs>> = []
+      let tagStats = { total: 0, completed: 0 }
 
-      const tagStats = await countMoaiTags(project.path)
+      if (project.remote) {
+        // Remote SSH project
+        const plugin = await getRemotePlugin()
+        if (plugin) {
+          const server = await plugin.getRemoteServerById(project.remote.serverId)
+          if (server) {
+            moaiSpecs = await scanRemoteMoaiSpecs(project.path, server, plugin)
+            tagStats = await countRemoteMoaiTags(project.path, server, plugin)
+          }
+        }
+      } else {
+        // Local project
+        moaiSpecs = await scanMoaiSpecs(project.path)
+        tagStats = await countMoaiTags(project.path)
+      }
+
+      stats.moaiSpecCount = moaiSpecs.length
       stats.moaiTagsTotal = tagStats.total
       stats.moaiTagsCompleted = tagStats.completed
     } catch (err) {

@@ -92,6 +92,28 @@ export function useActivateProject() {
 
   return useMutation({
     mutationFn: activateProject,
+    // Optimistic Update: 즉시 activeProjectId 업데이트 (프로젝트 전환 중 멈춤 방지)
+    onMutate: async (newProjectId) => {
+      // 진행 중인 쿼리 취소
+      await queryClient.cancelQueries({ queryKey: ['projects-all-data'] })
+
+      // 이전 데이터 스냅샷 저장 (롤백용)
+      const previousData = queryClient.getQueryData<ProjectsAllDataResponse>(['projects-all-data'])
+
+      // 즉시 캐시 업데이트 (optimistic)
+      queryClient.setQueryData<ProjectsAllDataResponse>(['projects-all-data'], (old) => {
+        if (!old) return old
+        return { ...old, activeProjectId: newProjectId }
+      })
+
+      return { previousData }
+    },
+    onError: (_err, _newProjectId, context) => {
+      // 실패 시 이전 상태로 롤백
+      if (context?.previousData) {
+        queryClient.setQueryData(['projects-all-data'], context.previousData)
+      }
+    },
     onSuccess: () => {
       // 이전 프로젝트의 flow 관련 캐시 완전 삭제 (404 요청 방지)
       queryClient.removeQueries({ queryKey: ['flow'] })

@@ -198,21 +198,67 @@ async function pollRemoteChanges(state: WatchedProject): Promise<void> {
       throw new Error(`Server not found: ${state.serverId}`)
     }
 
-    // List change directories
+    let changesDetected = false
+
+    // Get SFTP for stat operations
+    const sftp = await plugin.getSFTP(server)
+
+    // 1. Poll MoAI SPECs directory (.moai/specs/)
+    const moaiSpecsDir = join(state.projectPath, '.moai/specs')
+    try {
+      const moaiListing = await plugin.listDirectory(server, moaiSpecsDir)
+
+      for (const entry of moaiListing.entries) {
+        if (entry.type !== 'directory' && entry.type !== 'd' && entry.type !== 'Directory') continue
+        if (!entry.name.match(/^SPEC-[A-Z]+-\d+$/)) continue
+
+        const specId = entry.name
+        const planPath = join(moaiSpecsDir, specId, 'plan.md')
+        const cacheKey = `moai:${specId}`
+
+        try {
+          const stat = await sftp.stat(planPath)
+          const currentMtime = stat.mtime * 1000
+
+          const cachedMtime = state.mtimeCache.get(cacheKey)
+
+          if (cachedMtime === undefined) {
+            state.mtimeCache.set(cacheKey, currentMtime)
+          } else if (currentMtime !== cachedMtime) {
+            console.log(`[RemoteWatcher] Detected MoAI SPEC change in ${specId}`)
+            changesDetected = true
+            state.mtimeCache.set(cacheKey, currentMtime)
+
+            // Broadcast WebSocket event for SPEC update
+            const event: WSEvent = {
+              type: 'spec:updated' as const,
+              payload: {
+                specId,
+                projectPath: state.projectPath,
+              },
+              timestamp: Date.now(),
+            }
+            broadcast(event)
+          }
+        } catch {
+          // plan.md doesn't exist, continue
+        }
+      }
+    } catch {
+      // .moai/specs/ might not exist
+    }
+
+    // 2. Poll OpenSpec changes directory (openspec/changes/)
     const changesDir = join(state.projectPath, 'openspec/changes')
     let listing: { entries: Array<{ name: string; type: string }> }
 
     try {
       listing = await plugin.listDirectory(server, changesDir)
     } catch {
-      // Directory might not exist yet
+      // Directory might not exist - adjust interval and return
+      adjustPollInterval(state, changesDetected)
       return
     }
-
-    let changesDetected = false
-
-    // Get SFTP for stat operations
-    const sftp = await plugin.getSFTP(server)
 
     for (const entry of listing.entries) {
       if (entry.type !== 'directory' || entry.name === 'archive') continue
@@ -287,8 +333,35 @@ async function pollRemoteChanges(state: WatchedProject): Promise<void> {
 
   } catch (error) {
     state.errorCount++
-    const backoff = Math.min(5000 * Math.pow(2, state.errorCount), 60000)
-    console.error(`[RemoteWatcher] Poll error (retry in ${backoff}ms):`, error)
+    // Exponential backoff with ceiling at 5 minutes
+    const backoff = Math.min(5000 * Math.pow(2, state.errorCount), 300000)
+
+    console.error(
+      `[RemoteWatcher] Poll error for ${state.projectId} (${state.errorCount} consecutive errors):`,
+      (error as any).message || error
+    )
+    console.log(`[RemoteWatcher] Next poll in ${backoff}ms`)
+
+    // Stop watcher after 5 consecutive failures
+    if (state.errorCount >= 5) {
+      console.error(
+        `[RemoteWatcher] Too many consecutive failures (${state.errorCount}), stopping watcher for ${state.projectId}`
+      )
+      stopRemoteWatcher(state.projectId)
+
+      // Broadcast error to UI
+      const event: WSEvent = {
+        type: 'watcher:error' as const,
+        payload: {
+          projectId: state.projectId,
+          error: 'Remote watcher stopped due to connection failures',
+        },
+        timestamp: Date.now(),
+      }
+      broadcast(event)
+      return
+    }
+
     state.pollInterval = backoff
   }
 }

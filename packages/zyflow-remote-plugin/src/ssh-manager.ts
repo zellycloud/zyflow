@@ -7,6 +7,7 @@ import { Client, SFTPWrapper, ConnectConfig } from 'ssh2'
 import { readFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
+import { execSync } from 'child_process'
 import type {
   RemoteServer,
   ConnectionStatus,
@@ -42,6 +43,71 @@ setInterval(() => {
   }
 }, 60 * 1000)
 
+// SSH 재시도 설정
+const SSH_RETRY_CONFIG = {
+  maxAttempts: 3,
+  initialDelay: 2000,
+  backoffMultiplier: 2,
+  retryableErrors: new Set(['ENETUNREACH', 'ETIMEDOUT', 'ECONNREFUSED', 'EHOSTUNREACH']),
+}
+
+/**
+ * NetBird CGNAT 범위 IP 여부 확인 (100.64.0.0/10)
+ */
+function isNetBirdIP(host: string): boolean {
+  const match = host.match(/^100\.(\d+)\./)
+  if (!match) return false
+  const secondOctet = parseInt(match[1], 10)
+  return secondOctet >= 64 && secondOctet <= 127
+}
+
+/**
+ * 로컬 NetBird IP 주소 감지
+ */
+async function getNetBirdLocalIP(): Promise<string | null> {
+  try {
+    // Method 1: netbird status 명령어로 IP 추출
+    try {
+      const output = execSync('netbird status', { encoding: 'utf-8', timeout: 5000 })
+      // NetBird status 출력에서 IP 패턴 찾기
+      // 예: "NetBird IP: 100.79.73.53/16"
+      const match = output.match(/(?:NetBird IP|IP):\s+(\d+\.\d+\.\d+\.\d+)/)
+      if (match) {
+        const ip = match[1]
+        if (isNetBirdIP(ip)) {
+          console.log(`[SSH] Detected NetBird IP from status: ${ip}`)
+          return ip
+        }
+      }
+    } catch {
+      // NetBird CLI 실패, 다음 방법 시도
+    }
+
+    // Method 2: 네트워크 인터페이스에서 100.64/10 범위 IP 검색
+    try {
+      const output = execSync('ifconfig', { encoding: 'utf-8', timeout: 5000 })
+      // NetBird는 보통 wt0, utun 등의 인터페이스 사용
+      // 모든 inet 주소 추출
+      const matches = output.matchAll(/inet\s+(\d+\.\d+\.\d+\.\d+)/g)
+      for (const match of matches) {
+        const ip = match[1]
+        if (isNetBirdIP(ip)) {
+          console.log(`[SSH] Detected NetBird IP from ifconfig: ${ip}`)
+          return ip
+        }
+      }
+    } catch {
+      // ifconfig 실패
+    }
+
+    console.warn('[SSH] Could not detect local NetBird IP')
+    return null
+  } catch (err) {
+    console.error('[SSH] Error detecting NetBird IP:', err)
+    return null
+  }
+}
+
 /**
  * SSH 연결 설정 생성
  */
@@ -50,9 +116,28 @@ async function buildConnectConfig(server: RemoteServer): Promise<ConnectConfig> 
     host: server.host,
     port: server.port,
     username: server.auth.username,
-    readyTimeout: 10000,
+    readyTimeout: 30000, // Increased from 10s for NetBird latency
     keepaliveInterval: 30000,
+    debug: (msg: string) => {
+      console.log(`[SSH Debug] ${server.name}: ${msg}`)
+    },
   }
+
+  // NetBird 네트워크 바인딩 처리
+  if (isNetBirdIP(server.host)) {
+    const localIP = await getNetBirdLocalIP()
+    if (localIP) {
+      config.localAddress = localIP
+      console.log(`[SSH] Binding to NetBird interface: ${localIP} → ${server.host}`)
+    } else {
+      console.warn(`[SSH] Target is NetBird IP (${server.host}) but local NetBird IP not found`)
+      console.warn(`[SSH] Connection may fail with ENETUNREACH. Ensure NetBird is running.`)
+    }
+  }
+
+  // 연결 정보 로깅
+  console.log(`[SSH] Connecting to ${server.name} (${server.host}:${server.port})`)
+  console.log(`[SSH] Auth: ${server.auth.type}, User: ${server.auth.username}`)
 
   switch (server.auth.type) {
     case 'password':
@@ -67,6 +152,7 @@ async function buildConnectConfig(server: RemoteServer): Promise<ConnectConfig> 
         if (server.auth.passphrase) {
           config.passphrase = server.auth.passphrase
         }
+        console.log(`[SSH] Using private key: ${keyPath}`)
       } catch (err) {
         throw new Error(`Failed to read private key: ${keyPath}`)
       }
@@ -76,6 +162,7 @@ async function buildConnectConfig(server: RemoteServer): Promise<ConnectConfig> 
     case 'agent':
       // SSH agent 사용 (macOS/Linux)
       config.agent = process.env.SSH_AUTH_SOCK
+      console.log(`[SSH] Using SSH agent`)
       break
   }
 
@@ -83,9 +170,9 @@ async function buildConnectConfig(server: RemoteServer): Promise<ConnectConfig> 
 }
 
 /**
- * SSH 연결 획득 (풀에서 가져오거나 새로 생성)
+ * SSH 연결 획득 (풀에서 가져오거나 새로 생성, 재시도 로직 포함)
  */
-export async function getConnection(server: RemoteServer): Promise<Client> {
+export async function getConnection(server: RemoteServer, attempt = 1): Promise<Client> {
   const existing = connections.get(server.id)
 
   if (existing && existing.status === 'connected') {
@@ -93,7 +180,38 @@ export async function getConnection(server: RemoteServer): Promise<Client> {
     return existing.client
   }
 
-  // 새 연결 생성
+  try {
+    return await attemptConnection(server)
+  } catch (err) {
+    const isRetryable = SSH_RETRY_CONFIG.retryableErrors.has((err as any).code)
+
+    if (isRetryable && attempt < SSH_RETRY_CONFIG.maxAttempts) {
+      const delay = SSH_RETRY_CONFIG.initialDelay *
+                    Math.pow(SSH_RETRY_CONFIG.backoffMultiplier, attempt - 1)
+
+      console.log(
+        `[SSH] Connection failed (${(err as any).code}): ${(err as any).message}`
+      )
+      console.log(
+        `[SSH] Retrying in ${delay}ms (attempt ${attempt + 1}/${SSH_RETRY_CONFIG.maxAttempts})`
+      )
+
+      await new Promise(resolve => setTimeout(resolve, delay))
+      return getConnection(server, attempt + 1)
+    }
+
+    // Max retries exceeded or non-retryable error
+    console.error(
+      `[SSH] Connection failed after ${attempt} attempt(s): ${(err as any).code} - ${(err as any).message}`
+    )
+    throw err
+  }
+}
+
+/**
+ * 단일 SSH 연결 시도
+ */
+async function attemptConnection(server: RemoteServer): Promise<Client> {
   const client = new Client()
   const config = await buildConnectConfig(server)
 
@@ -106,21 +224,36 @@ export async function getConnection(server: RemoteServer): Promise<Client> {
     }
     connections.set(server.id, entry)
 
+    const connectTimeout = setTimeout(() => {
+      client.end()
+      const err = new Error('SSH connection timeout')
+      ;(err as any).code = 'ETIMEDOUT'
+      reject(err)
+    }, (config.readyTimeout || 30000) + 5000)
+
     client.on('ready', () => {
+      clearTimeout(connectTimeout)
       entry.status = 'connected'
       entry.lastUsed = Date.now()
-      console.log(`[SSH] Connected to ${server.name} (${server.host})`)
+      console.log(`[SSH] ✓ Connected to ${server.name} (${server.host})`)
       resolve(client)
     })
 
     client.on('error', (err) => {
+      clearTimeout(connectTimeout)
+      console.error(`[SSH] ✗ Error connecting to ${server.name}:`, {
+        code: (err as any).code,
+        level: (err as any).level,
+        message: err.message,
+      })
       entry.status = 'error'
-      entry.error = err.message
+      entry.error = `${(err as any).code || 'UNKNOWN'}: ${err.message}`
       connections.delete(server.id)
       reject(err)
     })
 
     client.on('close', () => {
+      clearTimeout(connectTimeout)
       entry.status = 'disconnected'
       connections.delete(server.id)
     })

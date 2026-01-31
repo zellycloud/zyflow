@@ -17,8 +17,8 @@ interface SpecDetailProps {
   specId: string
 }
 
-export function SpecDetail({ specId }: SpecDetailProps) {
-  const { data, isLoading, error } = useFlowChangeDetail(specId)
+export function SpecDetail({ projectId, specId }: SpecDetailProps) {
+  const { data, isLoading, error } = useFlowChangeDetail(specId, projectId)
 
   if (isLoading) {
     return (
@@ -41,11 +41,12 @@ export function SpecDetail({ specId }: SpecDetailProps) {
   // The API returns the change data
   const change = data.change
 
-  // Build progress object
+  // Build progress object - use plan.progress if available, fallback to change fields
+  const planProgress = (change as { plan?: { progress?: { completed?: number; total?: number; percentage?: number } } }).plan?.progress
   const progress: MoaiSpecProgress = {
-    completed: change.completedTasks ?? 0,
-    total: change.totalTasks ?? 0,
-    percentage: change.progress ?? 0,
+    completed: planProgress?.completed ?? 0,
+    total: planProgress?.total ?? 0,
+    percentage: planProgress?.percentage ?? change.progress ?? 0,
   }
 
   // Build MoaiSpec object for SpecDetailTabs

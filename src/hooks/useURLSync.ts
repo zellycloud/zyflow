@@ -68,6 +68,9 @@ export function useURLSync(
       case 'archived':
         newPath = `/project/${selectedItem.projectId}/archives`
         break
+      case 'spec':
+        newPath = `/project/${selectedItem.projectId}/spec/${selectedItem.specId}`
+        break
        case 'settings':
         newPath = `/settings`
         break
@@ -92,6 +95,8 @@ export function getInitialItemFromURL(): SelectedItem | null {
 
         if (parts[2] === 'change' && parts[3]) {
             return { type: 'change', projectId: decodedProjectId, changeId: decodeURIComponent(parts[3]) }
+        } else if (parts[2] === 'spec' && parts[3]) {
+            return { type: 'spec', projectId: decodedProjectId, specId: decodeURIComponent(parts[3]) }
         } else if (parts[2] === 'docs') {
             const urlParams = new URLSearchParams(window.location.search)
             const docPath = urlParams.get('path')

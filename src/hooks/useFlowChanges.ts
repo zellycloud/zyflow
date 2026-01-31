@@ -43,12 +43,16 @@ export function useFlowChanges(options?: { enabled?: boolean }) {
   })
 }
 
-export function useFlowChangeDetail(changeId: string | null) {
+export function useFlowChangeDetail(changeId: string | null, projectId?: string) {
   return useQuery({
-    queryKey: ['flow', 'changes', changeId],
+    queryKey: ['flow', 'changes', changeId, projectId],
     queryFn: async (): Promise<FlowChangeDetailData | null> => {
       if (!changeId) return null
-      const res = await fetch(`${API_BASE}/flow/changes/${changeId}`)
+      // projectId가 있으면 쿼리 파라미터로 전달
+      const url = projectId
+        ? `${API_BASE}/flow/changes/${changeId}?projectId=${encodeURIComponent(projectId)}`
+        : `${API_BASE}/flow/changes/${changeId}`
+      const res = await fetch(url)
       // 404 응답 처리 - Change가 현재 프로젝트에 없는 경우
       if (res.status === 404) {
         return null

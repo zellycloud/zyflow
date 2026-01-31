@@ -58,7 +58,7 @@ const DEFAULT_CONFIG: Config = {
   activeProjectId: null,
   specConfig: {
     defaultSpecFormat: 'moai',
-    enableOpenSpecScanning: false,
+    enableOpenSpecScanning: true,
   },
 }
 

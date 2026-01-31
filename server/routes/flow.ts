@@ -53,7 +53,7 @@ import {
 import { serializeBacklogTask, generateBacklogFilename } from '../backlog/parser.js'
 import { syncChangeTasksFromFile, syncChangeTasksForProject, syncRemoteChangeTasksForProject } from '../sync-tasks.js'
 import { scanMoaiSpecs as syncMoaiSpecsToDb } from '../flow-sync.js'
-import { getMoaiSpec, scanMoaiSpecs } from '../moai-specs.js'
+import { getMoaiSpec, scanMoaiSpecs, scanRemoteMoaiSpecs } from '../moai-specs.js'
 
 const execAsync = promisify(exec)
 
@@ -406,33 +406,118 @@ async function getMoaiSpecDetail(
       }
       projectPath = project.path
 
-      // Check if MoAI SPEC exists in filesystem
-      const moaiSpec = await getMoaiSpec(projectPath, specId)
-      if (!moaiSpec) {
-        return null
-      }
+      // For remote projects, check via SSH
+      if (project.remote) {
+        const plugin = await getRemotePlugin()
+        if (!plugin) {
+          return null
+        }
+        const server = await plugin.getRemoteServerById(project.remote.serverId)
+        if (!server) {
+          return null
+        }
 
-      // Create a virtual change record from filesystem data
-      change = {
-        id: specId,
-        project_id: project.id,
-        title: moaiSpec.title,
-        spec_path: moaiSpec.path,
-        status: (moaiSpec.status === 'complete' ? 'done' : moaiSpec.status === 'active' ? 'in_progress' : 'pending') as ChangeStatus,
-        current_stage: (moaiSpec.status === 'complete' ? 'sync' : moaiSpec.status === 'active' ? 'run' : 'plan') as Stage,
-        progress: moaiSpec.tagCount > 0 ? Math.round((moaiSpec.completedTags / moaiSpec.tagCount) * 100) : 0,
-        created_at: Date.now(),
-        updated_at: Date.now(),
+        // Try to read spec.md to verify SPEC exists on remote
+        const remoteSpecPath = `${projectPath}/.moai/specs/${specId}/spec.md`
+        try {
+          const specContent = await plugin.readRemoteFile(server, remoteSpecPath)
+          // Extract title from frontmatter
+          let title = specId
+          const titleMatch = specContent.match(/^title:\s+(.+)$/m)
+          if (titleMatch) {
+            title = titleMatch[1].trim().replace(/^["']|["']$/g, '')
+          }
+
+          // Extract status from frontmatter
+          let specStatus = 'draft'
+          const statusMatch = specContent.match(/^status:\s+(.+)$/m)
+          if (statusMatch) {
+            specStatus = statusMatch[1].trim().replace(/^["']|["']$/g, '').toLowerCase()
+          }
+
+          // Count tags from content (TAG-XXX-NNN pattern)
+          const tagMatches = specContent.match(/\bTAG-[A-Z]+-\d+\b/g) || []
+          const tagCount = tagMatches.length
+          // Count completed tags (marked with [x])
+          const completedTagMatches = specContent.match(/\[x\]\s*\*\*TAG-[A-Z]+-\d+\*\*/gi) || []
+          const completedTags = completedTagMatches.length
+
+          // Map status to ChangeStatus (same logic as local SPEC)
+          // 'implemented' and 'complete' are both considered done
+          const isComplete = specStatus === 'complete' || specStatus === 'implemented'
+          const mappedStatus = (isComplete ? 'done' : specStatus === 'active' ? 'in_progress' : 'pending') as ChangeStatus
+          const mappedStage = (isComplete ? 'sync' : specStatus === 'active' ? 'run' : 'plan') as Stage
+          const progress = tagCount > 0 ? Math.round((completedTags / tagCount) * 100) : 0
+
+          // Create a virtual change record for remote SPEC
+          change = {
+            id: specId,
+            project_id: project.id,
+            title,
+            spec_path: remoteSpecPath,
+            status: mappedStatus,
+            current_stage: mappedStage,
+            progress,
+            created_at: Date.now(),
+            updated_at: Date.now(),
+          }
+        } catch {
+          // SPEC doesn't exist on remote
+          return null
+        }
+      } else {
+        // Check if MoAI SPEC exists in local filesystem
+        const moaiSpec = await getMoaiSpec(projectPath, specId)
+        if (!moaiSpec) {
+          return null
+        }
+
+        // Create a virtual change record from filesystem data
+        change = {
+          id: specId,
+          project_id: project.id,
+          title: moaiSpec.title,
+          spec_path: moaiSpec.path,
+          status: (moaiSpec.status === 'complete' ? 'done' : moaiSpec.status === 'active' ? 'in_progress' : 'pending') as ChangeStatus,
+          current_stage: (moaiSpec.status === 'complete' ? 'sync' : moaiSpec.status === 'active' ? 'run' : 'plan') as Stage,
+          progress: moaiSpec.tagCount > 0 ? Math.round((moaiSpec.completedTags / moaiSpec.tagCount) * 100) : 0,
+          created_at: Date.now(),
+          updated_at: Date.now(),
+        }
       }
     }
 
     const specsDir = join(projectPath, '.moai', 'specs', specId)
 
+    // Check if project is remote
+    const isRemote = !!project.remote
+    let plugin: RemotePlugin | null = null
+    let server: unknown = null
+
+    if (isRemote) {
+      plugin = await getRemotePlugin()
+      if (plugin) {
+        server = await plugin.getRemoteServerById(project.remote!.serverId)
+      }
+    }
+
     // Read spec.md
-    let specContent = null
+    let specContent: string | null = null
     let specTitle = change.title
-    const specPath = join(specsDir, 'spec.md')
-    if (existsSync(specPath)) {
+    const specPath = isRemote ? `${specsDir}/spec.md` : join(specsDir, 'spec.md')
+
+    if (isRemote && plugin && server) {
+      try {
+        specContent = await plugin.readRemoteFile(server, specPath)
+        // Try to extract title from spec.md frontmatter
+        const titleMatch = specContent.match(/^title:\s+(.+)$/m)
+        if (titleMatch) {
+          specTitle = titleMatch[1].trim().replace(/^["']|["']$/g, '')
+        }
+      } catch {
+        // spec.md not readable on remote
+      }
+    } else if (!isRemote && existsSync(specPath)) {
       try {
         specContent = await readFile(specPath, 'utf-8')
         // Try to extract title from spec.md frontmatter
@@ -446,11 +531,24 @@ async function getMoaiSpecDetail(
     }
 
     // Read plan.md and parse TAGs
-    let planContent = null
+    let planContent: string | null = null
     let tags = null
     let tagProgress = null
-    const planPath = join(specsDir, 'plan.md')
-    if (existsSync(planPath)) {
+    const planPath = isRemote ? `${specsDir}/plan.md` : join(specsDir, 'plan.md')
+
+    if (isRemote && plugin && server) {
+      try {
+        planContent = await plugin.readRemoteFile(server, planPath)
+        const parsed = parsePlanFile(planContent)
+        tags = parsed.tags
+        // Calculate tag progress from parsed content
+        const completed = parsed.tags.filter((t) => t.completed).length
+        const total = parsed.tags.length
+        tagProgress = total > 0 ? { completed, total, percentage: Math.round((completed / total) * 100) } : null
+      } catch {
+        // plan.md not readable on remote
+      }
+    } else if (!isRemote && existsSync(planPath)) {
       try {
         planContent = await readFile(planPath, 'utf-8')
         const parsed = parsePlanFile(planContent)
@@ -462,10 +560,19 @@ async function getMoaiSpecDetail(
     }
 
     // Read acceptance.md and parse criteria
-    let acceptanceContent = null
+    let acceptanceContent: string | null = null
     let criteria = null
-    const acceptancePath = join(specsDir, 'acceptance.md')
-    if (existsSync(acceptancePath)) {
+    const acceptancePath = isRemote ? `${specsDir}/acceptance.md` : join(specsDir, 'acceptance.md')
+
+    if (isRemote && plugin && server) {
+      try {
+        acceptanceContent = await plugin.readRemoteFile(server, acceptancePath)
+        const parsed = parseAcceptanceFile(acceptanceContent)
+        criteria = parsed.criteria
+      } catch {
+        // acceptance.md not readable on remote
+      }
+    } else if (!isRemote && existsSync(acceptancePath)) {
       try {
         acceptanceContent = await readFile(acceptancePath, 'utf-8')
         const parsed = parseAcceptanceFile(acceptanceContent)
@@ -476,7 +583,54 @@ async function getMoaiSpecDetail(
     }
 
     // Get stages for compatibility with OpenSpec format
-    const stages = getChangeStages(specId, change.project_id)
+    let stages = getChangeStages(specId, change.project_id)
+
+    // For MoAI SPECs: Map TAGs to 'plan' stage if no tasks in DB
+    if (tags && tags.length > 0) {
+      const totalStagesTasks = Object.values(stages).reduce((sum, s) => sum + s.total, 0)
+
+      // If no tasks in DB, populate stages from TAGs
+      if (totalStagesTasks === 0) {
+        stages = {
+          spec: { total: 0, completed: 0, tasks: [] },
+          changes: { total: 0, completed: 0, tasks: [] },
+          task: { total: 0, completed: 0, tasks: [] },
+          code: { total: 0, completed: 0, tasks: [] },
+          test: { total: 0, completed: 0, tasks: [] },
+          commit: { total: 0, completed: 0, tasks: [] },
+          docs: { total: 0, completed: 0, tasks: [] },
+        }
+
+        // Map TAGs to 'plan' stage (using 'task' for UI compatibility)
+        for (const tag of tags) {
+          stages.task.total++
+          if (tag.completed) {
+            stages.task.completed++
+          }
+          stages.task.tasks.push({
+            id: tag.id,
+            changeId: specId,
+            stage: 'task',
+            title: tag.title,
+            description: tag.description || null,
+            status: tag.completed ? 'done' : 'todo',
+            priority: 'medium',
+            tags: [],
+            assignee: null,
+            order: parseInt(tag.id.replace('TAG-', ''), 10) || 0,
+            groupTitle: null,
+            groupOrder: 0,
+            taskOrder: parseInt(tag.id.replace('TAG-', ''), 10) || 0,
+            majorTitle: null,
+            subOrder: 0,
+            displayId: tag.id,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            archivedAt: null,
+          })
+        }
+      }
+    }
 
     return {
       id: change.id,
@@ -636,14 +790,44 @@ flowRouter.get('/changes', async (_req, res) => {
         })
       }
 
-      // Scan MoAI SPECs from .moai/specs/ directory
+      // Scan MoAI SPECs from .moai/specs/ directory (local or remote)
       try {
-        const moaiSpecs = await scanMoaiSpecs(project.path)
+        let moaiSpecs: Awaited<ReturnType<typeof scanMoaiSpecs>> = []
+
+        if (project.remote) {
+          // Remote SSH project
+          const plugin = await getRemotePlugin()
+          if (plugin) {
+            const server = await plugin.getRemoteServerById(project.remote.serverId)
+            if (server) {
+              moaiSpecs = await scanRemoteMoaiSpecs(project.path, server, plugin)
+            }
+          }
+        } else {
+          // Local project
+          moaiSpecs = await scanMoaiSpecs(project.path)
+        }
+
         for (const spec of moaiSpecs) {
           // Skip if already in DB
           const existsInDb = allChanges.some((c) => c.id === spec.id && c.projectId === project.id)
           if (existsInDb) continue
           if (spec.status === 'archived') continue
+
+          // Map MoAI SPEC status to changes table status for consistency
+          // MoAI: draft, active, complete, archived
+          // Changes table: active, completed, archived
+          const mapSpecStatusToDbStatus = (specStatus: string): ChangeStatus => {
+            switch (specStatus) {
+              case 'complete':
+              case 'completed':
+                return 'completed'
+              case 'archived':
+                return 'archived'
+              default:
+                return 'active' // draft, active -> active
+            }
+          }
 
           allChanges.push({
             id: spec.id,
@@ -652,8 +836,8 @@ flowRouter.get('/changes', async (_req, res) => {
             projectName: project.name,
             title: spec.title,
             specPath: `.moai/specs/${spec.id}`,
-            status: spec.status === 'complete' ? 'done' : spec.status === 'active' ? 'in_progress' : 'pending',
-            currentStage: spec.status === 'complete' ? 'sync' : spec.status === 'active' ? 'run' : 'plan',
+            status: mapSpecStatusToDbStatus(spec.status),
+            currentStage: spec.status === 'complete' ? 'docs' : spec.status === 'active' ? 'code' : 'spec',
             progress: spec.tagCount > 0 ? Math.round((spec.completedTags / spec.tagCount) * 100) : 0,
             createdAt: spec.createdAt || new Date().toISOString(),
             updatedAt: spec.updatedAt || new Date().toISOString(),
@@ -684,11 +868,13 @@ flowRouter.get('/changes/:id', async (req, res) => {
   try {
     await initTaskDb()
     const config = await loadConfig()
-    const activeProjectId = config.activeProjectId
+    // URL 쿼리에서 projectId 받기, 없으면 activeProjectId 사용
+    const queryProjectId = req.query.projectId as string | undefined
+    const targetProjectId = queryProjectId || config.activeProjectId
 
     // Check if this is a MoAI SPEC ID (SPEC-XXX format)
     if (isMoaiSpecId(req.params.id)) {
-      const specDetail = await getMoaiSpecDetail(req.params.id, activeProjectId)
+      const specDetail = await getMoaiSpecDetail(req.params.id, targetProjectId)
       if (specDetail) {
         return res.json({
           success: true,
@@ -701,11 +887,11 @@ flowRouter.get('/changes/:id', async (req, res) => {
 
     const sqlite = getSqlite()
 
-    // 활성 프로젝트에서 우선 조회 (같은 changeId가 여러 프로젝트에 있을 수 있음)
-    let change = activeProjectId
+    // 지정된 프로젝트에서 우선 조회 (같은 changeId가 여러 프로젝트에 있을 수 있음)
+    let change = targetProjectId
       ? (sqlite
           .prepare(`SELECT * FROM changes WHERE id = ? AND project_id = ?`)
-          .get(req.params.id, activeProjectId) as {
+          .get(req.params.id, targetProjectId) as {
             id: string
             project_id: string
             title: string

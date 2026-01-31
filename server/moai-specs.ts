@@ -7,6 +7,7 @@
 
 import { readdir, readFile, access } from 'fs/promises'
 import { join } from 'path'
+import { parsePlanFile } from '@zyflow/parser'
 
 export interface MoaiSpec {
   id: string // SPEC-DOMAIN-NUM format
@@ -70,8 +71,22 @@ export async function scanMoaiSpecs(projectPath: string): Promise<MoaiSpec[]> {
       const englishStatusMatch = specContent.match(/^status:\s*(\w+)/mi)
       const koreanStatusMatch = specContent.match(/^[-*]\s*\*?\*?(?:상태|Status)\*?\*?:\s*(.+)$/mi)
 
-      if (englishStatusMatch && ['draft', 'active', 'complete', 'archived'].includes(englishStatusMatch[1].toLowerCase())) {
-        status = englishStatusMatch[1].toLowerCase() as MoaiSpec['status']
+      if (englishStatusMatch) {
+        const englishStatus = englishStatusMatch[1].toLowerCase()
+        // Map English status values (including implemented/planned variants)
+        const englishStatusMap: Record<string, MoaiSpec['status']> = {
+          'draft': 'draft',
+          'planned': 'draft',
+          'active': 'active',
+          'in progress': 'active',
+          'progress': 'active',
+          'complete': 'complete',
+          'completed': 'complete',
+          'implemented': 'complete',
+          'done': 'complete',
+          'archived': 'archived',
+        }
+        status = englishStatusMap[englishStatus] || 'draft'
       } else if (koreanStatusMatch) {
         const koreanStatus = koreanStatusMatch[1].trim().toLowerCase()
         // Map Korean/English status values to standard status
@@ -97,53 +112,15 @@ export async function scanMoaiSpecs(projectPath: string): Promise<MoaiSpec[]> {
       // spec.md not found or parse error, use defaults
     }
 
-    // Count TAG items in plan.md
+    // Count TAG items in plan.md using parsePlanFile for accurate completion status
     let tagCount = 0
     let completedTags = 0
 
     try {
       const planContent = await readFile(join(specPath, 'plan.md'), 'utf-8')
-
-      // Support multiple TAG formats:
-      // 1. Checklist format: "- [x] TAG-001: Title" or "- [ ] TAG-001: Title"
-      // 2. Heading format: "### TAG-001: Title (✓ COMPLETE)" or "### TAG-001: Title"
-
-      // Match checklist format
-      const checklistTags = planContent.match(/^[-*]\s+\[.*?\]\s+TAG-\d+/gm) || []
-      const completedChecklistTags = planContent.match(/^[-*]\s+\[x\]\s+TAG-\d+/gim) || []
-
-      // Match heading format (### TAG-XXX or ## TAG-XXX)
-      const headingTags = planContent.match(/^#{2,3}\s+TAG-\d+[^#\n]*/gm) || []
-      const completedHeadingTags = headingTags.filter(
-        (tag) => tag.includes('✓') || tag.includes('COMPLETE') || tag.includes('완료')
-      )
-
-      // Combine both formats (avoid double counting if same TAG appears in both)
-      const allTagIds = new Set<string>()
-      const completedTagIds = new Set<string>()
-
-      // Extract IDs from checklist format
-      for (const tag of checklistTags) {
-        const match = tag.match(/TAG-(\d+)/)
-        if (match) allTagIds.add(match[1])
-      }
-      for (const tag of completedChecklistTags) {
-        const match = tag.match(/TAG-(\d+)/)
-        if (match) completedTagIds.add(match[1])
-      }
-
-      // Extract IDs from heading format
-      for (const tag of headingTags) {
-        const match = tag.match(/TAG-(\d+)/)
-        if (match) allTagIds.add(match[1])
-      }
-      for (const tag of completedHeadingTags) {
-        const match = tag.match(/TAG-(\d+)/)
-        if (match) completedTagIds.add(match[1])
-      }
-
-      tagCount = allTagIds.size
-      completedTags = completedTagIds.size
+      const parsed = parsePlanFile(planContent)
+      tagCount = parsed.tags.length
+      completedTags = parsed.tags.filter((t) => t.completed).length
     } catch {
       // plan.md not found or parse error, use defaults
     }
@@ -264,4 +241,178 @@ export async function countMoaiTags(projectPath: string): Promise<{ total: numbe
  */
 export function isValidSpecId(specId: string): boolean {
   return /^SPEC-[A-Z]+-\d+$/.test(specId)
+}
+
+// =============================================
+// Remote SSH Support
+// =============================================
+
+/**
+ * Remote plugin interface for SSH operations
+ */
+export interface RemotePlugin {
+  listDirectory: (server: unknown, path: string) => Promise<{ entries: Array<{ name: string; type: string }> }>
+  readRemoteFile: (server: unknown, path: string) => Promise<string>
+}
+
+/**
+ * Scan for MoAI SPEC directories on a remote server via SSH
+ *
+ * Returns array of SPEC metadata extracted from spec.md headers and plan.md TAG items
+ */
+export async function scanRemoteMoaiSpecs(
+  projectPath: string,
+  server: unknown,
+  plugin: RemotePlugin
+): Promise<MoaiSpec[]> {
+  const specsDir = `${projectPath}/.moai/specs`
+  const specs: MoaiSpec[] = []
+
+  let listing: { entries: Array<{ name: string; type: string }> }
+  try {
+    listing = await plugin.listDirectory(server, specsDir)
+  } catch {
+    // .moai/specs/ does not exist on remote, return empty array
+    return specs
+  }
+
+  // Filter for SPEC-{DOMAIN}-{NUM} pattern directories
+  const specDirs = listing.entries.filter(
+    (entry) =>
+      (entry.type === 'directory' || entry.type === 'd' || entry.type === 'Directory') &&
+      entry.name.match(/^SPEC-[A-Z]+-\d+$/) &&
+      entry.name !== '.archived'
+  )
+
+  const specPromises = specDirs.map(async (entry) => {
+    const specId = entry.name
+    const specPath = `${specsDir}/${specId}`
+
+    // Extract title from spec.md
+    let title = specId
+    let status: MoaiSpec['status'] = 'draft'
+
+    try {
+      const specContent = await plugin.readRemoteFile(server, `${specPath}/spec.md`)
+
+      const titleMatch = specContent.match(/^#\s+(.+)$/m)
+      if (titleMatch) {
+        title = titleMatch[1].trim()
+      }
+
+      // Extract status from frontmatter (supports both English and Korean formats)
+      const englishStatusMatch = specContent.match(/^status:\s*(\w+)/mi)
+      const koreanStatusMatch = specContent.match(/^[-*]\s*\*?\*?(?:상태|Status)\*?\*?:\s*(.+)$/mi)
+
+      if (englishStatusMatch) {
+        const englishStatus = englishStatusMatch[1].toLowerCase()
+        // Map English status values (including implemented/planned variants)
+        const englishStatusMap: Record<string, MoaiSpec['status']> = {
+          'draft': 'draft',
+          'planned': 'draft',
+          'active': 'active',
+          'in progress': 'active',
+          'progress': 'active',
+          'complete': 'complete',
+          'completed': 'complete',
+          'implemented': 'complete',
+          'done': 'complete',
+          'archived': 'archived',
+        }
+        status = englishStatusMap[englishStatus] || 'draft'
+      } else if (koreanStatusMatch) {
+        const koreanStatus = koreanStatusMatch[1].trim().toLowerCase()
+        const statusMap: Record<string, MoaiSpec['status']> = {
+          'in progress': 'active',
+          '진행 중': 'active',
+          '진행중': 'active',
+          'active': 'active',
+          'draft': 'draft',
+          '초안': 'draft',
+          '계획': 'draft',
+          'planning': 'draft',
+          'complete': 'complete',
+          'completed': 'complete',
+          '완료': 'complete',
+          'done': 'complete',
+          'archived': 'archived',
+          '아카이브': 'archived',
+        }
+        status = statusMap[koreanStatus] || 'draft'
+      }
+    } catch {
+      // spec.md not found or parse error, use defaults
+    }
+
+    // Count TAG items in plan.md using parsePlanFile for accurate completion status
+    let tagCount = 0
+    let completedTags = 0
+
+    try {
+      const planPath = `${specPath}/plan.md`
+      const planContent = await plugin.readRemoteFile(server, planPath)
+
+      // Try standard MoAI TAG Chain format first
+      const parsed = parsePlanFile(planContent)
+      if (parsed.tags.length > 0) {
+        tagCount = parsed.tags.length
+        completedTags = parsed.tags.filter((t) => t.completed).length
+      } else {
+        // Fallback: Parse Phase/Task format (#### Task N.N or ### Task N.N)
+        // Also check for checkbox items as completion indicators
+        const taskMatches = planContent.match(/^#{3,4}\s+Task\s+\d+\.\d+/gim) || []
+        const checkboxItems = planContent.match(/^[-*]\s+\[[ xX]\]/gm) || []
+        const completedCheckboxes = planContent.match(/^[-*]\s+\[[xX]\]/gm) || []
+
+        if (taskMatches.length > 0) {
+          // Use task count as progress indicator
+          tagCount = taskMatches.length
+          // If there are checkboxes, use them for completion tracking
+          if (checkboxItems.length > 0) {
+            // Scale checkbox completion to task count
+            const checkboxCompletion = completedCheckboxes.length / checkboxItems.length
+            completedTags = Math.round(tagCount * checkboxCompletion)
+          }
+        } else if (checkboxItems.length > 0) {
+          // No tasks but has checkboxes - use checkbox count
+          tagCount = checkboxItems.length
+          completedTags = completedCheckboxes.length
+        }
+      }
+    } catch (planErr) {
+      console.warn(`[MoAI Specs] Failed to read/parse plan.md for ${specId}:`, planErr)
+    }
+
+    return {
+      id: specId,
+      title,
+      path: specPath,
+      status,
+      tagCount,
+      completedTags,
+    }
+  })
+
+  const results = await Promise.all(specPromises)
+  return results.filter((spec) => spec !== null) as MoaiSpec[]
+}
+
+/**
+ * Count total and completed tags across all remote SPECs in a project
+ */
+export async function countRemoteMoaiTags(
+  projectPath: string,
+  server: unknown,
+  plugin: RemotePlugin
+): Promise<{ total: number; completed: number }> {
+  const specs = await scanRemoteMoaiSpecs(projectPath, server, plugin)
+  let total = 0
+  let completed = 0
+
+  for (const spec of specs) {
+    total += spec.tagCount
+    completed += spec.completedTags
+  }
+
+  return { total, completed }
 }

@@ -16,6 +16,7 @@ import { Router } from 'express'
 import { getActiveProject } from '../config.js'
 import {
   scanAllSpecs,
+  scanAllSpecsRemote,
   getMigrationStatus,
   clearCache,
 } from '../unified-spec-scanner.js'
@@ -84,7 +85,11 @@ router.get('/', async (req, res) => {
     }
 
     const forceRefresh = refresh === 'true'
-    const result = await scanAllSpecs(project.path, forceRefresh)
+
+    // Use remote scanner for SSH projects
+    const result = project.remote
+      ? await scanAllSpecsRemote(project.path, project.remote.serverId)
+      : await scanAllSpecs(project.path, forceRefresh)
 
     // Apply filters
     let filteredSpecs = result.specs
@@ -442,7 +447,11 @@ router.get('/:id', async (req, res) => {
     }
 
     const { id } = req.params
-    const result = await scanAllSpecs(project.path)
+
+    // Use remote scanner for SSH projects
+    const result = project.remote
+      ? await scanAllSpecsRemote(project.path, project.remote.serverId)
+      : await scanAllSpecs(project.path)
 
     const spec = result.specs.find((s) => s.spec_id === id)
 
