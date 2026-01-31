@@ -31,6 +31,9 @@ const connections = new Map<string, ConnectionEntry>()
 // 연결 타임아웃 (5분)
 const CONNECTION_TIMEOUT = 5 * 60 * 1000
 
+// SFTP 핸드셰이크 타임아웃 (15초)
+const SFTP_HANDSHAKE_TIMEOUT = 15 * 1000
+
 // 정기적으로 유휴 연결 정리
 setInterval(() => {
   const now = Date.now()
@@ -276,7 +279,15 @@ export async function getSFTP(server: RemoteServer): Promise<SFTPWrapper> {
   const client = await getConnection(server)
 
   return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      const err = new Error('SFTP handshake timeout')
+      ;(err as NodeJS.ErrnoException).code = 'ESFTP_TIMEOUT'
+      reject(err)
+    }, SFTP_HANDSHAKE_TIMEOUT)
+
     client.sftp((err, sftp) => {
+      clearTimeout(timeoutId)
+
       if (err) {
         reject(err)
         return
