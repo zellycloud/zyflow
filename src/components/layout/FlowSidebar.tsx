@@ -10,6 +10,7 @@ import {
   ArrowDown,
   RefreshCw,
   Server,
+  Filter,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -25,6 +26,13 @@ import {
   SidebarMenuSubButton,
 } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Collapsible,
   CollapsibleContent,
@@ -32,6 +40,7 @@ import {
 } from '@/components/ui/collapsible'
 import { useProjectsAllData, useAddProject, useActivateProject, useBrowseFolder } from '@/hooks/useProjects'
 import { useFlowChangeCounts, useSelectedItem } from '@/hooks/useFlowChanges'
+import { useHideCompletedSpecs } from '@/hooks/useHideCompletedSpecs'
 import { useProjectsSyncStatus, useProjectPull } from '@/hooks/useGit'
 import { toast } from 'sonner'
 import {
@@ -50,6 +59,7 @@ interface FlowSidebarProps {
 
 export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
+  const { hideCompleted, setHideCompleted } = useHideCompletedSpecs()
 
   const { data: projectsData, isLoading } = useProjectsAllData()
   const { data: changeCounts } = useFlowChangeCounts({
@@ -149,19 +159,40 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
         <SidebarGroup>
           <SidebarGroupLabel className="flex items-center justify-between">
             <span>프로젝트</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5"
-              onClick={handleBrowseAndAdd}
-              disabled={browseFolder.isPending || addProject.isPending}
-            >
-              {browseFolder.isPending || addProject.isPending ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Plus className="h-3 w-3" />
-              )}
-            </Button>
+            <div className="flex items-center gap-0.5">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-5 w-5">
+                    <Filter className={cn("h-3 w-3", hideCompleted && "text-primary")} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <div className="flex items-center justify-between px-2 py-1.5">
+                    <Label htmlFor="hide-completed-sidebar" className="text-xs cursor-pointer">
+                      완료된 SPEC 숨기기
+                    </Label>
+                    <Switch
+                      id="hide-completed-sidebar"
+                      checked={hideCompleted}
+                      onCheckedChange={setHideCompleted}
+                    />
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5"
+                onClick={handleBrowseAndAdd}
+                disabled={browseFolder.isPending || addProject.isPending}
+              >
+                {browseFolder.isPending || addProject.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Plus className="h-3 w-3" />
+                )}
+              </Button>
+            </div>
           </SidebarGroupLabel>
           <SidebarMenu>
             {isLoading ? (
@@ -272,7 +303,12 @@ export function FlowSidebar({ selectedItem, onSelect }: FlowSidebarProps) {
                       <CollapsibleContent>
                         <SidebarMenuSub>
                           {/* MoAI SPECs */}
-                          {project.changes?.filter((c) => (c as { type?: string }).type === 'spec').map((change) => {
+                          {project.changes?.filter((c) => {
+                            const item = c as { type?: string; status?: string }
+                            if (item.type !== 'spec') return false
+                            if (hideCompleted && item.status === 'completed') return false
+                            return true
+                          }).map((change) => {
                             const isSelected = selectedItem?.type === 'spec' && selectedItem.specId === change.id
 
                             return (
