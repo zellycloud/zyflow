@@ -3,8 +3,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import { useFlowChanges } from '@/hooks/useFlowChanges'
 import { useProjectsAllData } from '@/hooks/useProjects'
+import { useHideCompletedSpecs } from '@/hooks/useHideCompletedSpecs'
 import { ProjectIntegrations } from '@/components/integrations'
 import { ProjectDiagramTab } from '@/components/diagram/ProjectDiagramTab'
 
@@ -14,7 +17,8 @@ interface ProjectDashboardProps {
 
 export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
   const { data: projectsData } = useProjectsAllData()
-  const { data: changes, isLoading } = useFlowChanges()
+  const { isLoading } = useFlowChanges()
+  const { hideCompleted, setHideCompleted } = useHideCompletedSpecs()
 
   const project = projectsData?.projects.find((p) => p.id === projectId)
 
@@ -36,22 +40,27 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
   }
 
   // Use project.changes for better type information (includes type: 'spec' | 'openspec')
-  type ChangeWithType = { id: string; title: string; progress: number; type?: string; updatedAt?: string }
-  const projectChanges = (project?.changes ?? []) as ChangeWithType[]
+  type ChangeWithType = { id: string; title: string; progress: number; type?: string; status?: string; updatedAt?: string; currentStage?: string }
+  const allProjectChanges = (project?.changes ?? []) as ChangeWithType[]
 
-  // Filter by type
-  const moaiSpecs = projectChanges.filter((c) => c.type === 'spec')
-  const openspecChanges = projectChanges.filter((c) => c.type === 'openspec')
+  // Filter by type for summary cards
+  const moaiSpecs = allProjectChanges.filter((c) => c.type === 'spec')
+  const openspecChanges = allProjectChanges.filter((c) => c.type === 'openspec')
 
-  // Combine for display (fallback to DB changes if project.changes is empty)
-  const activeChanges = changes?.filter((c) => c.status === 'active' && c.projectId === projectId) ?? []
-  const completedChanges = changes?.filter((c) => c.status === 'completed' && c.projectId === projectId) ?? []
-  const totalProgress =
-    activeChanges.length > 0
-      ? Math.round(
-          activeChanges.reduce((sum, c) => sum + c.progress, 0) / activeChanges.length
-        )
-      : 0
+  // Filter for Changes list (apply hideCompleted toggle)
+  const filteredChanges = allProjectChanges.filter((c) => {
+    if (hideCompleted && c.status === 'completed') return false
+    return true
+  })
+
+  // Completed changes for summary
+  const completedChanges = allProjectChanges.filter((c) => c.status === 'completed')
+
+  // Calculate average progress from non-completed items
+  const activeItems = allProjectChanges.filter((c) => c.status !== 'completed')
+  const totalProgress = activeItems.length > 0
+    ? Math.round(activeItems.reduce((sum, c) => sum + (c.progress || 0), 0) / activeItems.length)
+    : 0
 
   return (
     <div className="w-full max-w-4xl mx-auto space-y-6">
@@ -62,20 +71,35 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="overview" className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" />
-            Overview
-          </TabsTrigger>
-          <TabsTrigger value="diagram" className="flex items-center gap-2">
-            <GitFork className="h-4 w-4" />
-            Diagram
-          </TabsTrigger>
-          <TabsTrigger value="integrations" className="flex items-center gap-2">
-            <Link2 className="h-4 w-4" />
-            Integrations
-          </TabsTrigger>
-        </TabsList>
+        <div className="flex items-center justify-between">
+          <TabsList>
+            <TabsTrigger value="overview" className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="diagram" className="flex items-center gap-2">
+              <GitFork className="h-4 w-4" />
+              Diagram
+            </TabsTrigger>
+            <TabsTrigger value="integrations" className="flex items-center gap-2">
+              <Link2 className="h-4 w-4" />
+              Integrations
+            </TabsTrigger>
+          </TabsList>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="hide-completed-dashboard"
+              checked={hideCompleted}
+              onCheckedChange={setHideCompleted}
+            />
+            <Label
+              htmlFor="hide-completed-dashboard"
+              className="text-sm text-muted-foreground cursor-pointer"
+            >
+              완료 숨기기
+            </Label>
+          </div>
+        </div>
 
         <TabsContent value="overview" className="space-y-6">
           {/* Summary Cards */}
@@ -86,9 +110,13 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
                 <span className="text-purple-600 dark:text-purple-400 text-[10px] font-semibold">SPEC</span>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{moaiSpecs.length}</div>
+                <div className="text-2xl font-bold">
+                  {hideCompleted
+                    ? moaiSpecs.filter((s) => s.status !== 'completed').length
+                    : moaiSpecs.length}
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  활성 MoAI SPECs
+                  {hideCompleted ? '활성 MoAI SPECs' : '전체 MoAI SPECs'}
                 </p>
               </CardContent>
             </Card>
@@ -140,22 +168,30 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {activeChanges.length === 0 ? (
+              {filteredChanges.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">
-                  진행중인 Change가 없습니다
+                  {hideCompleted ? '진행중인 Change가 없습니다' : 'Change가 없습니다'}
                 </p>
               ) : (
                 <div className="space-y-4">
-                  {activeChanges.map((change) => (
+                  {filteredChanges.map((change) => (
                     <div
                       key={change.id}
                       className="flex items-center justify-between p-4 rounded-lg border"
                     >
                       <div className="space-y-1">
-                        <p className="font-medium">{change.title}</p>
+                        <div className="flex items-center gap-2">
+                          {/* Type label */}
+                          {change.type === 'spec' ? (
+                            <span className="text-purple-600 dark:text-purple-400 text-[10px] font-semibold shrink-0">SPEC</span>
+                          ) : change.type === 'openspec' ? (
+                            <span className="text-blue-600 dark:text-blue-400 text-[10px] font-semibold shrink-0">OPEN</span>
+                          ) : null}
+                          <p className="font-medium">{change.title}</p>
+                        </div>
                         <div className="flex items-center gap-2">
                           <Badge variant="outline" className="text-xs">
-                            {change.currentStage}
+                            {change.currentStage || 'spec'}
                           </Badge>
                           <span className="text-xs text-muted-foreground">
                             {change.progress}% 완료
