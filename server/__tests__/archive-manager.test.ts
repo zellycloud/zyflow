@@ -115,6 +115,14 @@ This is a test SPEC.
   )
 }
 
+// Helper to get current archive month (matching archive-manager.ts logic)
+function getCurrentArchiveMonth(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
 // Test helper to create an archived SPEC
 async function createArchivedSpec(
   projectPath: string,
@@ -268,7 +276,8 @@ describe('Archive Manager', () => {
 
     it('should fail if SPEC is already archived', async () => {
       await createMockSpec(testProjectPath, 'SPEC-004')
-      await createArchivedSpec(testProjectPath, 'SPEC-004')
+      // Use current month to match archiveSpec's getArchiveMonth() behavior
+      await createArchivedSpec(testProjectPath, 'SPEC-004', getCurrentArchiveMonth())
 
       const result = await archiveSpec('SPEC-004', testProjectPath)
 

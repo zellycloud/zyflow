@@ -974,7 +974,7 @@ export function TaskExecutionDialog({
               {/* Swarm 실행 로그 */}
               {executionMode === 'swarm' && (
                 <>
-                  {swarm.logs.map((log, i) => (
+                  {(swarm.logs || []).map((log, i) => (
                     <div key={i} className="text-xs">
                       <span className="text-muted-foreground">
                         [{new Date(log.timestamp).toLocaleTimeString()}]
@@ -989,7 +989,7 @@ export function TaskExecutionDialog({
                     </div>
                   ))}
 
-                  {swarm.isRunning && swarm.logs.length === 0 && (
+                  {swarm.isRunning && (swarm.logs?.length ?? 0) === 0 && (
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       <span>Swarm 실행 준비 중...</span>

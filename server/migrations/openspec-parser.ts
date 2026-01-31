@@ -152,7 +152,7 @@ function extractTitle(frontmatter: Record<string, unknown>, content: string, def
 function extractSection(content: string, pattern: RegExp): string | null {
   const lines = content.split('\n')
   let inSection = false
-  let sectionLines: string[] = []
+  const sectionLines: string[] = []
   let sectionLevel = 0
 
   for (const line of lines) {

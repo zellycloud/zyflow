@@ -177,7 +177,7 @@ export class ReplayEngine implements IReplayEngine {
       }
     }
 
-    query += ' ORDER BY createdAt DESC';
+    query += ' ORDER BY created_at DESC';
 
     const rows = db.prepare(query).all(...params) as Record<string, unknown>[];
     return rows.map(row => this.deserializeSession(row));
@@ -884,16 +884,16 @@ export class ReplayEngine implements IReplayEngine {
     }
     
     return {
-      id: row.id,
-      sessionId: row.sessionId,
-      timestamp: row.timestamp,
-      description: row.description,
-      snapshot: row.snapshot,
-      isActive: Boolean(row.isActive),
-      isExpired: Boolean(row.isExpired),
-      expiresAt: row.expiresAt,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt
+      id: row.id as string,
+      sessionId: row.session_id as string,
+      timestamp: row.timestamp as number,
+      description: row.description as string,
+      snapshot: row.snapshot as string,
+      isActive: Boolean(row.is_active),
+      isExpired: Boolean(row.is_expired),
+      expiresAt: row.expires_at as number | undefined,
+      createdAt: row.created_at as number,
+      updatedAt: row.updated_at as number
     };
   }
 }

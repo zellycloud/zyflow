@@ -10,6 +10,11 @@
 
 import { createHmac, timingSafeEqual } from 'crypto'
 
+// 프로덕션 환경 체크
+function isProduction(): boolean {
+  return process.env.NODE_ENV === 'production'
+}
+
 // 환경변수에서 시크릿 로드
 function getWebhookSecret(service: string): string | null {
   const envKey = `${service.toUpperCase()}_WEBHOOK_SECRET`
@@ -26,9 +31,13 @@ export function verifyGitHubSignature(
 ): boolean {
   const secret = getWebhookSecret('GITHUB')
 
-  // 시크릿이 설정되지 않으면 검증 스킵 (개발 환경)
+  // 시크릿이 설정되지 않은 경우
   if (!secret) {
-    console.warn('[Webhook] GitHub secret not configured, skipping verification')
+    if (isProduction()) {
+      console.error('[Webhook] GitHub secret not configured in production - rejecting request')
+      return false
+    }
+    console.warn('[Webhook] GitHub secret not configured, skipping verification (dev mode)')
     return true
   }
 
@@ -62,7 +71,11 @@ export function verifyVercelSignature(
   const secret = getWebhookSecret('VERCEL')
 
   if (!secret) {
-    console.warn('[Webhook] Vercel secret not configured, skipping verification')
+    if (isProduction()) {
+      console.error('[Webhook] Vercel secret not configured in production - rejecting request')
+      return false
+    }
+    console.warn('[Webhook] Vercel secret not configured, skipping verification (dev mode)')
     return true
   }
 
@@ -96,7 +109,11 @@ export function verifySentrySignature(
   const secret = getWebhookSecret('SENTRY')
 
   if (!secret) {
-    console.warn('[Webhook] Sentry secret not configured, skipping verification')
+    if (isProduction()) {
+      console.error('[Webhook] Sentry secret not configured in production - rejecting request')
+      return false
+    }
+    console.warn('[Webhook] Sentry secret not configured, skipping verification (dev mode)')
     return true
   }
 
@@ -130,7 +147,11 @@ export function verifySupabaseSignature(
   const secret = getWebhookSecret('SUPABASE')
 
   if (!secret) {
-    console.warn('[Webhook] Supabase secret not configured, skipping verification')
+    if (isProduction()) {
+      console.error('[Webhook] Supabase secret not configured in production - rejecting request')
+      return false
+    }
+    console.warn('[Webhook] Supabase secret not configured, skipping verification (dev mode)')
     return true
   }
 

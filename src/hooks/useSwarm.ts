@@ -162,7 +162,7 @@ export function useSwarm(options: UseSwarmOptions = {}): UseSwarmReturn {
       const log: SwarmLogEntry = JSON.parse(event.data)
       setExecution(prev => ({
         ...prev,
-        logs: [...prev.logs, log]
+        logs: [...(prev.logs || []), log]
       }))
     })
 

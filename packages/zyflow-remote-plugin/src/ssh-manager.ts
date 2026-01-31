@@ -17,6 +17,12 @@ import type {
   RemoteGitStatus,
 } from './types.js'
 
+// SSH 에러 타입 (code, level 속성 포함)
+interface SSHError extends Error {
+  code?: string
+  level?: string
+}
+
 interface ConnectionEntry {
   client: Client
   sftp: SFTPWrapper | null
@@ -156,7 +162,7 @@ async function buildConnectConfig(server: RemoteServer): Promise<ConnectConfig> 
           config.passphrase = server.auth.passphrase
         }
         console.log(`[SSH] Using private key: ${keyPath}`)
-      } catch (err) {
+      } catch {
         throw new Error(`Failed to read private key: ${keyPath}`)
       }
       break
@@ -186,14 +192,14 @@ export async function getConnection(server: RemoteServer, attempt = 1): Promise<
   try {
     return await attemptConnection(server)
   } catch (err) {
-    const isRetryable = SSH_RETRY_CONFIG.retryableErrors.has((err as any).code)
+    const isRetryable = SSH_RETRY_CONFIG.retryableErrors.has((err as SSHError).code)
 
     if (isRetryable && attempt < SSH_RETRY_CONFIG.maxAttempts) {
       const delay = SSH_RETRY_CONFIG.initialDelay *
                     Math.pow(SSH_RETRY_CONFIG.backoffMultiplier, attempt - 1)
 
       console.log(
-        `[SSH] Connection failed (${(err as any).code}): ${(err as any).message}`
+        `[SSH] Connection failed (${(err as SSHError).code}): ${(err as SSHError).message}`
       )
       console.log(
         `[SSH] Retrying in ${delay}ms (attempt ${attempt + 1}/${SSH_RETRY_CONFIG.maxAttempts})`
@@ -205,7 +211,7 @@ export async function getConnection(server: RemoteServer, attempt = 1): Promise<
 
     // Max retries exceeded or non-retryable error
     console.error(
-      `[SSH] Connection failed after ${attempt} attempt(s): ${(err as any).code} - ${(err as any).message}`
+      `[SSH] Connection failed after ${attempt} attempt(s): ${(err as SSHError).code} - ${(err as SSHError).message}`
     )
     throw err
   }
@@ -230,7 +236,7 @@ async function attemptConnection(server: RemoteServer): Promise<Client> {
     const connectTimeout = setTimeout(() => {
       client.end()
       const err = new Error('SSH connection timeout')
-      ;(err as any).code = 'ETIMEDOUT'
+      ;(err as SSHError).code = 'ETIMEDOUT'
       reject(err)
     }, (config.readyTimeout || 30000) + 5000)
 
@@ -245,12 +251,12 @@ async function attemptConnection(server: RemoteServer): Promise<Client> {
     client.on('error', (err) => {
       clearTimeout(connectTimeout)
       console.error(`[SSH] ✗ Error connecting to ${server.name}:`, {
-        code: (err as any).code,
-        level: (err as any).level,
+        code: (err as SSHError).code,
+        level: (err as SSHError).level,
         message: err.message,
       })
       entry.status = 'error'
-      entry.error = `${(err as any).code || 'UNKNOWN'}: ${err.message}`
+      entry.error = `${(err as SSHError).code || 'UNKNOWN'}: ${err.message}`
       connections.delete(server.id)
       reject(err)
     })

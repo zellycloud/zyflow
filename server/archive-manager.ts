@@ -200,7 +200,7 @@ export async function archiveSpec(
   let directoryMoved = false
   let metadataWritten = false
   let databaseUpdated = false
-  let previousDbStatus = originalStatus
+  const previousDbStatus = originalStatus
 
   const rollback = async () => {
     // Rollback in reverse order

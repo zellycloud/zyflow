@@ -116,7 +116,26 @@ const runningTasks = new Map<
 
 export const app = express()
 
-app.use(cors())
+// CORS 정책: 허용된 origin만 접근 가능 (보안 강화)
+const allowedOrigins = [
+  'http://localhost:3100', // zyflow-web
+  'http://localhost:3200', // _flow-web
+  'http://127.0.0.1:3100',
+  'http://127.0.0.1:3200',
+  ...(process.env.ALLOWED_ORIGINS?.split(',') || []),
+]
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true)
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true)
+    }
+    callback(new Error('CORS policy violation'))
+  },
+  credentials: true,
+}))
 app.use(express.json())
 
 // Git API 라우터 등록

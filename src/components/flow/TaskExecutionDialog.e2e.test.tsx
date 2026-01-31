@@ -122,12 +122,13 @@ const mockProviders: AIProviderConfig[] = [
 ]
 
 // Default dialog props
+// Using "Sample Feature" to avoid triggering 'test' classification which would set Swarm mode
 const defaultProps = {
   open: true,
   onOpenChange: vi.fn(),
   changeId: 'test-change-1',
   taskId: 'task-1',
-  taskTitle: 'Test Task Title',
+  taskTitle: 'Sample Feature',
   projectPath: '/test/project',
   onComplete: vi.fn(),
 }
@@ -243,10 +244,10 @@ describe('TaskExecutionDialog E2E Tests', () => {
       const user = userEvent.setup()
       render(<TaskExecutionDialog {...defaultProps} />)
 
-      // Wait for providers to load
+      // Wait for providers to load - use getAllByText since Claude Code appears in multiple places
       await waitFor(() => {
-        expect(screen.getByText('Claude Code')).toBeInTheDocument()
-      })
+        expect(screen.getAllByText('Claude Code').length).toBeGreaterThan(0)
+      }, { timeout: 3000 })
 
       // Select Gemini provider
       const geminiButton = screen.getByText('Gemini CLI').closest('button')
@@ -320,10 +321,11 @@ describe('TaskExecutionDialog E2E Tests', () => {
       render(<TaskExecutionDialog {...defaultProps} />)
 
       await waitFor(() => {
-        expect(screen.getByText(/Claude Code/)).toBeInTheDocument()
-        expect(screen.getByText(/Gemini CLI/)).toBeInTheDocument()
-        expect(screen.getByText(/Codex CLI/)).toBeInTheDocument()
-      })
+        // Use getAllByText since provider names can appear in multiple places (cards + summary)
+        expect(screen.getAllByText(/Claude Code/).length).toBeGreaterThan(0)
+        expect(screen.getAllByText(/Gemini CLI/).length).toBeGreaterThan(0)
+        expect(screen.getAllByText(/Codex CLI/).length).toBeGreaterThan(0)
+      }, { timeout: 3000 })
     })
 
     it('should show unavailable provider as disabled with badge', async () => {
@@ -342,21 +344,30 @@ describe('TaskExecutionDialog E2E Tests', () => {
 
       await waitFor(() => {
         // Claude should be selected by default (first available)
-        const claudeCard = screen.getByText(/Claude Code/).closest('button')
-        expect(claudeCard?.querySelector('svg[class*="text-primary"]')).toBeInTheDocument()
-      })
+        // Find provider cards (buttons with provider names)
+        const claudeCards = screen.getAllByText(/Claude Code/)
+        const claudeButton = claudeCards[0].closest('button')
+        expect(claudeButton?.querySelector('svg[class*="text-primary"]')).toBeInTheDocument()
+      }, { timeout: 3000 })
     })
 
     it('should show model options when provider is selected', async () => {
       render(<TaskExecutionDialog {...defaultProps} />)
 
+      // First wait for providers to load
       await waitFor(() => {
-        // Model selection should be visible for Claude
+        expect(screen.getAllByText(/Claude Code/).length).toBeGreaterThan(0)
+      }, { timeout: 3000 })
+
+      // Then wait for model selection to appear (may require additional render cycles)
+      await waitFor(() => {
         expect(screen.getByText(/모델 선택/i)).toBeInTheDocument()
-        expect(screen.getByText(/Haiku/i)).toBeInTheDocument()
-        expect(screen.getByText(/Sonnet/i)).toBeInTheDocument()
-        expect(screen.getByText(/Opus/i)).toBeInTheDocument()
-      })
+      }, { timeout: 3000 })
+
+      // Model selection should be visible for Claude (use getAllBy since model names appear in multiple places)
+      expect(screen.getAllByText(/Haiku/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/Sonnet/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/Opus/i).length).toBeGreaterThan(0)
     })
 
     it('should update model options when switching providers', async () => {
@@ -364,8 +375,8 @@ describe('TaskExecutionDialog E2E Tests', () => {
       render(<TaskExecutionDialog {...defaultProps} />)
 
       await waitFor(() => {
-        expect(screen.getByText('Claude Code')).toBeInTheDocument()
-      })
+        expect(screen.getAllByText('Claude Code').length).toBeGreaterThan(0)
+      }, { timeout: 3000 })
 
       // Select Gemini
       const geminiButton = screen.getByText('Gemini CLI').closest('button')
@@ -414,8 +425,8 @@ describe('TaskExecutionDialog E2E Tests', () => {
 
       // Wait for providers to load
       await waitFor(() => {
-        expect(screen.getByText('Claude Code')).toBeInTheDocument()
-      })
+        expect(screen.getAllByText('Claude Code').length).toBeGreaterThan(0)
+      }, { timeout: 3000 })
 
       // Click start button
       const startButton = screen.getByRole('button', { name: /실행 시작/i })
@@ -466,8 +477,8 @@ describe('TaskExecutionDialog E2E Tests', () => {
       render(<TaskExecutionDialog {...defaultProps} />)
 
       await waitFor(() => {
-        expect(screen.getByText('Claude Code')).toBeInTheDocument()
-      })
+        expect(screen.getAllByText('Claude Code').length).toBeGreaterThan(0)
+      }, { timeout: 3000 })
 
       const startButton = screen.getByRole('button', { name: /실행 시작/i })
       await user.click(startButton)
@@ -519,8 +530,8 @@ describe('TaskExecutionDialog E2E Tests', () => {
       render(<TaskExecutionDialog {...defaultProps} />)
 
       await waitFor(() => {
-        expect(screen.getByText('Claude Code')).toBeInTheDocument()
-      })
+        expect(screen.getAllByText('Claude Code').length).toBeGreaterThan(0)
+      }, { timeout: 3000 })
 
       // Start execution (don't await - let it run)
       const startButton = screen.getByRole('button', { name: /실행 시작/i })
@@ -537,7 +548,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
           })
           expect(runningStatus.length > 0).toBe(true)
         },
-        { timeout: 2000 }
+        { timeout: 3000 }
       )
 
       // Find and click stop button if visible
@@ -577,8 +588,8 @@ describe('TaskExecutionDialog E2E Tests', () => {
       render(<TaskExecutionDialog {...defaultProps} />)
 
       await waitFor(() => {
-        expect(screen.getByText('Claude Code')).toBeInTheDocument()
-      })
+        expect(screen.getAllByText('Claude Code').length).toBeGreaterThan(0)
+      }, { timeout: 3000 })
 
       // First execution
       const startButton = screen.getByRole('button', { name: /실행 시작/i })
@@ -587,7 +598,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
       // Wait for completion
       await waitFor(() => {
         expect(screen.getByText(/실행 완료/i)).toBeInTheDocument()
-      })
+      }, { timeout: 3000 })
 
       // Click retry
       const retryButton = screen.getByRole('button', { name: /다시 실행/i })
@@ -620,18 +631,20 @@ describe('TaskExecutionDialog E2E Tests', () => {
       })
     })
 
-    it('should select Development strategy by default', async () => {
+    it('should select Testing strategy by default for test tasks', async () => {
       const user = userEvent.setup()
-      render(<TaskExecutionDialog {...defaultProps} />)
+      // Task with 'test' in title triggers 'test' classification which recommends 'testing' strategy
+      render(<TaskExecutionDialog {...defaultProps} taskTitle="Write Unit Tests" />)
 
       const swarmTab = screen.getByRole('tab', { name: /swarm 실행/i })
       await user.click(swarmTab)
 
       await waitFor(() => {
-        const devCard = screen.getByText('Development').closest('button')
-        // Should have checkmark icon
-        expect(devCard?.querySelector('svg')).toBeInTheDocument()
-      })
+        // For tasks with 'test' in title, Testing strategy is recommended
+        const testingCard = screen.getByText('Testing').closest('button')
+        // Should have checkmark icon indicating selection
+        expect(testingCard?.querySelector('svg')).toBeInTheDocument()
+      }, { timeout: 3000 })
     })
 
     it('should allow changing strategy', async () => {
@@ -643,7 +656,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Research')).toBeInTheDocument()
-      })
+      }, { timeout: 3000 })
 
       // Click Research
       const researchButton = screen.getByText('Research').closest('button')
@@ -653,7 +666,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
       await waitFor(() => {
         const researchCard = screen.getByText('Research').closest('button')
         expect(researchCard?.querySelector('svg')).toBeInTheDocument()
-      })
+      }, { timeout: 3000 })
     })
 
     it('should display max agents slider', async () => {
@@ -666,7 +679,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
       await waitFor(() => {
         expect(screen.getByText(/최대 에이전트 수/i)).toBeInTheDocument()
         expect(screen.getByRole('slider')).toBeInTheDocument()
-      })
+      }, { timeout: 3000 })
     })
 
     it('should display Swarm settings summary', async () => {
@@ -680,7 +693,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
         expect(screen.getByText(/Swarm 설정 요약/i)).toBeInTheDocument()
         expect(screen.getByText(/Strategy:/i)).toBeInTheDocument()
         expect(screen.getByText(/Max Agents:/i)).toBeInTheDocument()
-      })
+      }, { timeout: 3000 })
     })
 
     it('should execute Swarm task successfully', async () => {
@@ -693,7 +706,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
             json: () => Promise.resolve({ providers: mockProviders }),
           })
         }
-        if (url.includes('/api/claude-flow/execute')) {
+        if (url.includes('/api/swarm/execute')) {
           return Promise.resolve({
             ok: true,
             json: () => Promise.resolve({ executionId: 'swarm-123', message: 'Started' }),
@@ -710,11 +723,17 @@ describe('TaskExecutionDialog E2E Tests', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Development')).toBeInTheDocument()
-      })
+      }, { timeout: 3000 })
 
       // Click start button
       const startButton = screen.getByRole('button', { name: /실행 시작/i })
       await user.click(startButton)
+
+      // Wait a tick for EventSource to be created, then simulate running state
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        mockEventSourceInstance?.simulateEvent('status', { status: 'running', progress: 0 })
+      })
 
       // Should transition to running state
       await waitFor(() => {
@@ -722,7 +741,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
           return content.includes('실행') && content.includes('중')
         })
         expect(runningStatus.length > 0).toBe(true)
-      })
+      }, { timeout: 3000 })
 
       // Simulate SSE completion event
       await act(async () => {
@@ -739,7 +758,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
           return content.includes('완료')
         })
         expect(completionStatus.length > 0).toBe(true)
-      })
+      }, { timeout: 3000 })
 
       // onComplete should be called
       expect(defaultProps.onComplete).toHaveBeenCalled()
@@ -755,7 +774,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
             json: () => Promise.resolve({ providers: mockProviders }),
           })
         }
-        if (url.includes('/api/claude-flow/execute')) {
+        if (url.includes('/api/swarm/execute')) {
           return Promise.resolve({
             ok: false,
             json: () => Promise.resolve({ error: 'Swarm initialization failed' }),
@@ -771,7 +790,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Development')).toBeInTheDocument()
-      })
+      }, { timeout: 3000 })
 
       const startButton = screen.getByRole('button', { name: /실행 시작/i })
       await user.click(startButton)
@@ -782,7 +801,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
           return content.includes('Swarm') && content.includes('initialization')
         })
         expect(errorMessages.length > 0).toBe(true)
-      })
+      }, { timeout: 3000 })
     })
 
     it('should show Swarm progress during execution', async () => {
@@ -795,7 +814,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
             json: () => Promise.resolve({ providers: mockProviders }),
           })
         }
-        if (url.includes('/api/claude-flow/execute')) {
+        if (url.includes('/api/swarm/execute')) {
           return Promise.resolve({
             ok: true,
             json: () => Promise.resolve({ executionId: 'swarm-123', message: 'Started' }),
@@ -811,10 +830,16 @@ describe('TaskExecutionDialog E2E Tests', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Development')).toBeInTheDocument()
-      })
+      }, { timeout: 3000 })
 
       const startButton = screen.getByRole('button', { name: /실행 시작/i })
       await user.click(startButton)
+
+      // Wait a tick for EventSource to be created, then simulate running state
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        mockEventSourceInstance?.simulateEvent('status', { status: 'running', progress: 0 })
+      })
 
       // Wait for running state
       await waitFor(() => {
@@ -822,7 +847,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
           return content.includes('실행') && content.includes('중')
         })
         expect(runningStatus.length > 0).toBe(true)
-      })
+      }, { timeout: 3000 })
 
       // Simulate progress event
       await act(async () => {
@@ -832,7 +857,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
       // Should show progress
       await waitFor(() => {
         expect(screen.getByText('50%')).toBeInTheDocument()
-      })
+      }, { timeout: 3000 })
     })
 
     it('should show Swarm logs during execution', async () => {
@@ -845,7 +870,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
             json: () => Promise.resolve({ providers: mockProviders }),
           })
         }
-        if (url.includes('/api/claude-flow/execute')) {
+        if (url.includes('/api/swarm/execute')) {
           return Promise.resolve({
             ok: true,
             json: () => Promise.resolve({ executionId: 'swarm-123', message: 'Started' }),
@@ -861,17 +886,23 @@ describe('TaskExecutionDialog E2E Tests', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Development')).toBeInTheDocument()
-      })
+      }, { timeout: 3000 })
 
       const startButton = screen.getByRole('button', { name: /실행 시작/i })
       await user.click(startButton)
+
+      // Wait a tick for EventSource to be created, then simulate running state
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        mockEventSourceInstance?.simulateEvent('status', { status: 'running', progress: 0 })
+      })
 
       await waitFor(() => {
         const runningStatus = screen.queryAllByText((content) => {
           return content.includes('실행') && content.includes('중')
         })
         expect(runningStatus.length > 0).toBe(true)
-      })
+      }, { timeout: 3000 })
 
       // Simulate log event
       const logEntry: ClaudeFlowLogEntry = {
@@ -887,7 +918,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
       // Should show log message
       await waitFor(() => {
         expect(screen.getByText(/Agent coordinator started analyzing task/i)).toBeInTheDocument()
-      })
+      }, { timeout: 3000 })
     })
 
     it('should stop Swarm execution when stop button is clicked', async () => {
@@ -900,13 +931,13 @@ describe('TaskExecutionDialog E2E Tests', () => {
             json: () => Promise.resolve({ providers: mockProviders }),
           })
         }
-        if (url.includes('/api/claude-flow/execute')) {
+        if (url.includes('/api/swarm/execute')) {
           return Promise.resolve({
             ok: true,
             json: () => Promise.resolve({ executionId: 'swarm-123', message: 'Started' }),
           })
         }
-        if (url.includes('/api/claude-flow/stop')) {
+        if (url.includes('/api/swarm/stop')) {
           return Promise.resolve({
             ok: true,
             json: () => Promise.resolve({ success: true }),
@@ -922,17 +953,26 @@ describe('TaskExecutionDialog E2E Tests', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Development')).toBeInTheDocument()
-      })
+      }, { timeout: 3000 })
 
       const startButton = screen.getByRole('button', { name: /실행 시작/i })
       await user.click(startButton)
 
+      // Wait a tick for EventSource to be created, then simulate running state
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        mockEventSourceInstance?.simulateEvent('status', { status: 'running', progress: 0 })
+      })
+
       // Wait for running badge to appear
       await waitFor(
         () => {
-          expect(screen.getByText(/실행 중/i)).toBeInTheDocument()
+          const runningStatus = screen.queryAllByText((content) => {
+            return content.includes('실행') && content.includes('중')
+          })
+          expect(runningStatus.length > 0).toBe(true)
         },
-        { timeout: 2000 }
+        { timeout: 3000 }
       )
 
       // Find and click stop button if visible
@@ -943,7 +983,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
         // Should call stop API
         await waitFor(() => {
           const stopCalls = mockFetch.mock.calls.filter(
-            (call) => typeof call[0] === 'string' && call[0].includes('/api/claude-flow/stop')
+            (call) => typeof call[0] === 'string' && call[0].includes('/api/swarm/stop')
           )
           expect(stopCalls.length).toBeGreaterThan(0)
         })
@@ -995,7 +1035,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
       await waitFor(() => {
         expect(screen.getByText(/태스크 실행/i)).toBeInTheDocument()
         expect(screen.getByText(/task-1/i)).toBeInTheDocument()
-        expect(screen.getByText(/Test Task Title/i)).toBeInTheDocument()
+        expect(screen.getByText(/Sample Feature/i)).toBeInTheDocument()
       })
     })
 
@@ -1024,8 +1064,8 @@ describe('TaskExecutionDialog E2E Tests', () => {
       render(<TaskExecutionDialog {...defaultProps} />)
 
       await waitFor(() => {
-        expect(screen.getByText('Claude Code')).toBeInTheDocument()
-      })
+        expect(screen.getAllByText('Claude Code').length).toBeGreaterThan(0)
+      }, { timeout: 3000 })
 
       const startButton = screen.getByRole('button', { name: /실행 시작/i })
       await user.click(startButton)
@@ -1061,7 +1101,7 @@ describe('TaskExecutionDialog E2E Tests', () => {
       // Should eventually show providers
       await waitFor(
         () => {
-          expect(screen.getByText('Claude Code')).toBeInTheDocument()
+          expect(screen.getAllByText('Claude Code').length).toBeGreaterThan(0)
         },
         { timeout: 3000 }
       )

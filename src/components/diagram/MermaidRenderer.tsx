@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import mermaid from 'mermaid'
+import DOMPurify from 'dompurify'
 import { cn } from '@/lib/utils'
 
 // Initialize mermaid with default config
+// Security Note: 'loose' is required for click handlers (onNodeClick).
+// SVG output is sanitized with DOMPurify to prevent XSS attacks.
 mermaid.initialize({
   startOnLoad: false,
   theme: 'default',
-  securityLevel: 'loose',
+  securityLevel: 'loose', // Required for click handlers; SVG sanitized via DOMPurify
   fontFamily: 'ui-sans-serif, system-ui, sans-serif',
   flowchart: {
     htmlLabels: true,
@@ -74,7 +77,7 @@ export function MermaidRenderer({
       setError(null)
 
       try {
-        // Update mermaid theme
+        // Update mermaid theme (securityLevel: 'loose' required for click handlers)
         mermaid.initialize({
           startOnLoad: false,
           theme: theme,
@@ -97,9 +100,13 @@ export function MermaidRenderer({
           )
         }
 
-        // Render
+        // Render and sanitize SVG to prevent XSS
         const { svg } = await mermaid.render(id, processedCode)
-        containerRef.current!.innerHTML = svg
+        const sanitizedSvg = DOMPurify.sanitize(svg, {
+          USE_PROFILES: { svg: true, svgFilters: true },
+          ADD_TAGS: ['use'], // Allow SVG use elements
+        })
+        containerRef.current!.innerHTML = sanitizedSvg
 
         onRender?.()
       } catch (err) {

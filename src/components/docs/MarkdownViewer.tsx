@@ -24,7 +24,7 @@ function MermaidDiagram({ code }: { code: string }) {
     mermaid.initialize({
       startOnLoad: true,
       theme: 'default',
-      securityLevel: 'loose',
+      securityLevel: 'strict', // XSS 방지: loose -> strict
       fontFamily: 'inherit',
     })
 

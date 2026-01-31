@@ -207,7 +207,7 @@ async function syncLocalProjectChanges(project: { id: string; name: string; path
 
   const sqlite = getSqlite()
   const now = Date.now()
-  let activeChangeIds: string[] = []
+  const activeChangeIds: string[] = []
 
   // 1. Scan MoAI SPECs FIRST and add to activeChangeIds
   try {
