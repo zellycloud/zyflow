@@ -48,7 +48,7 @@ import { webhooksRouter, setWebhookBroadcast } from './routes/webhooks.js'
 import { aiRouter } from './ai/index.js'
 import { ragRouter, memoryRouter } from './routes/search.js'
 import { leannRouter } from './routes/leann.js'
-import { scanMoaiSpecs } from './moai-specs.js'
+import { scanMoaiSpecs, scanRemoteMoaiSpecs } from './moai-specs.js'
 import { specsRouter } from './routes/specs.js'
 // Remote plugin (optional - only if installed)
 let remoteRouter: import('express').Router | null = null
@@ -543,6 +543,7 @@ async function getChangesForProject(project: {
         }
 
         const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+        const status = progress === 100 ? 'completed' : 'active'
 
         // Get updatedAt from git log or file modifiedAt
         let updatedAt: string | null = null
@@ -567,11 +568,46 @@ async function getChangesForProject(project: {
           completedTasks,
           relatedSpecs,
           updatedAt,
+          type: 'openspec' as const,
+          status,
         }
       })
     )
 
-    return changes.filter((c): c is NonNullable<typeof c> => c !== null)
+    const openspecChanges = changes.filter((c): c is NonNullable<typeof c> => c !== null)
+
+    // 2. 원격 MoAI SPECs 스캔 (.moai/specs/)
+    const moaiSpecChanges: typeof openspecChanges = []
+    try {
+      const plugin = {
+        listDirectory: listDirectory!,
+        readRemoteFile: readRemoteFile!,
+      }
+      const moaiSpecs = await scanRemoteMoaiSpecs(projectPath, server, plugin)
+      for (const spec of moaiSpecs) {
+        // Skip archived SPECs
+        if (archivedChangeIds.has(spec.id) || spec.status === 'archived') continue
+
+        const progress = spec.tagCount > 0
+          ? Math.round((spec.completedTags / spec.tagCount) * 100)
+          : 0
+
+        moaiSpecChanges.push({
+          id: spec.id,
+          title: spec.title,
+          progress,
+          totalTasks: spec.tagCount,
+          completedTasks: spec.completedTags,
+          updatedAt: new Date().toISOString(),
+          type: 'spec' as const,
+          status: spec.status === 'complete' ? 'completed' : spec.status,
+        })
+      }
+    } catch (err) {
+      console.warn('[Remote] Failed to scan remote MoAI SPECs:', err)
+    }
+
+    return [...moaiSpecChanges, ...openspecChanges]
   }
 
   // 로컬 프로젝트인 경우
@@ -617,6 +653,7 @@ async function getChangesForProject(project: {
         completedTasks: spec.completedTags,
         updatedAt,
         type: 'spec',
+        status: spec.status === 'complete' ? 'completed' : spec.status,
       })
     }
   } catch {
@@ -692,6 +729,7 @@ async function getChangesForProject(project: {
     }
 
     const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+    const status = progress === 100 ? 'completed' : 'active'
     changes.push({
       id: changeId,
       title,
@@ -701,6 +739,7 @@ async function getChangesForProject(project: {
       relatedSpecs,
       updatedAt,
       type: 'openspec',
+      status,
     })
   }
 

@@ -1060,6 +1060,7 @@ async function getChangesForRemoteProject(
       }
 
       const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+      const status = progress === 100 ? 'completed' : 'active'
 
       // Get updatedAt from git log or file modifiedAt
       let updatedAt: string | null = null
@@ -1076,7 +1077,7 @@ async function getChangesForRemoteProject(
         updatedAt = entry.modifiedAt || new Date().toISOString()
       }
 
-      return { id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt, type: 'openspec' as const }
+      return { id: changeId, title, progress, totalTasks, completedTasks, relatedSpecs, updatedAt, type: 'openspec' as const, status }
     })
   )
 

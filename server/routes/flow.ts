@@ -415,6 +415,45 @@ async function getMoaiSpecDetail(
         return null
       }
       projectPath = project.path
+
+      // For remote projects, read spec.md to get current status (DB may be stale)
+      if (project.remote) {
+        const plugin = await getRemotePlugin()
+        if (plugin) {
+          const server = await plugin.getRemoteServerById(project.remote.serverId)
+          if (server) {
+            const remoteSpecPath = `${projectPath}/.moai/specs/${specId}/spec.md`
+            try {
+              const specContent = await plugin.readRemoteFile(server, remoteSpecPath)
+              // Extract status from frontmatter
+              const statusMatch = specContent.match(/^status:\s+(.+)$/m)
+              if (statusMatch) {
+                const specStatus = statusMatch[1].trim().replace(/^["']|["']$/g, '').toLowerCase()
+                const isComplete = specStatus === 'complete' || specStatus === 'completed' || specStatus === 'implemented'
+                const mappedStatus = (isComplete ? 'done' : specStatus === 'active' ? 'in_progress' : 'pending') as ChangeStatus
+                const mappedStage = (isComplete ? 'sync' : specStatus === 'active' ? 'run' : 'plan') as Stage
+
+                // Count tags for progress
+                const tagMatches = specContent.match(/\bTAG-[A-Z]+-\d+\b/g) || []
+                const tagCount = tagMatches.length
+                const completedTagMatches = specContent.match(/\[x\]\s*\*\*TAG-[A-Z]+-\d+\*\*/gi) || []
+                const completedTags = completedTagMatches.length
+                const progress = isComplete ? 100 : (tagCount > 0 ? Math.round((completedTags / tagCount) * 100) : 0)
+
+                // Update change with current status from spec.md
+                change = {
+                  ...change,
+                  status: mappedStatus,
+                  current_stage: mappedStage,
+                  progress,
+                }
+              }
+            } catch {
+              // Failed to read spec.md, continue with DB values
+            }
+          }
+        }
+      }
     } else {
       // DB record doesn't exist - try to find MoAI SPEC in filesystem
       // First try with projectId parameter, then fall back to active project
@@ -455,7 +494,6 @@ async function getMoaiSpecDetail(
           if (statusMatch) {
             specStatus = statusMatch[1].trim().replace(/^["']|["']$/g, '').toLowerCase()
           }
-
           // Count tags from content (TAG-XXX-NNN pattern)
           const tagMatches = specContent.match(/\bTAG-[A-Z]+-\d+\b/g) || []
           const tagCount = tagMatches.length
@@ -464,11 +502,12 @@ async function getMoaiSpecDetail(
           const completedTags = completedTagMatches.length
 
           // Map status to ChangeStatus (same logic as local SPEC)
-          // 'implemented' and 'complete' are both considered done
-          const isComplete = specStatus === 'complete' || specStatus === 'implemented'
+          // 'implemented', 'complete', and 'completed' are all considered done
+          const isComplete = specStatus === 'complete' || specStatus === 'completed' || specStatus === 'implemented'
           const mappedStatus = (isComplete ? 'done' : specStatus === 'active' ? 'in_progress' : 'pending') as ChangeStatus
           const mappedStage = (isComplete ? 'sync' : specStatus === 'active' ? 'run' : 'plan') as Stage
-          const progress = tagCount > 0 ? Math.round((completedTags / tagCount) * 100) : 0
+          // If marked complete but no TAGs found in spec.md, use 100% progress
+          const progress = isComplete ? 100 : (tagCount > 0 ? Math.round((completedTags / tagCount) * 100) : 0)
 
           // Create a virtual change record for remote SPEC
           change = {
@@ -687,11 +726,22 @@ async function getMoaiSpecDetail(
       }
     }
 
+    // Map DB status to frontend format
+    const frontendStatusMap: Record<string, string> = {
+      'done': 'completed',
+      'in_progress': 'active',
+      'pending': 'draft',
+      'active': 'active',
+      'completed': 'completed',
+      'archived': 'archived',
+    }
+    const frontendStatus = frontendStatusMap[change.status] || change.status
+
     return {
       id: change.id,
       title: specTitle,
       type: 'spec',
-      status: change.status,
+      status: frontendStatus,
       currentStage: change.current_stage,
       progress: change.progress,
       createdAt: new Date(change.created_at).toISOString(),
