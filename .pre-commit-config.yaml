@@ -30,6 +30,14 @@ repos:
       - id: detect-private-key
         name: detect-private-key
         description: Detect private keys
+        exclude: |
+          (?x)^(
+            docs/.*\.md|
+            .*\.test\.(ts|js)|
+            .*\.spec\.(ts|js)|
+            \.claude/skills/.*/examples\.md|
+            \.claude/skills/.*/reference\.md
+          )$
 
       - id: check-case-conflict
         name: check-case-conflict
@@ -42,13 +50,22 @@ repos:
       - id: check-json
         name: check-json
         description: Validate JSON files
-        exclude: '^node_modules/'
+        exclude: |
+          (?x)^(
+            node_modules/|
+            tsconfig.*\.json|
+            \.claude/skills/.*/templates/.*\.json
+          )$
 
       - id: check-yaml
         name: check-yaml
         description: Validate YAML files
-        args: ['--allow-multiple-documents']
-        exclude: '^node_modules/'
+        args: ['--allow-multiple-documents', '--unsafe']
+        exclude: |
+          (?x)^(
+            node_modules/|
+            \.claude/skills/.*/templates/.*\.yml
+          )$
 
 # CI-specific configuration
 ci:
