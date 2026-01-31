@@ -2,16 +2,30 @@
  * API Client
  *
  * 중앙화된 API 요청 처리 및 에러 핸들링
+ * - Retry logic with exponential backoff
+ * - Request/response interception and logging
+ * - Sensitive data filtering
  */
 
 import { API_BASE_URL } from '@/config/api'
 import type { ApiResponse } from '@/types'
 import { ApiError, TimeoutError, NetworkError } from './errors'
+import { getRequestInterceptor, type InterceptorOptions } from './error-interceptor'
 
 // API 요청 옵션 타입
 interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown
   timeout?: number
+  // 재시도 옵션
+  retryOptions?: {
+    maxAttempts?: number
+    initialDelayMs?: number
+    maxDelayMs?: number
+  }
+  // 인터셉터 옵션
+  logRequests?: boolean
+  logResponses?: boolean
+  logToStore?: boolean
 }
 
 // 기본 요청 타임아웃 (30초)
@@ -29,11 +43,55 @@ async function parseJson<T>(response: Response): Promise<T | null> {
 }
 
 /**
- * 공통 fetch 래퍼
+ * 공통 fetch 래퍼 (재시도 로직 및 인터셉터 포함)
  */
-async function request<T>(
+export async function request<T>(
   url: string,
   options: RequestOptions = {}
+): Promise<T> {
+  const {
+    body,
+    timeout = DEFAULT_TIMEOUT,
+    retryOptions,
+    logRequests = true,
+    logResponses = true,
+    logToStore = true,
+    ...fetchOptions
+  } = options
+
+  const interceptor = getRequestInterceptor({
+    logRequests,
+    logResponses,
+    logToStore,
+    retry: retryOptions,
+  })
+
+  const requestContext = {
+    url,
+    method: (fetchOptions.method || 'GET').toUpperCase(),
+    headers: fetchOptions.headers as Record<string, string> | undefined,
+    body,
+    timestamp: Date.now(),
+  }
+
+  try {
+    const result = await interceptor.intercept(
+      () => performRequest<T>(url, { body, timeout, ...fetchOptions }),
+      requestContext
+    )
+    return result
+  } catch (error) {
+    interceptor.handleError(error, requestContext)
+    throw error
+  }
+}
+
+/**
+ * Perform actual fetch request
+ */
+async function performRequest<T>(
+  url: string,
+  options: RequestOptions & { timeout: number }
 ): Promise<T> {
   const { body, timeout = DEFAULT_TIMEOUT, ...fetchOptions } = options
 
