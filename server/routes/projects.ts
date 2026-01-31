@@ -743,6 +743,7 @@ async function getChangesForProject(projectPath: string) {
     relatedSpecs?: string[]
     updatedAt: string | null
     type?: 'openspec' | 'spec'
+    status?: 'active' | 'completed' | 'archived'
   }> = []
 
   // Get archived change IDs from DB to filter them out
@@ -787,6 +788,9 @@ async function getChangesForProject(projectPath: string) {
         updatedAt = new Date().toISOString()
       }
 
+      // Map MoAI status to change status: complete -> completed, others -> active
+      const changeStatus = spec.status === 'complete' ? 'completed' : 'active'
+
       changes.push({
         id: spec.id,
         title: spec.title,
@@ -795,6 +799,7 @@ async function getChangesForProject(projectPath: string) {
         completedTasks: spec.completedTags,
         updatedAt,
         type: 'spec',
+        status: changeStatus,
       })
     }
   } catch {
@@ -946,6 +951,7 @@ async function getChangesForRemoteProject(
     relatedSpecs?: string[]
     updatedAt: string | null
     type?: 'openspec' | 'spec'
+    status?: 'active' | 'completed' | 'archived'
   }> = []
 
   // Get archived change IDs from DB to filter them out
@@ -979,6 +985,9 @@ async function getChangesForRemoteProject(
         ? Math.round((spec.completedTags / spec.tagCount) * 100)
         : 0
 
+      // Map MoAI status to change status: complete -> completed, others -> active
+      const changeStatus = spec.status === 'complete' ? 'completed' : 'active'
+
       changes.push({
         id: spec.id,
         title: spec.title,
@@ -987,6 +996,7 @@ async function getChangesForRemoteProject(
         completedTasks: spec.completedTags,
         updatedAt: new Date().toISOString(),
         type: 'spec',
+        status: changeStatus,
       })
     }
   } catch {

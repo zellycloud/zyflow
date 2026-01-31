@@ -18,6 +18,27 @@ import { getSqlite } from '../tasks/db/client.js'
 import type { Stage, ChangeStatus, TaskOrigin } from '../tasks/db/schema.js'
 import { emit } from '../websocket.js'
 
+/**
+ * Count markdown checklists in content for progress calculation.
+ * Used as fallback when no TAG-XXX format tags are found.
+ */
+function countMarkdownChecklists(content: string): { completed: number; total: number; percentage: number } | null {
+  const checklistRegex = /^[\s]*-\s*\[([ xX])\]/gm
+  let completed = 0
+  let total = 0
+
+  let match
+  while ((match = checklistRegex.exec(content)) !== null) {
+    total++
+    if (match[1].toLowerCase() === 'x') {
+      completed++
+    }
+  }
+
+  if (total === 0) return null
+  return { completed, total, percentage: Math.round((completed / total) * 100) }
+}
+
 // Remote plugin is optional - only load if installed
 interface RemotePlugin {
   getRemoteServerById: (id: string) => Promise<unknown>
@@ -542,9 +563,12 @@ async function getMoaiSpecDetail(
         const parsed = parsePlanFile(planContent)
         tags = parsed.tags
         // Calculate tag progress from parsed content
-        const completed = parsed.tags.filter((t) => t.completed).length
-        const total = parsed.tags.length
-        tagProgress = total > 0 ? { completed, total, percentage: Math.round((completed / total) * 100) } : null
+        if (parsed.tags.length > 0) {
+          const completed = parsed.tags.filter((t) => t.completed).length
+          const total = parsed.tags.length
+          tagProgress = { completed, total, percentage: Math.round((completed / total) * 100) }
+        }
+        // Note: If no TAGs, tagProgress will be calculated from acceptance.md below
       } catch {
         // plan.md not readable on remote
       }
@@ -553,7 +577,13 @@ async function getMoaiSpecDetail(
         planContent = await readFile(planPath, 'utf-8')
         const parsed = parsePlanFile(planContent)
         tags = parsed.tags
-        tagProgress = await calculateTagProgress(specId, projectPath)
+        // Calculate tag progress from parsed content (same as remote path)
+        if (parsed.tags.length > 0) {
+          const completed = parsed.tags.filter((t) => t.completed).length
+          const total = parsed.tags.length
+          tagProgress = { completed, total, percentage: Math.round((completed / total) * 100) }
+        }
+        // Note: If no TAGs, tagProgress will be calculated from acceptance.md below
       } catch {
         // plan.md not readable or parse error
       }
@@ -569,6 +599,10 @@ async function getMoaiSpecDetail(
         acceptanceContent = await plugin.readRemoteFile(server, acceptancePath)
         const parsed = parseAcceptanceFile(acceptanceContent)
         criteria = parsed.criteria
+        // Fallback: use acceptance.md checklists for progress if no TAGs found
+        if (!tagProgress && acceptanceContent) {
+          tagProgress = countMarkdownChecklists(acceptanceContent)
+        }
       } catch {
         // acceptance.md not readable on remote
       }
@@ -577,9 +611,30 @@ async function getMoaiSpecDetail(
         acceptanceContent = await readFile(acceptancePath, 'utf-8')
         const parsed = parseAcceptanceFile(acceptanceContent)
         criteria = parsed.criteria
+        // Fallback: use acceptance.md checklists for progress if no TAGs found
+        if (!tagProgress && acceptanceContent) {
+          tagProgress = countMarkdownChecklists(acceptanceContent)
+        }
       } catch {
         // acceptance.md not readable or parse error
       }
+    }
+
+    // Check if SPEC is marked as complete/implemented in frontmatter
+    let isStatusComplete = false
+    if (specContent) {
+      const statusMatch = specContent.match(/^status:\s*(\w+)/mi)
+      if (statusMatch) {
+        const specStatus = statusMatch[1].toLowerCase()
+        isStatusComplete = specStatus === 'complete' || specStatus === 'completed' || specStatus === 'implemented'
+      }
+    }
+
+    // If status is complete but no tagProgress found, show 100%
+    if (isStatusComplete && (!tagProgress || tagProgress.percentage === 0)) {
+      tagProgress = { completed: 1, total: 1, percentage: 100 }
+      // Also update change.progress for main progress display
+      change.progress = 100
     }
 
     // Get stages for compatibility with OpenSpec format
@@ -809,10 +864,20 @@ flowRouter.get('/changes', async (_req, res) => {
         }
 
         for (const spec of moaiSpecs) {
-          // Skip if already in DB
-          const existsInDb = allChanges.some((c) => c.id === spec.id && c.projectId === project.id)
-          if (existsInDb) continue
           if (spec.status === 'archived') continue
+
+          // Calculate fresh progress from scanned data
+          const freshProgress = spec.tagCount > 0 ? Math.round((spec.completedTags / spec.tagCount) * 100) : 0
+
+          // Check if already in DB - if so, UPDATE with fresh progress
+          const existingIdx = allChanges.findIndex((c) => c.id === spec.id && c.projectId === project.id)
+          if (existingIdx !== -1) {
+            // Update existing entry with fresh scanned progress
+            allChanges[existingIdx].progress = freshProgress
+            allChanges[existingIdx].totalTasks = spec.tagCount
+            allChanges[existingIdx].completedTasks = spec.completedTags
+            continue
+          }
 
           // Map MoAI SPEC status to changes table status for consistency
           // MoAI: draft, active, complete, archived

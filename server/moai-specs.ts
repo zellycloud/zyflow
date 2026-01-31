@@ -9,6 +9,27 @@ import { readdir, readFile, access } from 'fs/promises'
 import { join } from 'path'
 import { parsePlanFile } from '@zyflow/parser'
 
+/**
+ * Count markdown checklists in content for progress calculation.
+ * Used as fallback when no TAG-XXX format tags are found.
+ */
+function countMarkdownChecklists(content: string): { completed: number; total: number; percentage: number } | null {
+  const checklistRegex = /^[\s]*-\s*\[([ xX])\]/gm
+  let completed = 0
+  let total = 0
+
+  let match
+  while ((match = checklistRegex.exec(content)) !== null) {
+    total++
+    if (match[1].toLowerCase() === 'x') {
+      completed++
+    }
+  }
+
+  if (total === 0) return null
+  return { completed, total, percentage: Math.round((completed / total) * 100) }
+}
+
 export interface MoaiSpec {
   id: string // SPEC-DOMAIN-NUM format
   title: string
@@ -119,10 +140,32 @@ export async function scanMoaiSpecs(projectPath: string): Promise<MoaiSpec[]> {
     try {
       const planContent = await readFile(join(specPath, 'plan.md'), 'utf-8')
       const parsed = parsePlanFile(planContent)
-      tagCount = parsed.tags.length
-      completedTags = parsed.tags.filter((t) => t.completed).length
+      if (parsed.tags.length > 0) {
+        tagCount = parsed.tags.length
+        completedTags = parsed.tags.filter((t) => t.completed).length
+      } else {
+        // Fallback: use acceptance.md checklists if no TAGs found
+        try {
+          const acceptanceContent = await readFile(join(specPath, 'acceptance.md'), 'utf-8')
+          const checklistProgress = countMarkdownChecklists(acceptanceContent)
+          if (checklistProgress) {
+            tagCount = checklistProgress.total
+            completedTags = checklistProgress.completed
+          }
+        } catch {
+          // acceptance.md not found
+        }
+      }
     } catch {
       // plan.md not found or parse error, use defaults
+    }
+
+    // If status is 'complete', show 100% progress (override any checklist count)
+    if (status === 'complete') {
+      if (tagCount === 0) {
+        tagCount = 1
+      }
+      completedTags = tagCount
     }
 
     return {
@@ -358,29 +401,43 @@ export async function scanRemoteMoaiSpecs(
         tagCount = parsed.tags.length
         completedTags = parsed.tags.filter((t) => t.completed).length
       } else {
-        // Fallback: Parse Phase/Task format (#### Task N.N or ### Task N.N)
-        // Also check for checkbox items as completion indicators
-        const taskMatches = planContent.match(/^#{3,4}\s+Task\s+\d+\.\d+/gim) || []
-        const checkboxItems = planContent.match(/^[-*]\s+\[[ xX]\]/gm) || []
-        const completedCheckboxes = planContent.match(/^[-*]\s+\[[xX]\]/gm) || []
-
-        if (taskMatches.length > 0) {
-          // Use task count as progress indicator
-          tagCount = taskMatches.length
-          // If there are checkboxes, use them for completion tracking
-          if (checkboxItems.length > 0) {
-            // Scale checkbox completion to task count
-            const checkboxCompletion = completedCheckboxes.length / checkboxItems.length
-            completedTags = Math.round(tagCount * checkboxCompletion)
+        // Fallback: use acceptance.md checklists if no TAGs found
+        try {
+          const acceptancePath = `${specPath}/acceptance.md`
+          const acceptanceContent = await plugin.readRemoteFile(server, acceptancePath)
+          const checklistProgress = countMarkdownChecklists(acceptanceContent)
+          if (checklistProgress) {
+            tagCount = checklistProgress.total
+            completedTags = checklistProgress.completed
           }
-        } else if (checkboxItems.length > 0) {
-          // No tasks but has checkboxes - use checkbox count
-          tagCount = checkboxItems.length
-          completedTags = completedCheckboxes.length
+        } catch {
+          // acceptance.md not found, try Phase/Task format
+          const taskMatches = planContent.match(/^#{3,4}\s+Task\s+\d+\.\d+/gim) || []
+          const checkboxItems = planContent.match(/^[-*]\s+\[[ xX]\]/gm) || []
+          const completedCheckboxes = planContent.match(/^[-*]\s+\[[xX]\]/gm) || []
+
+          if (taskMatches.length > 0) {
+            tagCount = taskMatches.length
+            if (checkboxItems.length > 0) {
+              const checkboxCompletion = completedCheckboxes.length / checkboxItems.length
+              completedTags = Math.round(tagCount * checkboxCompletion)
+            }
+          } else if (checkboxItems.length > 0) {
+            tagCount = checkboxItems.length
+            completedTags = completedCheckboxes.length
+          }
         }
       }
     } catch (planErr) {
       console.warn(`[MoAI Specs] Failed to read/parse plan.md for ${specId}:`, planErr)
+    }
+
+    // If status is 'complete', show 100% progress (override any checklist count)
+    if (status === 'complete') {
+      if (tagCount === 0) {
+        tagCount = 1
+      }
+      completedTags = tagCount
     }
 
     return {
