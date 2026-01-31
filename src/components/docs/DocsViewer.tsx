@@ -26,7 +26,7 @@ interface DocsViewerProps {
 export function DocsViewer({ projectPath, remote, onClose, initialDocPath }: DocsViewerProps) {
   const [selectedDocPath, setSelectedDocPath] = useState<string | null>(initialDocPath ?? null)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    () => new Set(['docs', 'openspec'])
+    () => new Set(['docs', 'openspec', '.moai'])
   )
   const [searchQuery, setSearchQuery] = useState('')
   const [isEditing, setIsEditing] = useState(false) // 편집 모드 상태

@@ -198,6 +198,10 @@ router.get('/', async (req, res) => {
     const rootDocs: DocItem[] = []
     let docsFolderItems: DocItem[] = []
     let openspecFolderItems: DocItem[] = []
+    let moaiDocsFolderItems: DocItem[] = []
+    let moaiProjectFolderItems: DocItem[] = []
+    let moaiReportsFolderItems: DocItem[] = []
+    let moaiSpecsFolderItems: DocItem[] = []
 
     if (serverId) {
       // --- Remote Mode ---
@@ -237,6 +241,17 @@ router.get('/', async (req, res) => {
       docsFolderItems = await scanRemoteDocsDirectory(plugin, server, docsPath, docsPath, projectPath)
       openspecFolderItems = await scanRemoteDocsDirectory(plugin, server, openspecPath, openspecPath, projectPath)
 
+      // .moai 폴더들 스캔 (Remote)
+      const moaiDocsPath = `${projectPath}/.moai/docs`
+      const moaiProjectPath = `${projectPath}/.moai/project`
+      const moaiReportsPath = `${projectPath}/.moai/reports`
+      const moaiSpecsPath = `${projectPath}/.moai/specs`
+
+      moaiDocsFolderItems = await scanRemoteDocsDirectory(plugin, server, moaiDocsPath, moaiDocsPath, projectPath)
+      moaiProjectFolderItems = await scanRemoteDocsDirectory(plugin, server, moaiProjectPath, moaiProjectPath, projectPath)
+      moaiReportsFolderItems = await scanRemoteDocsDirectory(plugin, server, moaiReportsPath, moaiReportsPath, projectPath)
+      moaiSpecsFolderItems = await scanRemoteDocsDirectory(plugin, server, moaiSpecsPath, moaiSpecsPath, projectPath)
+
     } else {
       // --- Local Mode ---
       // 1. 루트 파일
@@ -266,6 +281,32 @@ router.get('/', async (req, res) => {
         await access(openspecPath, constants.R_OK)
         openspecFolderItems = await scanDocsDirectory(openspecPath, openspecPath, projectPath)
       } catch { /* OpenSpec folder not accessible */ }
+
+      // .moai 폴더들 스캔 (Local)
+      const moaiDocsPath = join(projectPath, '.moai', 'docs')
+      const moaiProjectPath = join(projectPath, '.moai', 'project')
+      const moaiReportsPath = join(projectPath, '.moai', 'reports')
+      const moaiSpecsPath = join(projectPath, '.moai', 'specs')
+
+      try {
+        await access(moaiDocsPath, constants.R_OK)
+        moaiDocsFolderItems = await scanDocsDirectory(moaiDocsPath, moaiDocsPath, projectPath)
+      } catch { /* .moai/docs folder not accessible */ }
+
+      try {
+        await access(moaiProjectPath, constants.R_OK)
+        moaiProjectFolderItems = await scanDocsDirectory(moaiProjectPath, moaiProjectPath, projectPath)
+      } catch { /* .moai/project folder not accessible */ }
+
+      try {
+        await access(moaiReportsPath, constants.R_OK)
+        moaiReportsFolderItems = await scanDocsDirectory(moaiReportsPath, moaiReportsPath, projectPath)
+      } catch { /* .moai/reports folder not accessible */ }
+
+      try {
+        await access(moaiSpecsPath, constants.R_OK)
+        moaiSpecsFolderItems = await scanDocsDirectory(moaiSpecsPath, moaiSpecsPath, projectPath)
+      } catch { /* .moai/specs folder not accessible */ }
     }
 
     const result: DocItem[] = []
@@ -286,6 +327,54 @@ router.get('/', async (req, res) => {
         path: 'openspec',
         type: 'folder',
         children: openspecFolderItems,
+      })
+    }
+
+    // .moai 폴더 추가 (하위 폴더가 있는 경우에만)
+    const moaiChildren: DocItem[] = []
+    if (moaiDocsFolderItems.length > 0) {
+      moaiChildren.push({
+        id: '.moai-docs',
+        name: 'docs',
+        path: '.moai/docs',
+        type: 'folder',
+        children: moaiDocsFolderItems,
+      })
+    }
+    if (moaiProjectFolderItems.length > 0) {
+      moaiChildren.push({
+        id: '.moai-project',
+        name: 'project',
+        path: '.moai/project',
+        type: 'folder',
+        children: moaiProjectFolderItems,
+      })
+    }
+    if (moaiReportsFolderItems.length > 0) {
+      moaiChildren.push({
+        id: '.moai-reports',
+        name: 'reports',
+        path: '.moai/reports',
+        type: 'folder',
+        children: moaiReportsFolderItems,
+      })
+    }
+    if (moaiSpecsFolderItems.length > 0) {
+      moaiChildren.push({
+        id: '.moai-specs',
+        name: 'specs',
+        path: '.moai/specs',
+        type: 'folder',
+        children: moaiSpecsFolderItems,
+      })
+    }
+    if (moaiChildren.length > 0) {
+      result.push({
+        id: '.moai',
+        name: '.moai',
+        path: '.moai',
+        type: 'folder',
+        children: moaiChildren,
       })
     }
 
@@ -431,7 +520,15 @@ router.get('/search', async (req, res) => {
     const searchLower = query.toLowerCase()
     const results: Array<{ path: string; name: string; matches: string[] }> = []
 
-    const searchPaths = [projectPath, join(projectPath, 'docs'), join(projectPath, 'openspec')]
+    const searchPaths = [
+      projectPath,
+      join(projectPath, 'docs'),
+      join(projectPath, 'openspec'),
+      join(projectPath, '.moai', 'docs'),
+      join(projectPath, '.moai', 'project'),
+      join(projectPath, '.moai', 'reports'),
+      join(projectPath, '.moai', 'specs'),
+    ]
     const processedPaths = new Set<string>()
 
     async function searchInDirectory(dirPath: string) {
