@@ -1,0 +1,69 @@
+# Gitleaks Configuration for zyflow
+# Version: 1.0.0
+# Purpose: Prevent accidental credential commits
+
+title = "zyflow gitleaks config"
+
+[extend]
+# Use default gitleaks rules as base
+useDefault = true
+
+# Custom rules for project-specific patterns
+[[rules]]
+id = "moai-api-key"
+description = "MoAI/Anthropic API Key detected"
+regex = '''(?i)(anthropic[_-]?api[_-]?key|claude[_-]?api[_-]?key)\s*[=:]\s*["']?[a-zA-Z0-9_-]{20,}["']?'''
+tags = ["api", "anthropic"]
+
+[[rules]]
+id = "glm-api-key"
+description = "GLM API Key detected"
+regex = '''(?i)(glm[_-]?api[_-]?key)\s*[=:]\s*["']?[a-zA-Z0-9_-]{20,}["']?'''
+tags = ["api", "glm"]
+
+[[rules]]
+id = "slack-webhook"
+description = "Slack Webhook URL detected"
+regex = '''https://hooks\.slack\.com/services/[A-Z0-9]+/[A-Z0-9]+/[a-zA-Z0-9]+'''
+tags = ["slack", "webhook"]
+
+[[rules]]
+id = "firebase-config"
+description = "Firebase Configuration detected"
+regex = '''(?i)(firebase[_-]?api[_-]?key|firebase[_-]?project[_-]?id)\s*[=:]\s*["']?[a-zA-Z0-9_-]{10,}["']?'''
+tags = ["firebase", "config"]
+
+[[rules]]
+id = "supabase-key"
+description = "Supabase API Key detected"
+regex = '''(?i)(supabase[_-]?key|supabase[_-]?url)\s*[=:]\s*["']?[a-zA-Z0-9_.-]{20,}["']?'''
+tags = ["supabase", "api"]
+
+# Allowlist - files and patterns to ignore
+[allowlist]
+description = "Global allowlist"
+
+# Ignore these paths
+paths = [
+    '''node_modules/''',
+    '''.moai-backups/''',
+    '''\.claude/skills/.*/examples\.md''',
+    '''\.claude/skills/.*/reference\.md''',
+    '''docs/.*\.md''',
+    '''\.env\.example''',
+    '''\.env\.production\.template''',
+    '''\.shadcn-admin-ref/''',
+]
+
+# Ignore these specific patterns (documentation examples)
+regexes = [
+    '''["']?your[_-]?(api[_-]?key|secret|password|token)["']?''',
+    '''["']?xxx+["']?''',
+    '''password123''',
+    '''SecurePass123!''',
+    '''test-token''',
+    '''dev-api-key-12345''',
+]
+
+# Ignore specific commits (add if needed after git history cleanup)
+# commits = []

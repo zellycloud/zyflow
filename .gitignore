@@ -1,135 +1,71 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# ===========================================
+# zyflow .gitignore
+# Version: 1.0.0 (Security Enhanced)
+# Updated: 2026-02-01
+# ===========================================
 
-node_modules
-dist
-dist-ssr
-*.local
+# ============================================
+# SECTION 1: SECRETS AND CREDENTIALS (CRITICAL)
+# ============================================
 
+# Environment files
 .env
+.env.*
+!.env.example
+!.env.production.template
+.env.local
+.env.*.local
 .env.zyflow
 .env._flow
-.env.*.local
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-.shadcn-admin-ref
-
-# Local data
-.zyflow/
-.leann/
-.serena/
-
-# Build artifacts
-server/server/
-server/src/
-tmp/
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-py-agents/.venv/
-py-agents/venv/
-py-agents/.env
-py-agents/*.egg-info/
-py-agents/.pytest_cache/
-py-agents/.ruff_cache/
-py-agents/.coverage
-py-agents/htmlcov/
-*.db
-
-# Claude Flow generated files
-.claude/settings.local.json
-# .mcp.json
-claude-flow.config.json
-.swarm/
-.hive-mind/
-.claude-flow/
-memory/
-coordination/
-memory/claude-flow-data.json
-memory/sessions/*
-!memory/sessions/README.md
-memory/agents/*
-!memory/agents/README.md
-coordination/memory_bank/*
-coordination/subtasks/*
-coordination/orchestration/*
-*.db
-*.db-journal
-*.db-wal
-*.sqlite
-*.sqlite-journal
-*.sqlite-wal
-/claude-flow
-# Removed Windows wrapper files per user request
-hive-mind-prompt-*.txt
-!.moai/scripts/**
-secret-key-*
-*.rdb
-# Moved to after .moai/* pattern (see below)
-# FIXED: Issue #237 - Replaced overly broad *key* and *secret* patterns
-.moai/config/config.json
-.claude/skills/*/secrets/
-node_modules/
-*.temp
-.fseventsd
-# Certificate files
-# MoAI Directory Management
-# Private keys and certificates (specific patterns to avoid false positives)
-.next/
-# Python Cache & Database
-.gitlab-ci.yml.bak
-# ============================================
-# .moai local development scripts (not distributed)
-*.secret.*
-*.backup
-.ruff_cache/
-# Package Distribution
-# .moai local-only directories (user projects only)
-.moai/scripts/__pycache__/
-.claude/skills/*/*/*token*
-!.moai/memory/**
-!.moai/memory/
-# Version: 0.28.0
-# Node.js (for docs/Nextra)
-*-secret-key.*
-.directory
-.pytest_cache/
-*.pyo
-.env/
-.DocumentRevisions-V100
-.moai/scripts/phase*.py
-# ---------------------------------------------
-*.dbm
-.uv_cache/
-# Cloud provider credentials
-!.moai/config/**
-logs/
-.TemporaryItems
-.claude/local/
+# API Keys and Tokens (specific patterns)
+api-key-*
+*-api-key.*
+*_api_key*
+*.apikey
+*_token=*
+*_token.*
+*-token.*
+secret-*.*
+*-secret.*
 *_secret.*
-coverage.json
-.moai/error_logs/
-dist/
-!.env.example
+*.secret.*
+secret-key-*
+*-secret-key.*
+private-key*
+
+# Cloud provider credentials
+.aws/
+.gcloud/
+.azure/
+.config/gcloud/
+google-credentials.json
+service-account*.json
+firebase-adminsdk*.json
+
+# SSH and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*.crt
+*.cer
+
+# OAuth tokens and session data
+oauth-*.json
+tokens.json
+.credentials/
+
+# ============================================
+# SECTION 2: MoAI LOCAL DATA (USER-SPECIFIC)
+# ============================================
+
+# MoAI directories (exclude tracked subdirectories)
 .moai/*
 !.moai/specs/
 !.moai/specs/**
@@ -137,129 +73,250 @@ dist/
 !.moai/project/**
 !.moai/config/
 !.moai/config/**
-# uv.lock
-*.sqlite3
-*.egg-info/
-.AppleDouble
-*.tsbuildinfo
-.moai/archived-skills/
-*.sublime-workspace
-.venv/
-*.pyc
-# Mac
-.moai/archive/
-.cursor/
-.moai-backups/
-*.sublime-project
-*.swo
-# Backups
-.tscache/
-.moai/work/
-# Claude Code Local Configuration
-*.egg
-.claude/skills/*/*/*key*
-*.jks
-!.moai/config/
-.moai/cache/
 !.moai/scripts/
-ehthumbs.db
-# Add to .gitignore if needed per project
-.aws/config
-# Environment Variables & Secrets
-.claude/skills/*/.env*
-# Logs & Temporary Files
-*.pem
-.LSOverride
-# Windows
-# MoAI-ADK Package Distribution .gitignore
-*.pyd
-venv/
-# OS Files
-.moai/reports/
-.moai/scripts/sync-*.sh
-env/
-.claude/.env.local*
-# Purpose: Essential patterns for user projects
-.netlify/
-*_secret=*
-.claude/skills/*/*/*secret*
-*.backup/
-.VolumeIcon.icns
-.moai/analytics/
-*.key.*
-.moai/scripts/sync-*.py
-build/
-# uv.lock is intentionally included for reproducible builds
-*_token=*
-.mypy_cache/
-.moai/scripts/*sync*.sh
-*-backup/
-.moai/scripts/phase*.sh
-# User-generated content: logs/, cache/, reports/, etc.
-.env.*
-*_key.*
-*-api-key.*
-private-key*
+
+# MoAI runtime directories (never track)
+.moai/cache/
+.moai/logs/
+.moai/temp/
 .moai/docs/
-# Legacy config format (migrated to YAML in v0.32.0)
-# Old patterns caused false positives for: keyboard-config, hotkey, monkey-patch, etc.
-# Build Artifacts
-*_backup_*/
-.coverage
-.idea/
-# Linux
-.github/workflows/*.yml.bak
-*.bak
-secret-*.*
-# API credentials patterns
-[Dd]esktop.ini
-# IDE & Editors
-# Claude Code Skills Secrets
-# Tracked in git: config/, memory/, scripts/, specs/
-.aws/credentials
-*~
-.vercel/
-# Virtual Environments
+.moai/reports/
+.moai/analytics/
+.moai/error_logs/
+.moai/backups/
+.moai/archive/
+.moai/archived-skills/
+.moai/work/
+.moai/scripts/__pycache__/
+.moai/scripts/phase*.py
+.moai/scripts/phase*.sh
+.moai/scripts/sync-*.sh
+.moai/scripts/sync-*.py
+.moai/scripts/*sync*.sh
+.moai-backups/
+
+# MoAI legacy config (migrated to YAML)
+.moai/config/config.json
+
+# ============================================
+# SECTION 3: CLAUDE CODE LOCAL DATA
+# ============================================
+
+# Claude Code local configurations
+.claude/settings.local.json
+.claude/settings.local.*.json
+.claude/local/
+.claude/plans/
+.claude/.env.local*
+
+# Claude skills secrets
+.claude/skills/*/secrets/
+.claude/skills/*/.env*
+.claude/skills/*/*/*key*
+.claude/skills/*/*/*token*
+.claude/skills/*/*/*secret*
+
+# Claude Flow generated files
+.claude-flow/
+claude-flow.config.json
+/claude-flow
+
+# ============================================
+# SECTION 4: DATABASES AND MEMORY
+# ============================================
+
+# Database files
+*.db
+*.db-journal
+*.db-wal
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite3
+*.dbm
+*.rdb
+
+# Memory and coordination
+memory/
+!memory/sessions/README.md
+!memory/agents/README.md
+coordination/
+.swarm/
+.hive-mind/
+.zyflow/
+.leann/
+.serena/
+
+# ============================================
+# SECTION 5: NODE.JS AND DEPENDENCIES
+# ============================================
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-store/
+.npm/
+package-lock.json.bak
+yarn.lock.bak
+
+# Build outputs
+dist/
+dist-ssr/
+build/
 out/
+.next/
+.nuxt/
+.turbo/
+*.tsbuildinfo
+.tscache/
+
+# ============================================
+# SECTION 6: PYTHON
+# ============================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env/
+py-agents/.venv/
+py-agents/venv/
+py-agents/.env
+
+# Python tools
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.json
+py-agents/.pytest_cache/
+py-agents/.ruff_cache/
+py-agents/.coverage
+py-agents/htmlcov/
+
+# uv cache
+.uv_cache/
+.uv-cache/
+
+# ============================================
+# SECTION 7: IDE AND EDITORS
+# ============================================
+
+# VSCode
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# JetBrains
+.idea/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim/Neovim
+*.swp
+*.swo
+*.sw?
+*~
+.#*
+
+# Cursor
+.cursor/
+
+# ============================================
+# SECTION 8: OS FILES
+# ============================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
 .Spotlight-V100
 .Trashes
-.firebase/
-.uv-cache/
-api-key-*
-*.p12
-.moai/temp/
-.#*
-.claude/settings.local.*.json
-*-secret.*
-# CI/CD
-*.pfx
-*.tmp
-# Test Coverage
-.moai/backups/
-.vscode/
-*.swp
-htmlcov/
+.VolumeIcon.icns
+.DocumentRevisions-V100
+.TemporaryItems
+.fseventsd
+
+# Windows
 Thumbs.db
-*-key.*
-.moai/logs/
+ehthumbs.db
+[Dd]esktop.ini
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Linux
+.directory
+
+# ============================================
+# SECTION 9: LOGS AND TEMPORARY FILES
+# ============================================
+
+logs/
+*.log
+*.tmp
+*.temp
+tmp/
+hive-mind-prompt-*.txt
+
+# ============================================
+# SECTION 10: BACKUP FILES
+# ============================================
+
+*.bak
+*.backup
+*.backup/
+*-backup/
+*_backup_*/
+.github/workflows/*.yml.bak
+.gitlab-ci.yml.bak
+
+# ============================================
+# SECTION 11: BUILD AND DEPLOYMENT
+# ============================================
+
+# CI/CD
+.netlify/
+.vercel/
+.firebase/
 
 # SonarQube
 .scannerwork/
 sonar-project.properties
-# Python Cache & Bytecode
-# Private keys (specific patterns to avoid false positives)
-.turbo/
-# Version: 0.33.0
-# Claude Code Configuration
-# Credential patterns in environment files
-# Secrets and Credentials (CRITICAL)
-.nuxt/
-# Build Tools & Frameworks
-dist-ssr/
-# Updated: 2026-01-10
-# ===========================================
-.claude/plans/
-# Deployment & CI/CD
-# Environment files
-# Skill-specific credentials
-# Build Artifacts & Distribution
+
+# Build artifacts
+server/server/
+server/src/
+
+# ============================================
+# SECTION 12: REFERENCE PROJECTS (LOCAL ONLY)
+# ============================================
+
+.shadcn-admin-ref
+
+# ============================================
+# SECTION 13: SECURITY SCANNING EXCEPTIONS
+# ============================================
+
+# These are explicitly allowed (whitelisted)
+# !.env.example
+# !.env.production.template
+# !.mcp.json (contains no secrets, only server configs)
+# !.claude/settings.json (contains no secrets, only permissions)

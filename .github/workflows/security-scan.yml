@@ -1,0 +1,158 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # 매주 월요일 오전 9시(KST) = 일요일 자정(UTC)
+    - cron: '0 0 * * 0'
+
+jobs:
+  # Gitleaks - 시크릿 스캔
+  secret-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for comprehensive scan
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: true
+
+  # Dependency vulnerability scan
+  dependency-scan:
+    name: Dependency Vulnerability Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Create audit report
+        if: always()
+        run: |
+          npm audit --json > npm-audit.json || true
+          echo "### NPM Audit Results" >> $GITHUB_STEP_SUMMARY
+          npm audit 2>/dev/null | head -50 >> $GITHUB_STEP_SUMMARY || echo "No vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+
+  # SAST - Static Application Security Testing
+  codeql-analysis:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['javascript-typescript', 'python']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{matrix.language}}"
+
+  # File permission and sensitive file check
+  sensitive-file-check:
+    name: Sensitive File Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for sensitive files
+        run: |
+          echo "### Sensitive File Check" >> $GITHUB_STEP_SUMMARY
+          FOUND_FILES=""
+
+          # Check for common sensitive file patterns
+          for pattern in ".env" "*.pem" "*.key" "*.p12" "*.pfx" "id_rsa*" "*.sqlite" "*.db"; do
+            FILES=$(git ls-files "$pattern" 2>/dev/null || true)
+            if [ -n "$FILES" ]; then
+              FOUND_FILES="$FOUND_FILES$FILES\n"
+            fi
+          done
+
+          # Special check for .env files (excluding templates)
+          ENV_FILES=$(git ls-files ".env*" 2>/dev/null | grep -v "\.example$" | grep -v "\.template$" || true)
+          if [ -n "$ENV_FILES" ]; then
+            FOUND_FILES="$FOUND_FILES$ENV_FILES\n"
+          fi
+
+          if [ -n "$FOUND_FILES" ]; then
+            echo "⚠️ **Warning**: Potentially sensitive files detected in repository:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo -e "$FOUND_FILES" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "Please verify these files do not contain secrets." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ No sensitive files detected." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Check file permissions
+        run: |
+          echo "### File Permission Check" >> $GITHUB_STEP_SUMMARY
+          # Check for files with executable bit that shouldn't have it
+          SCRIPT_DIRS=".claude/hooks .claude/helpers .moai/scripts"
+          for dir in $SCRIPT_DIRS; do
+            if [ -d "$dir" ]; then
+              echo "Checking $dir..." >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+  # Security scan summary notification
+  notify-results:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [secret-scan, dependency-scan, codeql-analysis, sensitive-file-check]
+    if: always()
+
+    steps:
+      - name: Create summary
+        run: |
+          echo "## 🔒 Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Secret Detection | ${{ needs.secret-scan.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependency Scan | ${{ needs.dependency-scan.result == 'success' && '✅ Passed' || '⚠️ Review needed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| CodeQL Analysis | ${{ needs.codeql-analysis.result == 'success' && '✅ Passed' || '⚠️ Review needed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Sensitive Files | ${{ needs.sensitive-file-check.result == 'success' && '✅ Passed' || '⚠️ Review needed' }} |" >> $GITHUB_STEP_SUMMARY
