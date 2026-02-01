@@ -1,6 +1,14 @@
 {
   "name": "zyflow",
   "version": "0.5.0",
+  "description": "MoAI SPEC 기반 개발 플로우 관리 도구 - Claude Code MCP 서버",
+  "license": "MIT",
+  "author": "ZyFlow Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zellycloud/zyflow.git"
+  },
+  "homepage": "https://github.com/zellycloud/zyflow",
   "type": "module",
   "pnpm": {
     "onlyBuiltDependencies": [
