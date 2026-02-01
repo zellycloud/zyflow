@@ -55,7 +55,20 @@ API 문서, README 업데이트, CHANGELOG 항목 추가, PR 생성
 - **npm**: 10.x 이상 또는 **pnpm**
 - **Git**: 2.x 이상
 
-## 설치 및 개발 환경 설정
+## 설치
+
+### npm 패키지 설치 (권장)
+
+```bash
+npm install zyflow
+# 또는
+npm install -g zyflow  # 전역 설치
+```
+
+> **Note**: npm 패키지는 최신 v0.6.0 버전입니다.
+> https://www.npmjs.com/package/zyflow
+
+## 개발 환경 설정
 
 ### 1. 저장소 클론
 
