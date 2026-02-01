@@ -49,11 +49,60 @@ API 문서, README 업데이트, CHANGELOG 항목 추가, PR 생성
 - **Change Log & Replay**: 이벤트 로깅 및 리플레이 시스템
 - **MoAI SPEC 파서**: EARS 형식 SPEC 파싱 및 검증
 
-## 설치
+## 요구사항
+
+- **Node.js**: 20.x 이상
+- **npm**: 10.x 이상 또는 **pnpm**
+- **Git**: 2.x 이상
+
+## 설치 및 개발 환경 설정
+
+### 1. 저장소 클론
+
+```bash
+git clone https://github.com/zellycloud/zyflow.git
+cd zyflow
+```
+
+### 2. 의존성 설치
 
 ```bash
 npm install
+# 또는 pnpm을 사용하는 경우
+pnpm install
+```
+
+### 3. 빌드 및 실행
+
+#### 개발 모드 (웹 대시보드 + MCP 서버)
+```bash
+# 터미널 1: 웹 대시보드 (localhost:5173)
+npm run dev
+
+# 터미널 2: MCP 서버 개발 (실시간 컴파일)
+npm run dev:server
+```
+
+#### 프로덕션 빌드
+```bash
+# 전체 빌드
+npm run build
+
+# MCP 서버만 빌드
 npm run build:mcp
+```
+
+### 4. 테스트 실행
+
+```bash
+# 전체 테스트
+npm run test
+
+# 특정 테스트 파일
+npm run test -- path/to/test.ts
+
+# 커버리지 보고서
+npm run test:coverage
 ```
 
 ## MCP 서버 설정
@@ -127,7 +176,7 @@ npm run build:mcp
 
 | 엔드포인트 | 설명 |
 |-----------|------|
-| `GET /api/specs` | 통합 SPEC 목록 조회 (MoAI + OpenSpec 형식 지원) |
+| `GET /api/specs` | 통합 SPEC 목록 조회 (MoAI 형식 기본, OpenSpec 레거시 호환) |
 | `GET /api/specs/:id` | 특정 SPEC 상세 조회 |
 | `GET /api/specs/migration-status` | 마이그레이션 상태 조회 (MoAI/OpenSpec 개수) |
 | `POST /api/specs/:id/archive` | SPEC 아카이브 (월별 디렉토리로 이동) |
@@ -135,10 +184,12 @@ npm run build:mcp
 | `GET /api/specs/archived` | 아카이브된 SPEC 목록 조회 |
 
 **필터링 옵션** (`GET /api/specs`):
-- `?format=moai` - MoAI 형식만 조회
-- `?format=openspec` - OpenSpec 형식만 조회
+- `?format=moai` - MoAI 형식 SPEC 조회 (권장)
+- `?format=openspec` - OpenSpec 형식 SPEC 조회 (레거시 호환용, v0.5.0 이하 프로젝트)
 - `?status=active` - 특정 상태만 조회
 - `?domain=AUTH` - 특정 도메인만 조회
+
+> **Note**: OpenSpec 형식은 v0.5.0 이하에서 마이그레이션되지 않은 프로젝트의 호환성을 위해 유지됩니다. 새 프로젝트는 MoAI SPEC 형식을 사용합니다.
 
 ### Change Log & Replay 도구
 
@@ -188,8 +239,118 @@ npm run dev:all
 
 # 또는 개별 실행
 npm run server  # API 서버 (포트 3001)
-npm run dev     # Vite 개발 서버
+npm run dev     # Vite 개발 서버 (포트 5173)
 ```
+
+## 마이그레이션 가이드
+
+### OpenSpec → MoAI SPEC 마이그레이션 (v0.6.0)
+
+v0.5.0 이하에서 OpenSpec을 사용 중인 프로젝트는 v0.6.0에서 자동으로 마이그레이션됩니다:
+
+```bash
+# 마이그레이션 상태 확인
+curl http://localhost:3001/api/specs/migration-status
+
+# 응답 예시
+{
+  "moai_count": 8,
+  "openspec_count": 2,
+  "migration_progress": "80%"
+}
+```
+
+**마이그레이션 프로세스:**
+1. 기존 OpenSpec 파일은 유지됨 (호환성)
+2. MoAI SPEC으로 자동 변환된 SPEC 추가 생성
+3. API 필터링으로 필요한 형식만 조회 가능
+4. 새 프로젝트는 MoAI SPEC 형식으로만 생성
+
+**주의사항:**
+- 마이그레이션은 자동이지만 수동 검증 권장
+- OpenSpec 형식의 복잡한 커스텀 필드는 일부 손실 가능
+- 마이그레이션 후 OpenSpec 파일 삭제는 사용자 판단
+
+## 문제 해결
+
+### MCP 서버 연결 실패
+
+```bash
+# 1. 프로세스 확인
+lsof -i :3001
+
+# 2. 환경 변수 확인
+echo $ZYFLOW_PROJECT
+
+# 3. 권한 확인
+ls -la /path/to/zyflow/dist/mcp-server/index.js
+```
+
+### 테스트 실패
+
+```bash
+# 캐시 초기화 후 재실행
+rm -rf node_modules/.cache
+npm run test
+```
+
+### 포트 충돌
+
+```bash
+# 다른 포트로 실행
+PORT=3002 npm run server
+```
+
+## 릴리즈 노트
+
+### v0.6.0 (2026-02-01)
+
+**주요 변경사항:**
+- 🔍 SPEC 가시성 및 통합 관리 시스템 (SPEC-VISIBILITY-001)
+- 🛡️ 글로벌 에러 핸들러 시스템 (SPEC-ERROR-001)
+- 📊 에러 모니터링 대시보드
+- ✅ 22+ 통합 테스트 시나리오
+- 📚 개발자 문서 (5가지 가이드, 1500+ 라인)
+
+**주요 개선:**
+- OpenSpec 마이그레이션 완료 (레거시 호환 유지)
+- 성능 최적화 (캐시 TTL 60초)
+- 테스트 통과율 향상 (91.6% → 93.2%)
+
+자세한 내용은 [CHANGELOG.md](./CHANGELOG.md) 참조
+
+## 라이선스
+
+MIT
+
+## 기여 가이드
+
+이슈 및 풀 리퀘스트는 언제든 환영합니다!
+
+### 개발 워크플로우
+
+1. 이슈 생성 또는 기존 이슈 선택
+2. 기능 브랜치 생성: `git checkout -b feat/feature-name`
+3. 변경사항 커밋: `git commit -m "feat: description"`
+4. 풀 리퀘스트 생성
+5. 리뷰 후 머지
+
+### 코드 스타일
+
+```bash
+# 포맷팅
+npm run format
+
+# 린팅
+npm run lint
+
+# 타입 체크
+npm run type-check
+```
+
+## 지원
+
+문제 발생 시 [GitHub Issues](https://github.com/zellycloud/zyflow/issues)에 보고해주세요.
 
 ## CLI 사용법
 
