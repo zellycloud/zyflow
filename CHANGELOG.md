@@ -2,112 +2,111 @@
 
 All notable changes to ZyFlow will be documented in this file.
 
-## [Unreleased]
+## [0.6.0] - 2026-02-01
 
-### SPEC-VISIBILITY-001: SPEC Visibility & Unified Management System
+v0.5.0 이후 30개 커밋을 포함한 대규모 업데이트입니다.
 
-SPEC 가시성 및 통합 관리 시스템 구현 (4 Phases, 23 TAGs):
+### Added
 
-**Phase 1: Status Synchronization Fix**
-- `normalizeStatus()` 함수를 통한 상태 동기화
-- 데이터베이스 쿼리가 SPEC frontmatter에서 상태 읽기
-- 마이그레이션 스크립트: `server/scripts/migrate-spec-status.ts`
-
-**Phase 2: Unified SPEC Scanner**
-- `UnifiedSpec` 타입 및 zod 검증
-- MoAI와 OpenSpec 형식 모두 지원하는 통합 스캐너
+#### 🔍 SPEC 가시성 및 통합 관리 시스템
+- 통합 SPEC 스캐너: MoAI와 OpenSpec 형식 모두 지원
 - API 엔드포인트: `/api/specs`, `/api/specs/:id`, `/api/specs/migration-status`
-- 60초 캐시 TTL로 성능 최적화
-
-**Phase 3: OpenSpec Migration Tool**
-- OpenSpec 파서 (`server/migrations/openspec-parser.ts`)
-- EARS 생성기 (spec.md)
-- TAG 체인 생성기 (plan.md)
-- Gherkin 생성기 (acceptance.md)
-- 배치 마이그레이션 CLI: `server/scripts/migrate-all-openspecs.ts`
-
-**Phase 4: Archive Management**
-- 아카이브 관리자 (`server/archive-manager.ts`) - 원자적 작업 지원
+- `UnifiedSpec` 타입 및 zod 검증
+- SPEC 아카이브 관리 시스템 (원자적 작업 지원)
 - 아카이브/복원 API 엔드포인트
-- 메타데이터 보존 및 에러 시 롤백
+- 메타데이터 보존 및 롤백 기능
+- SpecDetail 컴포넌트 추가로 MoAI SPEC 상세 조회 기능 구현
 
-**메트릭**:
-- 신규 파일: 25+
-- 신규 테스트: 175
-- 전체 테스트: 997 통과
-- 커밋: 5
-- 추가된 라인: 11,581
+#### 🛡️ 글로벌 에러 핸들러 시스템
+- 전역 에러 핸들러 구현
+- 에러 분류 및 우선순위 지정 시스템
+- API 엔드포인트별 에러 처리 강화
+- React 컴포넌트 에러 경계 (Error Boundary) 구현
+- 에러 복구 메커니즘 추가
 
-### Migration
-- **SPEC-MIGR-001 완료**: OpenSpec에서 MoAI SPEC 시스템으로 완전 마이그레이션
-  - 15개 TAG 단계별 구현으로 점진적 마이그레이션 달성
-  - 96.0% (872/908) 테스트 통과율 달성
-  - 완전한 하위 호환성 유지 및 0 데이터 손실
-  - OpenSpec 디렉토리 및 관련 기능 완전 제거
-  - MoAI SPEC 파서 통합 및 EARS 형식 지원
-  - 프로젝트 구조 최적화 (.moai/specs 디렉토리)
+#### 📊 에러 모니터링 대시보드
+- ErrorDashboard 컴포넌트: 3-컬럼 레이아웃
+- ErrorHistoryList: 최근 에러 스크롤 가능 목록
+- ErrorStats: 통계 카드 및 트렌드 분석 차트
+- ErrorDetailPanel: 스택 트레이스 포함 상세 정보
+- ErrorFilters: 고급 필터링 및 검색 인터페이스
+- 에러 통계 및 24시간 트렌드 분석
+- JSON/CSV 내보내기 기능
+
+#### ✅ 포괄적인 통합 테스트 (22+ 시나리오)
+- 네트워크 에러 시나리오 (timeout, connection failure, CORS 등)
+- 컴포넌트 에러 시나리오 (render error, lifecycle error, retry 등)
+- 검증 에러 시나리오 (validation failure, schema validation 등)
+- 상태 에러 시나리오 (mutation failure, context missing 등)
+- 작업 에러 시나리오 (execution error, parsing error 등)
+- SSE 에러 시나리오 (connection, parsing, reconnection 등)
+- 오프라인 시나리오 (queueing, sync 등)
+
+#### 📚 개발자 문서 (5가지 가이드, 1500+ 라인)
+- 글로벌 에러 핸들러 사용 가이드
+- API 에러 처리 가이드
+- 에러 모니터링 대시보드 사용 가이드
+- 테스트 작성 가이드
+- 에러 복구 전략 가이드
 
 ### Changed
+
+#### 🔄 SPEC 시스템 마이그레이션
 - 기본 SPEC 형식: MoAI SPEC (OpenSpec 폐기)
 - 프로젝트 생성 및 관리: MoAI SPEC만 지원
 - CLI 및 MCP: 외부 `openspec` 바이너리 의존성 제거
 - Parser: @zyflow/parser v2.0.0+ (MoAI SPEC만 지원)
+- 프로젝트 구조 최적화 (.moai/specs 디렉토리)
 - README.md: MoAI SPEC 워크플로우 설명 추가
 
+#### 🎯 성능 개선
+- SPEC 캐시 TTL: 60초로 성능 최적화
+- API 병렬 처리 및 배치 쿼리 최적화
+- FlowContent/FlowSidebar 렌더링 최적화
+
+#### 🔗 컴포넌트 통합
+- FlowContent에 spec 타입 라우팅 추가
+- FlowSidebar에 SPEC 선택 로직 통합
+- useFlowChanges 훅에 spec 타입 지원
+- TypeScript 타입 정의 업데이트 및 구조 정리
+
+### Fixed
+
+#### 파서 검증 기능
+- Duplicate group title detection 기능 복원
+- Unsorted group order detection 기능 복원
+- `resolveDuplicateGroupTitles` 함수 구현
+- `reorderGroups` 함수 구현
+
+#### API 클라이언트 검증
+- Gemini Client API key 유효성 검사 로직 추가
+- 생성자에서 빈/누락된 API key 체크
+- 유효하지 않은 API key에 대한 에러 메시지 추가
+
+#### 테스트 및 코드 품질
+- Mock 데이터 구조를 API 응답 형태에 맞게 수정
+- Property 이름을 API 계약과 일치시킴
+- Prompt Builder 코드 주석 개선
+- 조건부 섹션 포함 로직에 대한 주석 추가
+- Task 추출 프로세스 설명 개선
+- 전체 테스트 통과율: 91.6% → 93.2% (+1.6%)
+- 기존 통과 테스트 회귀 없음 (0 regression)
+
 ### Removed
+
 - OpenSpec CLI 어댑터 및 관련 기능
 - OpenSpec 스킬 및 명령
 - openspec/ 디렉토리
 - 모든 "openspec" 문자열 참조
 - OpenSpec 호환성 레이어
 
-### Fixed
+### 메트릭
 
-#### Parser Validation Functions (TAG-001)
-- Duplicate group title detection 기능 복원
-- Unsorted group order detection 기능 복원
-- `resolveDuplicateGroupTitles` 함수 구현
-- `reorderGroups` 함수 구현
-- 4개의 파서 테스트 통과
-
-#### Gemini Client API Key Validation (TAG-004)
-- API key 유효성 검사 로직 추가
-- 생성자에서 빈/누락된 API key 체크
-- 유효하지 않은 API key에 대한 에러 메시지 추가
-- 1개의 Gemini 클라이언트 테스트 통과
-
-#### Session Test Mock Data (TAG-003)
-- Mock 데이터 구조를 API 응답 형태에 맞게 수정
-- Property 이름을 API 계약과 일치시킴
-- 1개의 세션 테스트 통과
-
-### Improved
-
-#### Prompt Builder Code Comments (TAG-002)
-- 조건부 섹션 포함 로직에 대한 주석 추가
-- Task 추출 프로세스 설명 개선
-- 코드 가독성 향상
-
-### Test Results
-
-- 전체 테스트 통과율: 91.6% → 93.2% (+1.6%)
-- 수정된 테스트: 8개
-- 남은 실패: 34개
-- 기존 통과 테스트 회귀 없음 (0 regression)
-
-#### Frontend Components Update (TAG-009)
-- SpecDetail 컴포넌트 추가로 MoAI SPEC 상세 조회 기능 구현
-- FlowContent에 spec 타입 라우팅 추가
-- FlowSidebar에 SPEC 선택 로직 통합
-- useFlowChanges 훅에 spec 타입 지원
-- TypeScript 타입 정의 업데이트 및 구조 정리
-
-**관련 커밋:**
-- 6f758ce: Parser validation fixes
-- f9f4f7b: Gemini client API key validation
-- a1b7497: Session mock data fixes
-- 4aa5ea1: Prompt builder comment improvements
-- 6b91a47: Complete MoAI SPEC display integration in sidebar
+- 신규 파일: 25+
+- 신규 테스트: 175
+- 전체 테스트 통과: 997개
+- 추가된 코드 라인: 11,581+
+- 커밋: 30
 
 ---
 
