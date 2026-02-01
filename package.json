@@ -1,6 +1,6 @@
 {
   "name": "zyflow",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "MoAI SPEC 기반 개발 플로우 관리 도구 - Claude Code MCP 서버",
   "license": "MIT",
   "author": "ZyFlow Contributors",
